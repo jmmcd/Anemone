@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anemone Interactive Evolutionary Algorithm</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Anemone Interactive Evolutionary Algorithm</h1>
+        
+        <div class="controls">
+            <button id="evolve-btn">Evolve Next Generation</button>
+            <button id="reset-btn">Reset</button>
+            <span>Selected: <span id="selected-count">0</span></span>
+        </div>
+        
+        <div id="extensions-container" class="extensions-container"></div>
+        
+        <div class="info">
+            <span>Generation: <span id="generation">0</span></span>
+            <span>Population Size: <span id="population-size">16</span></span>
+            <span>Average Fitness: <span id="avg-fitness">0.00</span></span>
+        </div>
+        
+        <div class="grid" id="grid"></div>
+        
+        <div class="history">
+            <h2>Generation History</h2>
+            <div id="history-list"></div>
+        </div>
+        
+        <div class="individual-type-selector">
+            <h3>Individual Type</h3>
+            <select id="individual-type-select">
+                <option value="GPPatternIndividual">GP Pattern (Tree-based)</option>
+                <option value="GrammaticalEvolutionIndividual">Grammatical Evolution</option>
+                <option value="GERadiusDrawingIndividual">GE Radius Drawing (Polar)</option>
+                <option value="DrawingCommandIndividual">Drawing Commands</option>
+                <option value="BinaryPatternIndividual">Binary Pattern</option>
+                <option value="CreatureIndividual" selected>Creature (Turtle Graphics)</option>
+                <option value="SuperFormulaIndividual">Super Formula (Gielis)</option>
+                <option value="SuperFormula3DIndividual">Super Formula 3D</option>
+                <option value="CharacterIndividual">Character (Kids Games)</option>
+                <option value="MusicIndividual">Music</option>
+                <option value="DAGIndividual">DAG</option>
+            </select>
+            <button id="switch-individual-type-btn">Switch Individual Type</button>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3-color.v3.min.js"></script>
+    <script src="https://d3js.org/d3-interpolate.v3.min.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+    <script src="ContinuousPaletteSystem.js"></script>
+    <script src="Individual.js"></script>
+    <script src="PaletteControlUI.js"></script>
+    <script src="PaletteExtensionMixin.js"></script>
+    <script src="BinaryPatternIndividual.js"></script>
+    <script src="DrawingCommandIndividual.js"></script>
+    <script src="MusicIndividual.js"></script>
+    <script src="DAGIndividual.js"></script>
+    <script src="GPPatternIndividual.js"></script>
+    <script src="Grammar.js"></script>
+    <script src="GrammaticalEvolutionIndividual.js"></script>
+    <script src="GERadiusDrawingIndividual.js"></script>
+    <script src="CreatureIndividual.js"></script>
+    <script src="SuperFormulaIndividual.js"></script>
+    <script src="SuperFormula3DIndividual.js"></script>
+    <script src="CharacterIndividual.js"></script>
+    <script src="EvolutionaryAlgorithm.js"></script>
+    <script src="Anemone.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
