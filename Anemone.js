@@ -123,23 +123,23 @@ class InteractiveEAFramework {
             this.shared3D.camera.lookAt(0, 0, 0);
             
             // Add comprehensive lighting to shared scene
-            // Brighter ambient light for overall illumination
-            const ambientLight = new THREE.AmbientLight(0x404040, 0.8); // Increased from 0.6 to 0.8
+            // Much brighter ambient light for overall illumination
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.2); // Increased from 0.8 to 1.2
             this.shared3D.scene.add(ambientLight);
             
-            // Main directional light from top-right
-            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+            // Main directional light from top-right (brighter)
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.0); // Increased from 0.7 to 1.0
             directionalLight1.position.set(20, 20, 20);
             directionalLight1.castShadow = true;
             this.shared3D.scene.add(directionalLight1);
             
-            // Secondary directional light from opposite side to reduce dark areas
-            const directionalLight2 = new THREE.DirectionalLight(0x8888ff, 0.4);
+            // Secondary directional light from opposite side (brighter)
+            const directionalLight2 = new THREE.DirectionalLight(0x8888ff, 0.6); // Increased from 0.4 to 0.6
             directionalLight2.position.set(-15, 10, -15);
             this.shared3D.scene.add(directionalLight2);
             
-            // Fill light from below to reduce harsh shadows
-            const fillLight = new THREE.DirectionalLight(0xffaa88, 0.3);
+            // Fill light from below (brighter)
+            const fillLight = new THREE.DirectionalLight(0xffaa88, 0.5); // Increased from 0.3 to 0.5
             fillLight.position.set(0, -10, 0);
             this.shared3D.scene.add(fillLight);
             
@@ -195,18 +195,18 @@ class InteractiveEAFramework {
         const tempScene = new THREE.Scene();
         tempScene.background = new THREE.Color(0x000000);
         
-        // Copy lighting from shared scene to temp scene
-        tempScene.add(new THREE.AmbientLight(0x404040, 0.8));
+        // Copy lighting from shared scene to temp scene (brighter)
+        tempScene.add(new THREE.AmbientLight(0x404040, 1.2));
         
-        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
         directionalLight1.position.set(20, 20, 20);
         tempScene.add(directionalLight1);
         
-        const directionalLight2 = new THREE.DirectionalLight(0x8888ff, 0.4);
+        const directionalLight2 = new THREE.DirectionalLight(0x8888ff, 0.6);
         directionalLight2.position.set(-15, 10, -15);
         tempScene.add(directionalLight2);
         
-        const fillLight = new THREE.DirectionalLight(0xffaa88, 0.3);
+        const fillLight = new THREE.DirectionalLight(0xffaa88, 0.5);
         fillLight.position.set(0, -10, 0);
         tempScene.add(fillLight);
         
@@ -555,6 +555,7 @@ class InteractiveEAFramework {
             'SuperFormulaIndividual': SuperFormulaIndividual,
             'SuperFormula3DIndividual': SuperFormula3DIndividual,
             'CharacterIndividual': CharacterIndividual,
+            'PenroseIndividual': PenroseIndividual,
             'MusicIndividual': MusicIndividual,
             'DAGIndividual': DAGIndividual
         };

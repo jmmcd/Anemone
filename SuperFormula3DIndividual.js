@@ -166,10 +166,10 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
                 // Combined radius using 3D superformula: r(θ,φ) = r1(θ) × r2(φ)
                 const r = r1 * r2;
                 
-                // Convert spherical to Cartesian coordinates
+                // Convert spherical to Cartesian coordinates with Y as vertical axis
                 const x = r * Math.sin(theta) * Math.cos(phi);
-                const y = r * Math.sin(theta) * Math.sin(phi);
-                const z = r * Math.cos(theta);
+                const y = r * Math.cos(theta);  // Y-axis is now the radial symmetry axis (up)
+                const z = r * Math.sin(theta) * Math.sin(phi);
                 
                 vertices.push(x, y, z);
                 
