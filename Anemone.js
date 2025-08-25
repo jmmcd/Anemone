@@ -556,6 +556,7 @@ class InteractiveEAFramework {
             'SuperFormula3DIndividual': SuperFormula3DIndividual,
             'CharacterIndividual': CharacterIndividual,
             'PenroseIndividual': PenroseIndividual,
+            'SheepIndividual': SheepIndividual,
             'MusicIndividual': MusicIndividual,
             'DAGIndividual': DAGIndividual
         };
