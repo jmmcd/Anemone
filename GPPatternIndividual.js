@@ -30,7 +30,7 @@ class TerminalNode extends TreeNode {
         if (this.value === 'x') return x;
         if (this.value === 'y') return y;
         if (this.value === 'r') return Math.sqrt(x * x + y * y);
-        if (this.value === 'theta') return Math.atan2(y, x);
+        if (this.value === 'theta') return Math.atan2(x, -y); // Changed to measure from top, clockwise
         return this.value;
     }
     
