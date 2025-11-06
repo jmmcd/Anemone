@@ -55,10 +55,10 @@ class Turtle {
 class CreatureIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.minGenomeLength = 3;
+        this.minGenomeLength = 12;
         this.maxGenomeLength = 200;
-        this.initialMinLength = 3;
-        this.initialMaxLength = 10;
+        this.initialMinLength = 12;
+        this.initialMaxLength = 22;
         this.genome = genome || this.generateRandomGenome();
         
         // Command mapping

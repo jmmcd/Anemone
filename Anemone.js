@@ -3,16 +3,17 @@ class InteractiveEAFramework {
         this.individualClass = individualClass;
         this.midiOutput = null;
         this.audioContext = null;
-        
+        this.currentIndividual = null; // Track the last clicked individual
+
         // Framework settings
         this.settings = {
             colorPalette: 'viridis'
         };
-        
+
         // Extension system
         this.extensions = {};
         this.uiExtensions = [];
-        
+
         // Shared 3D resources for WebGL context management
         this.shared3D = null;
         
@@ -328,27 +329,32 @@ class InteractiveEAFramework {
         this.populationSizeSpan = document.getElementById('population-size');
         this.avgFitnessSpan = document.getElementById('avg-fitness');
         this.historyList = document.getElementById('history-list');
+        this.genomeContent = document.getElementById('genome-content');
         
         this.evolveBtn.addEventListener('click', () => {
             console.time('Full Evolution Process');
-            
+
             console.time('Cleanup');
             this.cleanupOldIndividuals();
             console.timeEnd('Cleanup');
-            
+
             console.time('EA Evolve');
             this.ea.evolve();
             console.timeEnd('EA Evolve');
-            
+
+            // Clear current individual since population has changed
+            this.currentIndividual = null;
+
             console.time('Render');
             this.render();
             console.timeEnd('Render');
-            
+
             console.timeEnd('Full Evolution Process');
         });
         
         this.resetBtn.addEventListener('click', () => {
             this.cleanupOldIndividuals();
+            this.currentIndividual = null; // Clear current individual on reset
             this.ea.reset();
             this.render();
         });
@@ -374,12 +380,271 @@ class InteractiveEAFramework {
             console.warn('No extensions-container element found in HTML');
             return;
         }
-        
+
         this.uiExtensions.forEach(extension => {
             if (extension.mount) {
                 extension.mount(extensionContainer);
             }
         });
+    }
+
+    formatGenomeForDisplay(individual) {
+        if (!individual || !individual.genome) {
+            return '<em>No genome available</em>';
+        }
+
+        const genome = individual.genome;
+        let formatted = '';
+
+        // Add individual type and ID
+        formatted += `<span class="genome-label">Type:</span> ${individual.constructor.name}\n`;
+        formatted += `<span class="genome-label">ID:</span> ${individual.id}\n`;
+        formatted += `<span class="genome-label">Fitness:</span> ${individual.fitness}\n\n`;
+
+        // Get phenotype if available
+        const phenotype = individual.getPhenotype ? individual.getPhenotype() : null;
+        const phenotypeString = this.formatPhenotype(phenotype);
+
+        // Display phenotype first if it's informative
+        if (phenotypeString && this.isPhenotypeInformative(phenotype, genome, individual)) {
+            formatted += `<span class="genome-label">Phenotype:</span>\n${phenotypeString}\n`;
+
+            // Add formula visualization for SuperFormula individuals
+            if (individual.constructor.name === 'SuperFormulaIndividual' && individual.getParameters) {
+                const params = individual.getParameters();
+                formatted += `\n<span class="genome-label">Formula:</span>\n`;
+                formatted += `${this.formatSuperFormula(params, 'r(φ)')}\n`;
+            } else if (individual.constructor.name === 'SuperFormula3DIndividual' && individual.getParameters) {
+                const params = individual.getParameters();
+                formatted += `\n<span class="genome-label">Formulas:</span>\n`;
+                formatted += `${this.formatSuperFormula(params.r1, 'r₁(θ)')}\n`;
+                formatted += `${this.formatSuperFormula(params.r2, 'r₂(φ)')}\n`;
+                formatted += `\nCombined: r(θ,φ) = r₁(θ) × r₂(φ)\n`;
+            }
+
+            formatted += '\n';
+        }
+
+        // Handle tree-based genomes (GP)
+        if (genome.toString && typeof genome.toString === 'function' && genome.getAllNodes) {
+            formatted += `<span class="genome-label">Expression Tree:</span>\n${genome.toString()}\n\n`;
+            formatted += `<span class="genome-label">Tree Stats:</span>\n`;
+            formatted += `  Depth: ${genome.depth()}\n`;
+            formatted += `  Size: ${genome.size()} nodes\n`;
+            return formatted;
+        }
+
+        // Handle array genomes
+        if (Array.isArray(genome)) {
+            formatted += `<span class="genome-label">Genome (${genome.length} elements):</span>\n`;
+
+            // Format based on genome content type
+            if (genome.length > 0) {
+                const firstElement = genome[0];
+
+                // Binary genome (0s and 1s)
+                if (genome.every(g => g === 0 || g === 1)) {
+                    formatted += this.formatBinaryGenome(genome);
+                }
+                // Integer genome
+                else if (genome.every(g => Number.isInteger(g))) {
+                    formatted += this.formatIntegerGenome(genome);
+                }
+                // Float genome
+                else {
+                    formatted += this.formatFloatGenome(genome);
+                }
+            }
+
+            return formatted;
+        }
+
+        // Handle string genomes
+        if (typeof genome === 'string') {
+            formatted += `<span class="genome-label">Genome String:</span>\n${genome}\n`;
+            return formatted;
+        }
+
+        // Fallback: JSON stringify
+        formatted += `<span class="genome-label">Genome:</span>\n${JSON.stringify(genome, null, 2)}`;
+        return formatted;
+    }
+
+    isPhenotypeInformative(phenotype, genome, individual) {
+        // Don't show phenotype if it's null or undefined
+        if (!phenotype) return false;
+
+        // Check if phenotype is the same as genome (not informative)
+        if (phenotype === genome) return false;
+
+        // Check if phenotype is just the genome converted to string
+        if (Array.isArray(genome) && phenotype === genome.toString()) return false;
+
+        // For tree-based individuals, the tree toString is already shown as genome
+        if (genome.toString && typeof genome.toString === 'function' && genome.getAllNodes) {
+            return false;
+        }
+
+        // Known individual types with informative phenotypes
+        const informativeTypes = [
+            'CreatureIndividual',        // Turtle command string
+            'SuperFormulaIndividual',    // Formula parameters
+            'SuperFormula3DIndividual',  // 3D formula parameters
+            'GrammaticalEvolutionIndividual', // Derived expression
+            'DrawingCommandIndividual',  // Drawing commands array
+            'GERadiusDrawingIndividual', // Polar drawing commands
+            'MusicIndividual',           // Music representation
+            'CharacterIndividual'        // Character representation
+        ];
+
+        if (informativeTypes.includes(individual.constructor.name)) {
+            return true;
+        }
+
+        // For other individuals, show phenotype if it's a string and different from genome
+        if (typeof phenotype === 'string' && phenotype.length > 0 && phenotype.length < 2000) {
+            return true;
+        }
+
+        // Show object/array phenotypes that are different from genome
+        if ((typeof phenotype === 'object' || Array.isArray(phenotype)) && phenotype !== genome) {
+            return true;
+        }
+
+        return false;
+    }
+
+    formatPhenotype(phenotype) {
+        if (!phenotype) return null;
+
+        // Handle string phenotypes
+        if (typeof phenotype === 'string') {
+            // Limit very long phenotypes
+            if (phenotype.length > 1000) {
+                return phenotype.substring(0, 1000) + '...\n(truncated)';
+            }
+            return phenotype;
+        }
+
+        // Handle array phenotypes (like DrawingCommandIndividual)
+        if (Array.isArray(phenotype)) {
+            // If it's an array of objects (like drawing commands), format nicely
+            if (phenotype.length > 0 && typeof phenotype[0] === 'object') {
+                let formatted = `${phenotype.length} commands:\n`;
+
+                // Show first few commands
+                const showCount = Math.min(5, phenotype.length);
+                for (let i = 0; i < showCount; i++) {
+                    const cmd = phenotype[i];
+                    if (cmd.type) {
+                        formatted += `  ${i + 1}. ${cmd.type}`;
+                        // Add key parameters
+                        if (cmd.x !== undefined && cmd.y !== undefined) {
+                            formatted += ` at (${cmd.x.toFixed(2)}, ${cmd.y.toFixed(2)})`;
+                        }
+                        if (cmd.radius !== undefined) {
+                            formatted += ` r=${cmd.radius.toFixed(2)}`;
+                        }
+                        if (cmd.width !== undefined && cmd.height !== undefined) {
+                            formatted += ` ${cmd.width.toFixed(2)}×${cmd.height.toFixed(2)}`;
+                        }
+                        formatted += '\n';
+                    } else {
+                        formatted += `  ${i + 1}. ${JSON.stringify(cmd)}\n`;
+                    }
+                }
+
+                if (phenotype.length > showCount) {
+                    formatted += `  ... (${phenotype.length - showCount} more)`;
+                }
+
+                return formatted;
+            }
+
+            // For simple arrays, show them directly if short enough
+            if (phenotype.length < 50) {
+                return phenotype.join(', ');
+            } else {
+                return `[${phenotype.slice(0, 50).join(', ')}, ... (${phenotype.length} elements total)]`;
+            }
+        }
+
+        // Handle object phenotypes (convert to readable format)
+        if (typeof phenotype === 'object') {
+            try {
+                const jsonStr = JSON.stringify(phenotype, null, 2);
+                if (jsonStr.length > 1000) {
+                    return jsonStr.substring(0, 1000) + '\n...\n(truncated)';
+                }
+                return jsonStr;
+            } catch (e) {
+                return String(phenotype);
+            }
+        }
+
+        // Handle other types
+        return String(phenotype);
+    }
+
+    formatSuperFormula(params, label = 'r(φ)') {
+        // Format: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
+        return `${label} = [|cos(${params.m}·φ/4)/${params.a.toFixed(3)}|^${params.n2.toFixed(3)} + |sin(${params.m}·φ/4)/${params.b.toFixed(3)}|^${params.n3.toFixed(3)}]^(-1/${params.n1.toFixed(3)})`;
+    }
+
+    formatBinaryGenome(genome) {
+        // Display binary genome in groups of 8 for readability
+        let formatted = '';
+        for (let i = 0; i < genome.length; i += 8) {
+            const chunk = genome.slice(i, i + 8).join('');
+            formatted += chunk.padEnd(8, ' ') + '  ';
+            if ((i + 8) % 64 === 0) {
+                formatted += '\n';
+            }
+        }
+        return formatted;
+    }
+
+    formatIntegerGenome(genome) {
+        // Display integer genome with reasonable grouping
+        let formatted = '';
+        const itemsPerLine = 16;
+        for (let i = 0; i < genome.length; i++) {
+            formatted += genome[i].toString().padStart(4, ' ');
+            if ((i + 1) % itemsPerLine === 0 && i < genome.length - 1) {
+                formatted += '\n';
+            } else if (i < genome.length - 1) {
+                formatted += ' ';
+            }
+        }
+        return formatted;
+    }
+
+    formatFloatGenome(genome) {
+        // Display float genome with fixed precision
+        let formatted = '';
+        const itemsPerLine = 8;
+        for (let i = 0; i < genome.length; i++) {
+            const value = typeof genome[i] === 'number' ? genome[i].toFixed(4) : genome[i];
+            formatted += value.toString().padStart(10, ' ');
+            if ((i + 1) % itemsPerLine === 0 && i < genome.length - 1) {
+                formatted += '\n';
+            } else if (i < genome.length - 1) {
+                formatted += ' ';
+            }
+        }
+        return formatted;
+    }
+
+    displayCurrentGenome() {
+        if (!this.genomeContent) return;
+
+        if (!this.currentIndividual) {
+            this.genomeContent.innerHTML = '<em>Click an individual to view its genome</em>';
+            return;
+        }
+
+        const formatted = this.formatGenomeForDisplay(this.currentIndividual);
+        this.genomeContent.innerHTML = formatted;
     }
     
     cleanupOldIndividuals() {
@@ -411,6 +676,7 @@ class InteractiveEAFramework {
         this.renderGrid();
         this.renderInfo();
         this.renderHistory();
+        this.displayCurrentGenome(); // Update genome display
     }
     
     renderGrid() {
@@ -440,21 +706,26 @@ class InteractiveEAFramework {
                 e.preventDefault();
                 console.log('Individual clicked:', individual.id);
                 console.log('Phenotype:', individual.getPhenotype());
+
+                // Set as current individual and display genome
+                this.currentIndividual = individual;
+                this.displayCurrentGenome();
+
                 this.ea.incrementFitness(individual);
-                
+
                 // Update visual selection state
                 if (individual.selected) {
                     div.classList.add('selected');
                 } else {
                     div.classList.remove('selected');
                 }
-                
+
                 // Update fitness display
                 fitness.textContent = individual.fitness.toFixed(0);
-                
+
                 // Update info panel only
                 this.renderInfo();
-                
+
                 // If this is a music individual, play it
                 if (individual.playMIDI) {
                     console.log('Calling playMIDI on individual');
@@ -543,7 +814,7 @@ class InteractiveEAFramework {
     
     switchIndividualType() {
         const selectedType = this.individualTypeSelect.value;
-        
+
         // Map of individual type names to their constructors
         const individualTypes = {
             'GPPatternIndividual': GPPatternIndividual,
@@ -560,14 +831,15 @@ class InteractiveEAFramework {
             'MusicIndividual': MusicIndividual,
             'DAGIndividual': DAGIndividual
         };
-        
+
         const NewIndividualClass = individualTypes[selectedType];
-        
+
         if (NewIndividualClass && NewIndividualClass !== this.individualClass) {
             console.log(`Switching to individual type: ${selectedType}`);
-            
+
             // Clean up current individuals
             this.cleanupOldIndividuals();
+            this.currentIndividual = null; // Clear current individual when switching types
             
             // Cleanup shared 3D if switching away from 3D individuals
             if (this.shared3D) {
