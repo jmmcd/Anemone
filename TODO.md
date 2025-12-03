@@ -27,6 +27,10 @@
 
 * Another type of individual for use in brain-computer interface music-mapping
 
+* Another type of individual: Polyomino CFG
+
+* Another type of individual: graph grammar with 3d coordinates per node as in my old GPEM paper
+
 * In the pattern individual, theta tends to be bad, so better would be sin theta and cos theta? With factor of 2 pi.
 
 * Consider palettes in HSL or LCH or OKLCH (https://jakub.kr/components/oklch-colors)
