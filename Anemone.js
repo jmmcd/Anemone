@@ -16,6 +16,12 @@ class InteractiveEAFramework {
 
         // Shared 3D resources for WebGL context management
         this.shared3D = null;
+
+        // EEG data stream (for EEGSonificationIndividual)
+        this.eegStream = null;
+
+        // Continuous playback status update loop
+        this.playbackUpdateInterval = null;
         
         // Initialize MIDI first
         this.initializeMIDI().then(() => {
@@ -23,6 +29,7 @@ class InteractiveEAFramework {
             this.initializeShared3D();
             this.loadExtensions();
             this.setupUI();
+            this.distributeEEGStream();
             this.render();
         });
     }
@@ -72,14 +79,6 @@ class InteractiveEAFramework {
                             await preferredOutput.open();
                             console.log(`🔧 MIDI port opened: ${preferredOutput.state}, connection: ${preferredOutput.connection}`);
                         }
-                        
-                        // Test MIDI
-                        console.log('🧪 Framework testing MIDI...');
-                        preferredOutput.send([0x90, 60, 100]);
-                        setTimeout(() => {
-                            preferredOutput.send([0x80, 60, 0]);
-                            console.log('🧪 Framework MIDI test complete');
-                        }, 500);
                     }
                 }
             } catch (error) {
@@ -320,6 +319,37 @@ class InteractiveEAFramework {
         this.renderGrid();
     }
     
+    /**
+     * Set EEG data stream and distribute to all individuals
+     * @param {EEGDataStream} stream - EEG stream object or null
+     */
+    setEEGStream(stream) {
+        try {
+            this.eegStream = stream;
+            this.distributeEEGStream();
+        } catch (error) {
+            console.error('Error setting EEG stream:', error);
+            this.eegStream = null;
+        }
+    }
+
+    /**
+     * Distribute current EEG stream to all individuals that support it
+     */
+    distributeEEGStream() {
+        if (!this.ea || !this.ea.population) return;
+
+        try {
+            this.ea.population.forEach(individual => {
+                if (individual && typeof individual.setEEGDataStream === 'function' && this.eegStream) {
+                    individual.setEEGDataStream(this.eegStream);
+                }
+            });
+        } catch (error) {
+            console.error('Error distributing EEG stream:', error);
+        }
+    }
+
     setupUI() {
         this.grid = document.getElementById('grid');
         this.evolveBtn = document.getElementById('evolve-btn');
@@ -329,7 +359,11 @@ class InteractiveEAFramework {
         this.populationSizeSpan = document.getElementById('population-size');
         this.avgFitnessSpan = document.getElementById('avg-fitness');
         this.historyList = document.getElementById('history-list');
+        this.playbackContent = document.getElementById('playback-content');
         this.genomeContent = document.getElementById('genome-content');
+        this.eegCsvInput = document.getElementById('eeg-csv-input');
+        this.eegLoadBtn = document.getElementById('eeg-load-btn');
+        this.eegStatusSpan = document.getElementById('eeg-status');
         
         this.evolveBtn.addEventListener('click', () => {
             console.time('Full Evolution Process');
@@ -341,6 +375,9 @@ class InteractiveEAFramework {
             console.time('EA Evolve');
             this.ea.evolve();
             console.timeEnd('EA Evolve');
+
+            // Distribute EEG stream to new individuals
+            this.distributeEEGStream();
 
             // Clear current individual since population has changed
             this.currentIndividual = null;
@@ -369,9 +406,90 @@ class InteractiveEAFramework {
         this.switchIndividualTypeBtn.addEventListener('click', () => {
             this.switchIndividualType();
         });
-        
+
+        // EEG CSV loading
+        if (this.eegLoadBtn && this.eegCsvInput) {
+            this.eegLoadBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.eegCsvInput.click();
+            });
+
+            this.eegCsvInput.addEventListener('change', (e) => {
+                if (e.target && e.target.files && e.target.files.length > 0) {
+                    this.loadEEGCSV(e.target.files[0]);
+                }
+            });
+        }
+
         // Mount UI extensions
         this.mountUIExtensions();
+    }
+
+    /**
+     * Load EEG CSV file (Muse headband format)
+     */
+    async loadEEGCSV(file) {
+        if (!file) return;
+
+        try {
+            // Validate file
+            if (!(file instanceof File)) {
+                throw new Error('Invalid file object');
+            }
+
+            if (this.eegStatusSpan) {
+                this.eegStatusSpan.textContent = 'Loading...';
+                this.eegStatusSpan.style.color = '#FFA500';
+            }
+
+            const content = await file.text();
+
+            if (!content || typeof content !== 'string') {
+                throw new Error('File content is empty or invalid');
+            }
+
+            const stream = new EEGDataStream();
+
+            // Use Muse-optimized defaults
+            stream.loadFromCSV(content, {
+                skipHeaders: true,
+                timeGridMs: 200,        // 200ms grid for Muse data
+                downsampleRate: 5,      // Keep every 5th sample
+                bands: ['Alpha', 'Beta', 'Theta']  // Key neuroscience bands
+            });
+
+            if (!stream.data || stream.data.length === 0) {
+                throw new Error('No valid EEG samples parsed from file');
+            }
+
+            this.setEEGStream(stream);
+
+            if (this.eegStatusSpan) {
+                const duration = stream.getDuration();
+                const durationStr = (duration / 1000).toFixed(1);
+                this.eegStatusSpan.textContent = `✓ ${stream.data.length} samples, ${durationStr}s`;
+                this.eegStatusSpan.style.color = '#4CAF50';
+            }
+
+            // Reset file input to allow re-loading the same file
+            if (this.eegCsvInput) {
+                this.eegCsvInput.value = '';
+            }
+
+            console.log(`✓ EEG stream loaded: ${stream.data.length} samples, duration ${(stream.getDuration() / 1000).toFixed(1)}s`);
+        } catch (error) {
+            console.error('❌ Failed to load EEG CSV:', error);
+            if (this.eegStatusSpan) {
+                this.eegStatusSpan.textContent = `✗ ${error.message || 'Error loading'}`;
+                this.eegStatusSpan.style.color = '#F44336';
+            }
+            // Reset eegStream on error
+            this.setEEGStream(null);
+            // Reset file input
+            if (this.eegCsvInput) {
+                this.eegCsvInput.value = '';
+            }
+        }
     }
     
     mountUIExtensions() {
@@ -646,6 +764,86 @@ class InteractiveEAFramework {
         const formatted = this.formatGenomeForDisplay(this.currentIndividual);
         this.genomeContent.innerHTML = formatted;
     }
+
+    startPlaybackStatusUpdates() {
+        // Clear any existing interval
+        if (this.playbackUpdateInterval) {
+            clearInterval(this.playbackUpdateInterval);
+        }
+
+        // Update playback status frequently during playback
+        this.playbackUpdateInterval = setInterval(() => {
+            // Check if the current individual is still running
+            if (this.currentIndividual && this.currentIndividual.isRunning) {
+                this.displayPlaybackStatus();
+            } else {
+                // Stop updates if playback has stopped
+                this.stopPlaybackStatusUpdates();
+            }
+        }, 50); // Update every 50ms for smooth display
+    }
+
+    stopPlaybackStatusUpdates() {
+        if (this.playbackUpdateInterval) {
+            clearInterval(this.playbackUpdateInterval);
+            this.playbackUpdateInterval = null;
+        }
+    }
+
+    displayPlaybackStatus() {
+        if (!this.playbackContent) return;
+
+        if (!this.currentIndividual) {
+            this.playbackContent.innerHTML = '<em>Select an individual to see playback status</em>';
+            return;
+        }
+
+        // Get playback info from individual if it supports it
+        const statusHTML = this.getPlaybackStatusHTML(this.currentIndividual);
+        if (statusHTML) {
+            this.playbackContent.innerHTML = statusHTML;
+        } else {
+            this.playbackContent.innerHTML = '<em>No playback information available</em>';
+        }
+    }
+
+    getPlaybackStatusHTML(individual) {
+        // For DAGIndividual and EEGSonificationIndividual, show current notes
+        if (individual.outputNodes && Array.isArray(individual.outputNodes)) {
+            const now = Date.now();
+            const noteInfo = individual.outputNodes.map((node, idx) => {
+                if (node && typeof node.lastPitch !== 'undefined') {
+                    const noteName = this.midiNoteToName(node.lastPitch);
+                    // Check if note is currently playing (within noteDuration of lastNoteTime)
+                    const noteDuration = node.noteDuration || 200;
+                    const isActive = (now - node.lastNoteTime) < noteDuration;
+
+                    if (isActive) {
+                        const elapsed = now - node.lastNoteTime;
+                        const remaining = noteDuration - elapsed;
+                        return `Output ${idx + 1}: Playing <strong>${noteName}</strong> (${remaining.toFixed(0)}ms)`;
+                    } else {
+                        return `Output ${idx + 1}: Rest`;
+                    }
+                }
+                return null;
+            }).filter(x => x !== null);
+
+            if (noteInfo.length > 0) {
+                return noteInfo.join('<br>');
+            }
+        }
+
+        // For other individuals, don't show anything
+        return null;
+    }
+
+    midiNoteToName(noteNumber) {
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const octave = Math.floor(noteNumber / 12) - 1;
+        const name = noteNames[noteNumber % 12];
+        return `${name}${octave}`;
+    }
     
     cleanupOldIndividuals() {
         console.log('🧹 Cleaning up old individuals...');
@@ -676,6 +874,7 @@ class InteractiveEAFramework {
         this.renderGrid();
         this.renderInfo();
         this.renderHistory();
+        this.displayPlaybackStatus(); // Update playback status
         this.displayCurrentGenome(); // Update genome display
     }
     
@@ -709,6 +908,7 @@ class InteractiveEAFramework {
 
                 // Set as current individual and display genome
                 this.currentIndividual = individual;
+                this.displayPlaybackStatus();
                 this.displayCurrentGenome();
 
                 this.ea.incrementFitness(individual);
@@ -734,6 +934,8 @@ class InteractiveEAFramework {
                         individual.setMidiOutput(this.midiOutput);
                     }
                     individual.playMIDI();
+                    // Start real-time playback status updates
+                    this.startPlaybackStatusUpdates();
                 } else {
                     console.log('Individual does not have playMIDI method');
                 }
@@ -829,7 +1031,8 @@ class InteractiveEAFramework {
             'PenroseIndividual': PenroseIndividual,
             'SheepIndividual': SheepIndividual,
             'MusicIndividual': MusicIndividual,
-            'DAGIndividual': DAGIndividual
+            'DAGIndividual': DAGIndividual,
+            'EEGSonificationIndividual': EEGSonificationIndividual
         };
 
         const NewIndividualClass = individualTypes[selectedType];
@@ -852,19 +1055,22 @@ class InteractiveEAFramework {
             
             // Create new evolutionary algorithm with new individual type
             this.ea = new EvolutionaryAlgorithm(NewIndividualClass, this.ea.populationSize, this.midiOutput);
-            
+
+            // Distribute EEG stream to new individuals if they support it
+            this.distributeEEGStream();
+
             // Clear extensions and reload them for new individual type
             this.extensions = {};
             this.uiExtensions = [];
             this.loadExtensions();
-            
+
             // Remount UI extensions
             const extensionContainer = document.getElementById('extensions-container');
             if (extensionContainer) {
                 extensionContainer.innerHTML = '';
                 this.mountUIExtensions();
             }
-            
+
             // Render the new population
             this.render();
             

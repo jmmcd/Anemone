@@ -19,6 +19,70 @@ body {
     flex-wrap: wrap;
 }
 
+.individual-type-selector {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    border: 1px solid #333;
+}
+
+.individual-type-selector h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+}
+
+.individual-type-selector .selector-row {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.individual-type-selector .selector-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.individual-type-selector select {
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #2a2a2a;
+    color: #fff;
+    font-size: 12px;
+    min-width: 200px;
+}
+
+.individual-type-selector button {
+    background: #0066cc;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.individual-type-selector button:hover {
+    background: #0052a3;
+}
+
+.individual-type-selector .eeg-item button {
+    background: #9C27B0;
+}
+
+.individual-type-selector .eeg-item button:hover {
+    background: #b335d0;
+}
+
+#eeg-status {
+    font-size: 11px;
+    color: #999;
+    min-width: 120px;
+}
+
 .grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -213,6 +277,33 @@ h1, h2 {
 }
 
 /* Genome display styles */
+.playback-status {
+    margin: 20px 0;
+    padding: 15px;
+    background: #1a2a1a;
+    border-radius: 8px;
+    border-left: 4px solid #4CAF50;
+    min-height: 60px;
+}
+
+.playback-status h2 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: #4CAF50;
+}
+
+.playback-content {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #7fd87f;
+    line-height: 1.6;
+}
+
+.playback-content em {
+    color: #555;
+    font-style: italic;
+}
+
 .genome-display {
     margin: 20px 0;
     padding: 15px;

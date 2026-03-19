@@ -101,6 +101,8 @@ class OutputNode extends DAGNode {
         this.lastPitch = 60; // Default to middle C
         this.midiOutput = null;
         this.diatonicScale = [60, 62, 64, 65, 67, 69, 71, 72]; // C major scale
+        this.lastNoteTime = 0; // Track when note was last triggered
+        this.noteDuration = 200; // Note duration in ms
     }
     
     evaluate() {
@@ -138,22 +140,33 @@ class OutputNode extends DAGNode {
         if (this.midiOutput) {
             // Calculate velocity based on energy level
             const velocity = Math.min(127, Math.max(40, Math.floor(this.energyAccumulator * 50)));
-            
+
             // console.log(`🎵 DAG Output ${this.id}: Triggering note ${this.lastPitch} (velocity ${velocity})`);
-            
+
+            // Record when note was triggered
+            this.lastNoteTime = Date.now();
+
             // Send MIDI note
             try {
                 this.midiOutput.send([0x90, this.lastPitch, velocity]);
+
+                // Note off with error handling in callback
+                const midiOutput = this.midiOutput; // Capture reference
+                const pitch = this.lastPitch;
                 setTimeout(() => {
-                    this.midiOutput.send([0x80, this.lastPitch, 0]);
-                }, 200); // Short note duration
+                    try {
+                        if (midiOutput && typeof midiOutput.send === 'function') {
+                            midiOutput.send([0x80, pitch, 0]);
+                        }
+                    } catch (error) {
+                        // Silently ignore errors in note-off
+                    }
+                }, this.noteDuration);
             } catch (error) {
                 console.error('MIDI send error:', error);
             }
-        } else {
-            // console.log(`No MIDI output`);
         }
-        
+
         // Release energy after triggering
         this.energyAccumulator = 0;
     }
@@ -378,27 +391,27 @@ class DAGIndividual extends Individual {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;
-        
+
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, width, height);
-        
+
         // Store canvas reference for mouse tracking
         this.canvas = canvas;
-        
+
         const phenotype = this.getPhenotype();
-        
-        // Layout nodes in columns
-        const inputX = 50;
+
+        // Layout nodes in columns with more compact spacing
+        const inputX = 15;
         const procX = width / 2;
-        const outputX = width - 50;
-        
+        const outputX = width - 15;
+
         // Draw input nodes
         phenotype.inputNodes.forEach((node, index) => {
-            const y = 50 + index * 60;
+            const y = 15 + index * 25;
             let label = node.id;
             let color = '#4CAF50';
-            
+
             // Highlight mouse-controlled inputs
             if (index === 0) {
                 label = 'x1 (mouse-X)';
@@ -407,57 +420,58 @@ class DAGIndividual extends Individual {
                 label = 'x2 (mouse-Y)';
                 color = '#FF9800';
             }
-            
+
             this.drawNode(ctx, inputX, y, label, color, node.value.toFixed(2));
         });
-        
+
         // Draw processing nodes
         phenotype.processingNodes.forEach((node, index) => {
-            const y = 50 + index * 40;
+            const y = 15 + index * 22;
             this.drawNode(ctx, procX, y, node.id, '#2196F3', node.operation);
         });
-        
+
         // Draw output nodes
         phenotype.outputNodes.forEach((node, index) => {
-            const y = 50 + index * 80;
+            const y = 15 + index * 40;
             const color = node.energyAccumulator > node.threshold * 0.8 ? '#FF5722' : '#FF9800';
-            this.drawNode(ctx, outputX, y, node.id, color, 
+            this.drawNode(ctx, outputX, y, node.id, color,
                 `E:${node.energyAccumulator.toFixed(1)}\nT:${node.threshold.toFixed(1)}`);
         });
-        
+
         // Draw connections (simplified)
         ctx.strokeStyle = '#666';
-        ctx.lineWidth = 1;
-        
+        ctx.lineWidth = 0.5;
+
         // Draw some sample connections
         phenotype.processingNodes.forEach((node, index) => {
-            const y = 50 + index * 40;
+            const y = 15 + index * 22;
             // Draw lines from inputs to this processing node
             ctx.beginPath();
-            ctx.moveTo(inputX + 20, 50 + 30); // Approximate connection
-            ctx.lineTo(procX - 20, y);
+            ctx.moveTo(inputX + 8, 15 + 12); // Approximate connection
+            ctx.lineTo(procX - 8, y);
             ctx.stroke();
         });
     }
-    
+
     drawNode(ctx, x, y, label, color, detail) {
-        // Draw node circle
+        // Draw smaller node circles (radius 8 instead of 15)
+        const nodeRadius = 8;
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(x, y, 15, 0, 2 * Math.PI);
+        ctx.arc(x, y, nodeRadius, 0, 2 * Math.PI);
         ctx.fill();
-        
-        // Draw label
+
+        // Draw label (smaller font)
         ctx.fillStyle = '#fff';
-        ctx.font = '12px monospace';
+        ctx.font = '9px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(label, x, y - 20);
-        
-        // Draw detail
-        ctx.font = '10px monospace';
+        ctx.fillText(label, x, y - 12);
+
+        // Draw detail (much smaller)
+        ctx.font = '7px monospace';
         const lines = detail.split('\n');
         lines.forEach((line, index) => {
-            ctx.fillText(line, x, y + 25 + index * 12);
+            ctx.fillText(line, x, y + 14 + index * 8);
         });
     }
     

@@ -26,6 +26,13 @@
         
         <div class="grid" id="grid"></div>
 
+        <div class="playback-status">
+            <h2>Playback Status</h2>
+            <div id="playback-content" class="playback-content">
+                <em>Select an individual to see playback status</em>
+            </div>
+        </div>
+
         <div class="genome-display">
             <h2>Current Individual Genome</h2>
             <div id="genome-content" class="genome-content">
@@ -40,21 +47,31 @@
         
         <div class="individual-type-selector">
             <h3>Individual Type</h3>
-            <select id="individual-type-select">
-                <option value="GPPatternIndividual">GP Pattern (Tree-based)</option>
-                <option value="GrammaticalEvolutionIndividual">Grammatical Evolution</option>
-                <option value="GERadiusDrawingIndividual">GE Radius Drawing (Polar)</option>
-                <option value="DrawingCommandIndividual">Drawing Commands</option>
-                <option value="BinaryPatternIndividual">Binary Pattern</option>
-                <option value="CreatureIndividual" selected>Creature (Turtle Graphics)</option>
-                <option value="SuperFormulaIndividual">Super Formula (Gielis)</option>
-                <option value="SuperFormula3DIndividual" selected>Super Formula 3D</option>
-                <option value="CharacterIndividual">Character (Kids Games)</option>
-                <option value="SheepIndividual">Sheep (Neural Network)</option>
-                <option value="MusicIndividual">Music</option>
-                <option value="DAGIndividual">DAG</option>
-            </select>
-            <button id="switch-individual-type-btn">Switch Individual Type</button>
+            <div class="selector-row">
+                <div class="selector-item">
+                    <select id="individual-type-select">
+                        <option value="GPPatternIndividual">GP Pattern (Tree-based)</option>
+                        <option value="GrammaticalEvolutionIndividual">Grammatical Evolution</option>
+                        <option value="GERadiusDrawingIndividual">GE Radius Drawing (Polar)</option>
+                        <option value="DrawingCommandIndividual">Drawing Commands</option>
+                        <option value="BinaryPatternIndividual">Binary Pattern</option>
+                        <option value="CreatureIndividual" selected>Creature (Turtle Graphics)</option>
+                        <option value="SuperFormulaIndividual">Super Formula (Gielis)</option>
+                        <option value="SuperFormula3DIndividual" selected>Super Formula 3D</option>
+                        <option value="CharacterIndividual">Character (Kids Games)</option>
+                        <option value="SheepIndividual">Sheep (Neural Network)</option>
+                        <option value="MusicIndividual">Music</option>
+                        <option value="DAGIndividual">DAG</option>
+                        <option value="EEGSonificationIndividual">EEG Sonification</option>
+                    </select>
+                    <button id="switch-individual-type-btn">Switch</button>
+                </div>
+                <div class="selector-item eeg-item">
+                    <button id="eeg-load-btn">Load EEG CSV</button>
+                    <input type="file" id="eeg-csv-input" accept=".csv" style="display: none;">
+                    <span id="eeg-status"><em>No data</em></span>
+                </div>
+            </div>
         </div>
         
         <footer style="text-align: center; margin-top: 2rem; padding: 1rem; border-top: 1px solid #ddd;">
@@ -75,6 +92,8 @@
     <script src="DrawingCommandIndividual.js"></script>
     <script src="MusicIndividual.js"></script>
     <script src="DAGIndividual.js"></script>
+    <script src="EEGPreprocessing.js"></script>
+    <script src="EEGSonificationIndividual.js"></script>
     <script src="GPPatternIndividual.js"></script>
     <script src="Grammar.js"></script>
     <script src="GrammaticalEvolutionIndividual.js"></script>
