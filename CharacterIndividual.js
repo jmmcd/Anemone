@@ -8,9 +8,9 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
     generateRandomGenome() {
         return [
             // Head (4 params)
-            Math.random() * 0.3 + 0.6,      // 0: head size (0.6-0.9)
+            Math.random() * 0.2 + 0.6,      // 0: head size (0.6-0.8)
             Math.random() * 0.2 + 0.4,      // 1: head x position (0.4-0.6)
-            Math.random() * 0.15 + 0.15,    // 2: head y position (0.15-0.3)
+            Math.random() * 0.1 + 0.1,      // 2: head y position (0.1-0.2, will be calculated relative to body)
             Math.random(),                   // 3: head shape (0=circle, 1=oval)
             
             // Head color (3 params)
@@ -32,10 +32,10 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
             Math.random() * 0.1 + 0.35,     // 15: mouth y (0.35-0.45)
             
             // Body (4 params)
-            Math.random() * 0.2 + 0.3,      // 16: body width (0.3-0.5)
-            Math.random() * 0.3 + 0.3,      // 17: body height (0.3-0.6)
-            Math.random() * 0.1 + 0.45,     // 18: body x (0.45-0.55)
-            Math.random() * 0.1 + 0.5,      // 19: body y (0.5-0.6)
+            Math.random() * 0.15 + 0.15,    // 16: body width (0.15-0.3)
+            Math.random() * 0.15 + 0.2,     // 17: body height (0.2-0.35)
+            Math.random() * 0.2 + 0.4,      // 18: body x (0.4-0.6)
+            Math.random() * 0.1 + 0.45,     // 19: body y (0.45-0.55)
             
             // Body color (3 params)
             Math.random(),                   // 20: body color R
@@ -43,18 +43,18 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
             Math.random(),                   // 22: body color B
             
             // Arms (5 params)
-            Math.random() * 0.15 + 0.25,    // 23: left arm start x (0.25-0.4)
-            Math.random() * 0.1 + 0.55,     // 24: left arm start y (0.55-0.65)
-            Math.random() * 0.15 + 0.6,     // 25: right arm start x (0.6-0.75)
-            Math.random() * 0.1 + 0.55,     // 26: right arm start y (0.55-0.65)
-            Math.random() * 0.03 + 0.01,    // 27: arm thickness (0.01-0.04)
+            Math.random() * 0.1 + 0.2,      // 23: left arm start x (0.2-0.3, relative to body)
+            Math.random() * 0.05 + 0.45,    // 24: left arm start y (0.45-0.5, at body top)
+            Math.random() * 0.1 + 0.5,      // 25: right arm start x (0.5-0.6, relative to body)
+            Math.random() * 0.05 + 0.45,    // 26: right arm start y (0.45-0.5, at body top)
+            Math.random() * 0.02 + 0.008,   // 27: arm thickness (0.008-0.028)
             
             // Legs (5 params)
-            Math.random() * 0.1 + 0.4,      // 28: left leg start x (0.4-0.5)
-            Math.random() * 0.1 + 0.75,     // 29: left leg start y (0.75-0.85)
-            Math.random() * 0.1 + 0.5,      // 30: right leg start x (0.5-0.6)
-            Math.random() * 0.1 + 0.75,     // 31: right leg start y (0.75-0.85)
-            Math.random() * 0.03 + 0.01,    // 32: leg thickness (0.01-0.04)
+            Math.random() * 0.06 + 0.37,    // 28: left leg start x (0.37-0.43, at body bottom left)
+            Math.random() * 0.05 + 0.58,    // 29: left leg start y (0.58-0.63, at body bottom)
+            Math.random() * 0.06 + 0.57,    // 30: right leg start x (0.57-0.63, at body bottom right)
+            Math.random() * 0.05 + 0.58,    // 31: right leg start y (0.58-0.63, at body bottom)
+            Math.random() * 0.02 + 0.008,   // 32: leg thickness (0.008-0.028)
             
             // Limb color (3 params)
             Math.random(),                   // 33: limb color R
@@ -149,142 +149,169 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;
-        
+
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
-        
-        // Set canvas to 32x32 for pixel art style
-        const scale = Math.min(width, height) / 32;
-        ctx.save();
-        ctx.scale(scale, scale);
-        ctx.imageSmoothingEnabled = false; // Crisp pixel art
-        
+
         const params = this.getParameters();
-        
+
         // Helper function to draw filled circle
         const drawCircle = (x, y, radius, color) => {
             ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
             ctx.beginPath();
-            ctx.arc(x * 32, y * 32, radius * 32, 0, Math.PI * 2);
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
             ctx.fill();
         };
-        
+
         // Helper function to draw line with thickness
         const drawThickLine = (x1, y1, x2, y2, thickness, color) => {
             ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
-            ctx.lineWidth = thickness * 32;
+            ctx.lineWidth = thickness;
             ctx.lineCap = 'round';
             ctx.beginPath();
-            ctx.moveTo(x1 * 32, y1 * 32);
-            ctx.lineTo(x2 * 32, y2 * 32);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
             ctx.stroke();
         };
-        
+
+        // Calculate positions in pixel space (canvas coordinates)
+        const scale = Math.min(width, height);
+
+        // Body in pixel space
+        const bodyX = params.bodyX * scale;
+        const bodyY = params.bodyY * scale;
+        const bodyW = params.bodyWidth * scale;
+        const bodyH = params.bodyHeight * scale;
+
+        // Head positioned on top of body
+        const headRadius = (params.headSize * 0.12) * scale;
+        const headX = params.headX * scale;
+        const headY = (params.bodyY - params.bodyHeight * 0.5 - headRadius * 0.15) * scale;
+
         // Draw body first (behind everything)
-        const bodyX = params.bodyX * 32;
-        const bodyY = params.bodyY * 32;
-        const bodyW = params.bodyWidth * 32;
-        const bodyH = params.bodyHeight * 32;
-        
         ctx.fillStyle = `rgb(${params.bodyColor.r}, ${params.bodyColor.g}, ${params.bodyColor.b})`;
         ctx.fillRect(bodyX - bodyW/2, bodyY - bodyH/2, bodyW, bodyH);
-        
+
         // Draw arms
-        const armEndY = params.leftArmY + 0.15; // Arms extend down
-        drawThickLine(params.leftArmX, params.leftArmY, params.leftArmX - 0.1, armEndY, params.armThickness, params.limbColor);
-        drawThickLine(params.rightArmX, params.rightArmY, params.rightArmX + 0.1, armEndY, params.armThickness, params.limbColor);
-        
+        const leftArmStartX = params.leftArmX * scale;
+        const leftArmStartY = params.leftArmY * scale;
+        const rightArmStartX = params.rightArmX * scale;
+        const rightArmStartY = params.rightArmY * scale;
+        const armThickness = params.armThickness * scale;
+        const armLength = 0.15 * scale;
+
+        drawThickLine(leftArmStartX, leftArmStartY, leftArmStartX - armLength, leftArmStartY + armLength * 0.6, armThickness, params.limbColor);
+        drawThickLine(rightArmStartX, rightArmStartY, rightArmStartX + armLength, rightArmStartY + armLength * 0.6, armThickness, params.limbColor);
+
         // Draw legs
-        const legEndY = params.leftLegY + 0.2; // Legs extend down
-        drawThickLine(params.leftLegX, params.leftLegY, params.leftLegX, legEndY, params.legThickness, params.limbColor);
-        drawThickLine(params.rightLegX, params.rightLegY, params.rightLegX, legEndY, params.legThickness, params.limbColor);
-        
-        // Draw feet (small circles at end of legs)
-        drawCircle(params.leftLegX, legEndY + 0.02, 0.02, params.limbColor);
-        drawCircle(params.rightLegX, legEndY + 0.02, 0.02, params.limbColor);
-        
-        // Draw hands (small circles at end of arms)
-        drawCircle(params.leftArmX - 0.1, armEndY, 0.015, params.limbColor);
-        drawCircle(params.rightArmX + 0.1, armEndY, 0.015, params.limbColor);
-        
+        const leftLegStartX = params.leftLegX * scale;
+        const leftLegStartY = params.leftLegY * scale;
+        const rightLegStartX = params.rightLegX * scale;
+        const rightLegStartY = params.rightLegY * scale;
+        const legThickness = params.legThickness * scale;
+        const legLength = 0.25 * scale;
+
+        drawThickLine(leftLegStartX, leftLegStartY, leftLegStartX, leftLegStartY + legLength, legThickness, params.limbColor);
+        drawThickLine(rightLegStartX, rightLegStartY, rightLegStartX, rightLegStartY + legLength, legThickness, params.limbColor);
+
+        // Draw feet
+        drawCircle(leftLegStartX, leftLegStartY + legLength + 0.01 * scale, 0.015 * scale, params.limbColor);
+        drawCircle(rightLegStartX, rightLegStartY + legLength + 0.01 * scale, 0.015 * scale, params.limbColor);
+
+        // Draw hands
+        const leftHandX = leftArmStartX - armLength;
+        const leftHandY = leftArmStartY + armLength * 0.6;
+        const rightHandX = rightArmStartX + armLength;
+        const rightHandY = rightArmStartY + armLength * 0.6;
+        drawCircle(leftHandX, leftHandY, 0.012 * scale, params.limbColor);
+        drawCircle(rightHandX, rightHandY, 0.012 * scale, params.limbColor);
+
         // Draw head
-        const headRadius = params.headSize * 0.15;
         if (params.headShape > 0.5) {
             // Oval head
             ctx.fillStyle = `rgb(${params.headColor.r}, ${params.headColor.g}, ${params.headColor.b})`;
             ctx.save();
-            ctx.translate(params.headX * 32, params.headY * 32);
+            ctx.translate(headX, headY);
             ctx.scale(1, 1.2);
             ctx.beginPath();
-            ctx.arc(0, 0, headRadius * 32, 0, Math.PI * 2);
+            ctx.arc(0, 0, headRadius, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
         } else {
             // Round head
-            drawCircle(params.headX, params.headY, headRadius, params.headColor);
+            drawCircle(headX, headY, headRadius, params.headColor);
         }
-        
+
         // Draw ears if enabled
         if (params.hasEars) {
-            const earSize = headRadius * 0.3;
-            drawCircle(params.headX - headRadius * 0.8, params.headY, earSize, params.headColor);
-            drawCircle(params.headX + headRadius * 0.8, params.headY, earSize, params.headColor);
+            const earSize = headRadius * 0.4;
+            drawCircle(headX - headRadius * 0.9, headY, earSize, params.headColor);
+            drawCircle(headX + headRadius * 0.9, headY, earSize, params.headColor);
         }
-        
+
         // Draw hair if enabled
         if (params.hasHair && !params.hasHat) {
             ctx.fillStyle = `hsl(${params.hairColor}, 60%, 40%)`;
             ctx.beginPath();
-            ctx.arc(params.headX * 32, (params.headY - headRadius * 0.8) * 32, headRadius * 32 * 1.1, 0, Math.PI);
+            ctx.arc(headX, headY - headRadius * 0.7, headRadius * 1.15, 0, Math.PI);
             ctx.fill();
         }
-        
+
         // Draw hat if enabled
         if (params.hasHat) {
             ctx.fillStyle = `hsl(${params.hairColor}, 70%, 30%)`;
-            const hatY = (params.headY - headRadius * 0.9) * 32;
-            ctx.fillRect((params.headX - headRadius * 1.2) * 32, hatY - 8, headRadius * 2.4 * 32, 12);
-            ctx.fillRect((params.headX - headRadius * 0.8) * 32, hatY - 15, headRadius * 1.6 * 32, 8);
+            const hatTopY = headY - headRadius * 1.1;
+            const hatWidth = headRadius * 2.4;
+            const hatBrimHeight = headRadius * 0.35;
+            const hatTopHeight = headRadius * 0.45;
+            // Brim
+            ctx.fillRect(headX - hatWidth/2, hatTopY, hatWidth, hatBrimHeight);
+            // Crown
+            ctx.fillRect(headX - hatWidth * 0.35, hatTopY - hatTopHeight, hatWidth * 0.7, hatTopHeight);
         }
         
         // Draw eyes
-        const eyeColor = { r: 0, g: 0, b: 0 }; // Black eyes
-        const eyeSize = params.eyeSize;
-        
+        const eyeColor = { r: 0, g: 0, b: 0 };
+        const eyeSize = params.eyeSize * scale * 0.5;
+        const leftEyeX = params.leftEyeX * scale;
+        const leftEyeY = params.leftEyeY * scale;
+        const rightEyeX = params.rightEyeX * scale;
+        const rightEyeY = params.rightEyeY * scale;
+
         switch (params.eyeType) {
             case 0: // Dots
-                drawCircle(params.leftEyeX, params.leftEyeY, eyeSize, eyeColor);
-                drawCircle(params.rightEyeX, params.rightEyeY, eyeSize, eyeColor);
+                drawCircle(leftEyeX, leftEyeY, eyeSize, eyeColor);
+                drawCircle(rightEyeX, rightEyeY, eyeSize, eyeColor);
                 break;
-            case 1: // Larger circles
-                drawCircle(params.leftEyeX, params.leftEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
-                drawCircle(params.leftEyeX, params.leftEyeY, eyeSize * 0.8, eyeColor);
-                drawCircle(params.rightEyeX, params.rightEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
-                drawCircle(params.rightEyeX, params.rightEyeY, eyeSize * 0.8, eyeColor);
+            case 1: // Larger circles with pupils
+                drawCircle(leftEyeX, leftEyeY, eyeSize * 1.8, { r: 255, g: 255, b: 255 });
+                drawCircle(leftEyeX, leftEyeY, eyeSize * 0.7, eyeColor);
+                drawCircle(rightEyeX, rightEyeY, eyeSize * 1.8, { r: 255, g: 255, b: 255 });
+                drawCircle(rightEyeX, rightEyeY, eyeSize * 0.7, eyeColor);
                 break;
             case 2: // Winking
-                drawCircle(params.leftEyeX, params.leftEyeY, eyeSize, eyeColor);
+                drawCircle(leftEyeX, leftEyeY, eyeSize, eyeColor);
                 ctx.strokeStyle = 'black';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = eyeSize * 0.4;
                 ctx.beginPath();
-                ctx.arc(params.rightEyeX * 32, params.rightEyeY * 32, eyeSize * 32, 0, Math.PI);
+                ctx.arc(rightEyeX, rightEyeY, eyeSize * 1.2, 0, Math.PI);
                 ctx.stroke();
                 break;
         }
-        
+
         // Draw mouth
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = Math.max(1, scale * 0.015);
         ctx.lineCap = 'round';
-        
-        const mouthX = params.mouthX * 32;
-        const mouthY = params.mouthY * 32;
-        const mouthSize = 6;
-        
+
+        const mouthX = params.mouthX * scale;
+        const mouthY = params.mouthY * scale;
+        const mouthSize = scale * 0.04;
+
         switch (params.mouthType) {
             case 0: // Smile
                 ctx.beginPath();
-                ctx.arc(mouthX, mouthY - 2, mouthSize, 0, Math.PI);
+                ctx.arc(mouthX, mouthY, mouthSize, 0, Math.PI);
                 ctx.stroke();
                 break;
             case 1: // Straight line
@@ -293,46 +320,58 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
                 ctx.lineTo(mouthX + mouthSize, mouthY);
                 ctx.stroke();
                 break;
-            case 2: // Open mouth (circle)
+            case 2: // Open mouth
                 ctx.fillStyle = 'black';
                 ctx.beginPath();
-                ctx.arc(mouthX, mouthY, 3, 0, Math.PI * 2);
+                ctx.arc(mouthX, mouthY, mouthSize * 0.5, 0, Math.PI * 2);
                 ctx.fill();
                 break;
             case 3: // Frown
                 ctx.beginPath();
-                ctx.arc(mouthX, mouthY + 2, mouthSize, Math.PI, 0);
+                ctx.arc(mouthX, mouthY, mouthSize, Math.PI, 0);
                 ctx.stroke();
                 break;
         }
-        
+
         // Draw teeth if enabled and mouth is open
         if (params.hasTeeth && params.mouthType === 2) {
             ctx.fillStyle = 'white';
+            const toothWidth = mouthSize * 0.3;
+            const toothHeight = mouthSize * 0.5;
             for (let i = 0; i < 3; i++) {
-                ctx.fillRect(mouthX - 2 + i * 1.5, mouthY - 1, 1, 2);
+                ctx.fillRect(mouthX - mouthSize*0.7 + i * toothWidth * 1.5, mouthY - toothHeight*0.3, toothWidth, toothHeight);
             }
         }
-        
+
         // Draw sword if enabled
         if (params.hasSword) {
-            ctx.strokeStyle = `hsl(${params.accessoryColor}, 60%, 40%)`;
-            ctx.lineWidth = 3;
+            const swordBaseX = rightHandX;
+            const swordBaseY = rightHandY;
+            const swordLength = 0.2 * scale;
+            const swordAngle = -Math.PI / 4; // 45 degree angle upward
+
+            const swordTipX = swordBaseX + Math.cos(swordAngle) * swordLength;
+            const swordTipY = swordBaseY + Math.sin(swordAngle) * swordLength;
+
+            // Sword blade
+            ctx.strokeStyle = `hsl(${params.accessoryColor}, 80%, 50%)`;
+            ctx.lineWidth = Math.max(2, scale * 0.02);
             ctx.beginPath();
-            ctx.moveTo((params.rightArmX + 0.1) * 32, (armEndY - 0.05) * 32);
-            ctx.lineTo((params.rightArmX + 0.15) * 32, (armEndY + 0.1) * 32);
+            ctx.moveTo(swordBaseX, swordBaseY);
+            ctx.lineTo(swordTipX, swordTipY);
             ctx.stroke();
-            
-            // Sword handle
-            ctx.strokeStyle = `hsl(${params.accessoryColor + 60}, 60%, 30%)`;
-            ctx.lineWidth = 4;
+
+            // Sword handle/guard
+            ctx.strokeStyle = `hsl(${(params.accessoryColor + 60) % 360}, 70%, 30%)`;
+            ctx.lineWidth = Math.max(2.5, scale * 0.025);
+            const guardStartX = swordBaseX + Math.cos(swordAngle) * swordLength * 0.2;
+            const guardStartY = swordBaseY + Math.sin(swordAngle) * swordLength * 0.2;
+            const guardLength = scale * 0.04;
             ctx.beginPath();
-            ctx.moveTo((params.rightArmX + 0.15) * 32, (armEndY + 0.1) * 32);
-            ctx.lineTo((params.rightArmX + 0.15) * 32, (armEndY + 0.13) * 32);
+            ctx.moveTo(guardStartX - guardLength, guardStartY);
+            ctx.lineTo(guardStartX + guardLength, guardStartY);
             ctx.stroke();
         }
-        
-        ctx.restore();
     }
     
     mutate(rate = 0.1) {
