@@ -183,46 +183,55 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
         const bodyW = params.bodyWidth * scale;
         const bodyH = params.bodyHeight * scale;
 
-        // Head positioned on top of body
+        // Head positioned on top of body, centered on body
         const headRadius = (params.headSize * 0.12) * scale;
-        const headX = params.headX * scale;
-        const headY = (params.bodyY - params.bodyHeight * 0.5 - headRadius * 0.15) * scale;
+        const headX = bodyX + (params.headX - 0.5) * bodyW * 0.5; // slight horizontal offset
+        const headY = bodyY - bodyH * 0.5 - headRadius * 0.85;
+
+        // Arm geometry: anchored to body shoulders, use genome values for pose variation
+        const armThickness = params.armThickness * scale;
+        const armLength = 0.14 * scale;
+        // leftArmX genome (0.2-0.3) → arm spread angle offset
+        const leftArmSpread = (params.leftArmX - 0.25) * 4; // -0.2..+0.2
+        const rightArmSpread = (params.rightArmX - 0.55) * 4;
+        const leftShoulderX = bodyX - bodyW * 0.5;
+        const leftShoulderY = bodyY - bodyH * 0.3;
+        const rightShoulderX = bodyX + bodyW * 0.5;
+        const rightShoulderY = bodyY - bodyH * 0.3;
+        const leftHandX = leftShoulderX - armLength * (0.7 + leftArmSpread);
+        const leftHandY = leftShoulderY + armLength * 0.8;
+        const rightHandX = rightShoulderX + armLength * (0.7 + rightArmSpread);
+        const rightHandY = rightShoulderY + armLength * 0.8;
+
+        // Leg geometry: anchored to body bottom, use genome values for spread variation
+        const legThickness = params.legThickness * scale;
+        const legLength = 0.22 * scale;
+        const legSpread = params.bodyWidth * 0.3 * scale; // legs spread based on body width
+        const leftLegTopX = bodyX - legSpread * 0.5;
+        const leftLegTopY = bodyY + bodyH * 0.5;
+        const rightLegTopX = bodyX + legSpread * 0.5;
+        const rightLegTopY = bodyY + bodyH * 0.5;
+        // leftLegX genome can add slight splay
+        const leftLegSplay = (params.leftLegX - 0.4) * 0.3 * scale;
+        const rightLegSplay = (params.rightLegX - 0.6) * 0.3 * scale;
 
         // Draw body first (behind everything)
         ctx.fillStyle = `rgb(${params.bodyColor.r}, ${params.bodyColor.g}, ${params.bodyColor.b})`;
         ctx.fillRect(bodyX - bodyW/2, bodyY - bodyH/2, bodyW, bodyH);
 
         // Draw arms
-        const leftArmStartX = params.leftArmX * scale;
-        const leftArmStartY = params.leftArmY * scale;
-        const rightArmStartX = params.rightArmX * scale;
-        const rightArmStartY = params.rightArmY * scale;
-        const armThickness = params.armThickness * scale;
-        const armLength = 0.15 * scale;
-
-        drawThickLine(leftArmStartX, leftArmStartY, leftArmStartX - armLength, leftArmStartY + armLength * 0.6, armThickness, params.limbColor);
-        drawThickLine(rightArmStartX, rightArmStartY, rightArmStartX + armLength, rightArmStartY + armLength * 0.6, armThickness, params.limbColor);
+        drawThickLine(leftShoulderX, leftShoulderY, leftHandX, leftHandY, armThickness, params.limbColor);
+        drawThickLine(rightShoulderX, rightShoulderY, rightHandX, rightHandY, armThickness, params.limbColor);
 
         // Draw legs
-        const leftLegStartX = params.leftLegX * scale;
-        const leftLegStartY = params.leftLegY * scale;
-        const rightLegStartX = params.rightLegX * scale;
-        const rightLegStartY = params.rightLegY * scale;
-        const legThickness = params.legThickness * scale;
-        const legLength = 0.25 * scale;
-
-        drawThickLine(leftLegStartX, leftLegStartY, leftLegStartX, leftLegStartY + legLength, legThickness, params.limbColor);
-        drawThickLine(rightLegStartX, rightLegStartY, rightLegStartX, rightLegStartY + legLength, legThickness, params.limbColor);
+        drawThickLine(leftLegTopX, leftLegTopY, leftLegTopX + leftLegSplay, leftLegTopY + legLength, legThickness, params.limbColor);
+        drawThickLine(rightLegTopX, rightLegTopY, rightLegTopX + rightLegSplay, rightLegTopY + legLength, legThickness, params.limbColor);
 
         // Draw feet
-        drawCircle(leftLegStartX, leftLegStartY + legLength + 0.01 * scale, 0.015 * scale, params.limbColor);
-        drawCircle(rightLegStartX, rightLegStartY + legLength + 0.01 * scale, 0.015 * scale, params.limbColor);
+        drawCircle(leftLegTopX + leftLegSplay, leftLegTopY + legLength + 0.008 * scale, 0.015 * scale, params.limbColor);
+        drawCircle(rightLegTopX + rightLegSplay, rightLegTopY + legLength + 0.008 * scale, 0.015 * scale, params.limbColor);
 
         // Draw hands
-        const leftHandX = leftArmStartX - armLength;
-        const leftHandY = leftArmStartY + armLength * 0.6;
-        const rightHandX = rightArmStartX + armLength;
-        const rightHandY = rightArmStartY + armLength * 0.6;
         drawCircle(leftHandX, leftHandY, 0.012 * scale, params.limbColor);
         drawCircle(rightHandX, rightHandY, 0.012 * scale, params.limbColor);
 
@@ -270,13 +279,15 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
             ctx.fillRect(headX - hatWidth * 0.35, hatTopY - hatTopHeight, hatWidth * 0.7, hatTopHeight);
         }
         
-        // Draw eyes
+        // Draw eyes — positioned relative to head center
         const eyeColor = { r: 0, g: 0, b: 0 };
         const eyeSize = params.eyeSize * scale * 0.5;
-        const leftEyeX = params.leftEyeX * scale;
-        const leftEyeY = params.leftEyeY * scale;
-        const rightEyeX = params.rightEyeX * scale;
-        const rightEyeY = params.rightEyeY * scale;
+        const eyeOffsetX = headRadius * 0.45;
+        const eyeOffsetY = headRadius * 0.1;
+        const leftEyeX = headX - eyeOffsetX;
+        const leftEyeY = headY - eyeOffsetY;
+        const rightEyeX = headX + eyeOffsetX;
+        const rightEyeY = headY - eyeOffsetY;
 
         switch (params.eyeType) {
             case 0: // Dots
@@ -304,9 +315,10 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
         ctx.lineWidth = Math.max(1, scale * 0.015);
         ctx.lineCap = 'round';
 
-        const mouthX = params.mouthX * scale;
-        const mouthY = params.mouthY * scale;
-        const mouthSize = scale * 0.04;
+        // Mouth — relative to head
+        const mouthX = headX;
+        const mouthY = headY + headRadius * 0.5;
+        const mouthSize = headRadius * 0.45;
 
         switch (params.mouthType) {
             case 0: // Smile
