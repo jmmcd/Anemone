@@ -1,14 +1,33 @@
-class GERadiusDrawingIndividual extends GrammaticalEvolutionIndividual {
+/**
+ * GERadiusDrawingIndividual
+ *
+ * REFACTORED: Uses GrammaticalRepresentation + Canvas2DModality (inherited from parent).
+ * Generates polar coordinate curves (radius as function of angle).
+ */
+
+class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null, genomeLength = 100) {
-        super(genome, genomeLength);
-        
-        // Override grammar for polar coordinates (t = angle, output = radius)
-        this.grammar = Grammar.createPolarDrawingGrammar();
-        this.startSymbol = '<polar>';
+        super('SKIP_GENOME_GENERATION');
+
+        // Configure grammatical representation for polar coordinates
+        this.grammaticalRep = new GrammaticalRepresentation({
+            length: genomeLength,
+            grammar: Grammar.createPolarDrawingGrammar(),
+            startSymbol: '<polar>',
+            maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
+        });
+
+        this.genome = genome || this.grammaticalRep.generateRandom();
+        this.genomeLength = genomeLength;
+
+        // Polar coordinate parameters
         this.tMin = 0;
         this.tMax = 10 * Math.PI; // 0 to 10π
         this.numPoints = 500; // Number of points to sample
-        this.maxDerivations = 100; // Reduced from 1000 to prevent runaway derivations
+    }
+
+    getPhenotype() {
+        return this.grammaticalRep.derivePhenotype(this.genome);
     }
     
     // Override visualization for polar coordinate drawing
@@ -241,43 +260,20 @@ class GERadiusDrawingIndividual extends GrammaticalEvolutionIndividual {
         }
     }
     
-    // Override mutate to invalidate compiled expression
     mutate(rate = 0.1) {
-        super.mutate(rate);
+        this.grammaticalRep.mutate(this.genome, rate);
         this._compiledExpression = null; // Reset compiled expression for t
+        this.invalidateImageCache();
     }
     
-    // Override crossover to ensure correct type
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < 0.5) {
-                child1Genome.push(this.genome[i]);
-                child2Genome.push(other.genome[i] || Math.floor(Math.random() * 256));
-            } else {
-                child1Genome.push(other.genome[i] || Math.floor(Math.random() * 256));
-                child2Genome.push(this.genome[i]);
-            }
-        }
-        
-        const child1 = new GERadiusDrawingIndividual(child1Genome, this.genomeLength);
-        const child2 = new GERadiusDrawingIndividual(child2Genome, this.genomeLength);
-        
-        return [child1, child2];
+        const [child1Genome, child2Genome] = this.grammaticalRep.crossover(this.genome, other.genome);
+        return [new GERadiusDrawingIndividual(child1Genome, this.genomeLength), new GERadiusDrawingIndividual(child2Genome, this.genomeLength)];
     }
     
-    // Override clone to ensure correct type
     clone() {
-        const clone = new GERadiusDrawingIndividual([...this.genome], this.genomeLength);
+        const clone = new GERadiusDrawingIndividual(this.grammaticalRep.clone(this.genome), this.genomeLength);
         clone.fitness = this.fitness;
-        clone.grammar = this.grammar;
-        clone.startSymbol = this.startSymbol;
-        clone.maxDerivations = this.maxDerivations;
-        clone.tMin = this.tMin;
-        clone.tMax = this.tMax;
-        clone.numPoints = this.numPoints;
         return clone;
     }
     

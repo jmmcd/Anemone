@@ -1,36 +1,43 @@
 class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.genomeLength = 14; // 14 parameters: 7 for r1(θ), 7 for r2(φ) - each with separate m_num, m_den
+
+        // 14 params: 7 for r1(θ) + 7 for r2(φ), same structure as SuperFormulaIndividual × 2
+        this.floatRep = new FloatRepresentation({
+            length: 14,
+            bounds: [
+                {min: 1, max: 20},   // m1_numerator (int)
+                {min: 1, max: 12},   // m1_denominator (int)
+                {min: 0.1, max: 10}, // n1_1
+                {min: 0.1, max: 10}, // n2_1
+                {min: 0.1, max: 10}, // n3_1
+                {min: 0.1, max: 3},  // a1
+                {min: 0.1, max: 3},  // b1
+                {min: 1, max: 20},   // m2_numerator (int)
+                {min: 1, max: 12},   // m2_denominator (int)
+                {min: 0.1, max: 10}, // n1_2
+                {min: 0.1, max: 10}, // n2_2
+                {min: 0.1, max: 10}, // n3_2
+                {min: 0.1, max: 3},  // a2
+                {min: 0.1, max: 3}   // b2
+            ]
+        });
+
+        this.threeDModality = new ThreeDModality();
+
         this.genome = genome || this.generateRandomGenome();
-        this.thetaPoints = 50; // Number of points along polar angle
-        this.phiPoints = 100; // Number of points along azimuthal angle
-        // Three.js resources now managed by shared scene - no individual context needed
+        this.thetaPoints = 50;
+        this.phiPoints = 100;
     }
-    
+
     generateRandomGenome() {
-        // Generate 14 parameters: 7 for r1(θ), 7 for r2(φ)
-        const params = [];
-        
-        // r1 parameters (for polar angle θ)
-        params.push(Math.floor(Math.random() * 20) + 1);    // m1_numerator: 1-20 (integer)
-        params.push(this.generateDenominator());             // m1_denominator: reasonable values (integer)
-        params.push(Math.random() * 10 + 0.1);              // n1_1: 0.1-10.1
-        params.push(Math.random() * 10 + 0.1);              // n2_1: 0.1-10.1
-        params.push(Math.random() * 10 + 0.1);              // n3_1: 0.1-10.1
-        params.push(Math.random() * 3 + 0.1);               // a1: 0.1-3.1
-        params.push(Math.random() * 3 + 0.1);               // b1: 0.1-3.1
-        
-        // r2 parameters (for azimuthal angle φ)
-        params.push(Math.floor(Math.random() * 20) + 1);    // m2_numerator: 1-20 (integer)
-        params.push(this.generateDenominator());             // m2_denominator: reasonable values (integer)
-        params.push(Math.random() * 10 + 0.1);              // n1_2: 0.1-10.1
-        params.push(Math.random() * 10 + 0.1);              // n2_2: 0.1-10.1
-        params.push(Math.random() * 10 + 0.1);              // n3_2: 0.1-10.1
-        params.push(Math.random() * 3 + 0.1);               // a2: 0.1-3.1
-        params.push(Math.random() * 3 + 0.1);               // b2: 0.1-3.1
-        
-        return params;
+        const genome = this.floatRep.generateRandom();
+        // Integer params: m numerators and denominators
+        genome[0] = Math.round(genome[0]);
+        genome[1] = this.generateDenominator();
+        genome[7] = Math.round(genome[7]);
+        genome[8] = this.generateDenominator();
+        return genome;
     }
     
     generateDenominator() {
@@ -208,33 +215,8 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
     }
     
     visualizeWithShared3D(canvas, framework) {
-        // Generate mesh data
         const { vertices, indices, colors } = this.generate3DPoints();
-        
-        // Create Three.js geometry
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        geometry.setIndex(indices);
-        geometry.computeVertexNormals();
-        
-        // Create material
-        const material = new THREE.MeshPhongMaterial({
-            vertexColors: true,
-            side: THREE.DoubleSide,
-            shininess: 100
-        });
-        
-        // Create mesh
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        
-        // Add mesh to shared scene
-        framework.addMeshToScene(this.id, mesh);
-        
-        // Render mesh to canvas
-        framework.renderMeshToCanvas(canvas, this.id, mesh);
+        this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
     }
     
     render2DProjection(canvas) {
@@ -347,14 +329,14 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
                         break;
                     case 2: case 3: case 4: // r1: n1, n2, n3
                     case 9: case 10: case 11: // r2: n1, n2, n3
-                        const noise = this.gaussianRandom(0, 1);
+                        const noise = this.floatRep.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(20, 
                             this.genome[i] + noise * 0.5
                         ));
                         break;
                     case 5: case 6: // r1: a, b
                     case 12: case 13: // r2: a, b
-                        const scaleNoise = this.gaussianRandom(0, 1);
+                        const scaleNoise = this.floatRep.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(5, 
                             this.genome[i] + scaleNoise * 0.2
                         ));
@@ -365,75 +347,16 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
         this.invalidateImageCache();
     }
     
-    gaussianRandom(mean = 0, stdDev = 1) {
-        if (this._spare !== undefined) {
-            const spare = this._spare;
-            delete this._spare;
-            return spare * stdDev + mean;
-        }
-        
-        const u = Math.random();
-        const v = Math.random();
-        const mag = stdDev * Math.sqrt(-2.0 * Math.log(u));
-        const z0 = mag * Math.cos(2.0 * Math.PI * v) + mean;
-        const z1 = mag * Math.sin(2.0 * Math.PI * v) + mean;
-        
-        this._spare = z1;
-        return z0;
-    }
-    
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            
-            switch (i) {
-                case 0: case 7: // m_numerator (integer crossover)
-                    if (Math.random() < 0.5) {
-                        child1Genome.push(Math.max(1, Math.min(50, Math.round(this.genome[i]))));
-                        child2Genome.push(Math.max(1, Math.min(50, Math.round(other.genome[i]))));
-                    } else {
-                        child1Genome.push(Math.max(1, Math.min(50, Math.round(other.genome[i]))));
-                        child2Genome.push(Math.max(1, Math.min(50, Math.round(this.genome[i]))));
-                    }
-                    break;
-                case 1: case 8: // m_denominator (integer crossover)
-                    if (Math.random() < 0.5) {
-                        child1Genome.push(Math.round(this.genome[i]));
-                        child2Genome.push(Math.round(other.genome[i]));
-                    } else {
-                        child1Genome.push(Math.round(other.genome[i]));
-                        child2Genome.push(Math.round(this.genome[i]));
-                    }
-                    break;
-                case 2: case 3: case 4: // r1: n1, n2, n3
-                case 9: case 10: case 11: // r2: n1, n2, n3
-                    const alpha_n = Math.random();
-                    const value1_n = alpha_n * this.genome[i] + (1 - alpha_n) * other.genome[i];
-                    const value2_n = (1 - alpha_n) * this.genome[i] + alpha_n * other.genome[i];
-                    child1Genome.push(Math.max(0.01, Math.min(20, value1_n)));
-                    child2Genome.push(Math.max(0.01, Math.min(20, value2_n)));
-                    break;
-                case 5: case 6: // r1: a, b
-                case 12: case 13: // r2: a, b
-                    const alpha_scale = Math.random();
-                    const value1_scale = alpha_scale * this.genome[i] + (1 - alpha_scale) * other.genome[i];
-                    const value2_scale = (1 - alpha_scale) * this.genome[i] + alpha_scale * other.genome[i];
-                    child1Genome.push(Math.max(0.01, Math.min(5, value1_scale)));
-                    child2Genome.push(Math.max(0.01, Math.min(5, value2_scale)));
-                    break;
-            }
-        }
-        
-        const child1 = new SuperFormula3DIndividual(child1Genome);
-        const child2 = new SuperFormula3DIndividual(child2Genome);
-        
-        return [child1, child2];
+        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
+        // Round integer params: m numerators (0,7) and denominators (1,8)
+        for (const idx of [0, 7]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
+        for (const idx of [1, 8]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
+        return [new SuperFormula3DIndividual(g1), new SuperFormula3DIndividual(g2)];
     }
-    
+
     clone() {
-        const clone = new SuperFormula3DIndividual([...this.genome]);
+        const clone = new SuperFormula3DIndividual(this.floatRep.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

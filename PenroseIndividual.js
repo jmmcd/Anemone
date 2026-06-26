@@ -1,26 +1,41 @@
 class PenroseIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.genomeLength = 8;
+
+        this.floatRep = new FloatRepresentation({
+            length: 8,
+            bounds: [
+                {min: 0, max: 2 * Math.PI}, // 0: rotation
+                {min: -1, max: 1},           // 1: x offset
+                {min: -1, max: 1},           // 2: y offset
+                {min: 0.8, max: 1.3},        // 3: scale
+                {min: 40, max: 69},          // 4: num tiles
+                {min: 0, max: 1},            // 5: kite hue
+                {min: 0, max: 1},            // 6: dart hue
+                {min: 0.6, max: 1.1}         // 7: brightness
+            ],
+            mutationStrength: 0.15
+        });
+
         this.genome = genome || this.generateRandomGenome();
-        
+
         // Golden ratio
         this.phi = (1 + Math.sqrt(5)) / 2;
-        
+
         // Standard tile size
         this.tileSize = 1.0;
     }
-    
+
     generateRandomGenome() {
         return [
-            Math.random() * 2 * Math.PI,    // 0: rotation
-            Math.random() * 2 - 1,          // 1: x offset
-            Math.random() * 2 - 1,          // 2: y offset
-            Math.random() * 0.5 + 0.8,      // 3: scale
+            Math.random() * 2 * Math.PI,         // 0: rotation
+            Math.random() * 2 - 1,               // 1: x offset
+            Math.random() * 2 - 1,               // 2: y offset
+            Math.random() * 0.5 + 0.8,           // 3: scale
             Math.floor(Math.random() * 30) + 40, // 4: num tiles (40-69)
-            Math.random(),                  // 5: kite hue
-            Math.random(),                  // 6: dart hue
-            Math.random() * 0.5 + 0.6       // 7: brightness
+            Math.random(),                       // 5: kite hue
+            Math.random(),                       // 6: dart hue
+            Math.random() * 0.5 + 0.6            // 7: brightness
         ];
     }
     
@@ -296,24 +311,12 @@ class PenroseIndividual extends withPaletteExtensions(Individual) {
     }
     
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < 0.5) {
-                child1Genome.push(this.genome[i]);
-                child2Genome.push(other.genome[i]);
-            } else {
-                child1Genome.push(other.genome[i]);
-                child2Genome.push(this.genome[i]);
-            }
-        }
-        
-        return [new PenroseIndividual(child1Genome), new PenroseIndividual(child2Genome)];
+        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
+        return [new PenroseIndividual(g1), new PenroseIndividual(g2)];
     }
-    
+
     clone() {
-        const clone = new PenroseIndividual([...this.genome]);
+        const clone = new PenroseIndividual(this.floatRep.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

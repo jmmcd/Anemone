@@ -1,59 +1,34 @@
+/**
+ * MusicIndividual
+ *
+ * REFACTORED: Uses BinaryRepresentation for genome operations.
+ * Generates MIDI note sequences encoded as binary genome (8 bits per note).
+ */
+
 class MusicIndividual extends Individual {
     constructor(genome = null) {
-        super(genome);
+        super('SKIP_GENOME_GENERATION');
+
+        // Configure binary representation
+        this.binaryRep = new BinaryRepresentation({
+            length: 64 // 8 notes × 8 bits per note
+        });
+
+        this.genome = genome || this.binaryRep.generateRandom();
+
+        this.midiModality = new MIDIModality();
+
         this.diatonicScale = [60, 62, 64, 65, 67, 69, 71, 72]; // C major scale (C4 to C5)
         this.timeStep = 250; // milliseconds per beat
         this.isPlaying = false;
         this.playbackTimer = null;
-        this.midiOutput = null;
-        this.audioContext = null;
-        
+
         console.log(`🎵 Creating MusicIndividual ${this.id}`);
-        
-        // Initialize Web Audio only
-        this.initWebAudio();
     }
-    
+
     setMidiOutput(midiOutput) {
-        this.midiOutput = midiOutput;
+        this.midiModality.setMidiOutput(midiOutput);
         console.log(`🔧 MusicIndividual ${this.id} MIDI set to: ${midiOutput?.name || 'none'}`);
-    }
-    
-    generateRandomGenome() {
-        return Array.from({length: 64}, () => Math.random() < 0.5 ? 1 : 0);
-    }
-    
-    
-    initWebAudio() {
-        try {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (err) {
-            console.log('Web Audio API not supported');
-        }
-    }
-    
-    midiToFrequency(midi) {
-        return 440 * Math.pow(2, (midi - 69) / 12);
-    }
-    
-    playWebAudioNote(pitch, velocity, duration) {
-        if (!this.audioContext) return;
-        
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        
-        oscillator.frequency.setValueAtTime(this.midiToFrequency(pitch), this.audioContext.currentTime);
-        oscillator.type = 'sine';
-        
-        const volume = velocity / 127 * 0.3;
-        gainNode.gain.setValueAtTime(volume, this.audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration / 1000);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        oscillator.start(this.audioContext.currentTime);
-        oscillator.stop(this.audioContext.currentTime + duration / 1000);
     }
     
     getPhenotype() {
@@ -165,21 +140,11 @@ class MusicIndividual extends Individual {
     }
     
     playMIDI() {
-        console.log('playMIDI called on individual:', this.id);
-        console.log('Audio context state:', this.audioContext?.state);
-        console.log('MIDI output:', this.midiOutput?.name || 'none');
-        
         if (this.isPlaying) {
-            console.log('Stopping currently playing individual');
             this.stopMIDI();
             return;
         }
-        
-        // Resume audio context if suspended
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
-        }
-        
+
         this.isPlaying = true;
         const notes = this.getPhenotype();
         let currentNoteIndex = 0;
@@ -212,42 +177,26 @@ class MusicIndividual extends Individual {
             clearTimeout(this.playbackTimer);
             this.playbackTimer = null;
         }
-        
-        // Send all notes off
-        if (this.midiOutput) {
-            this.midiOutput.send([0xB0, 0x7B, 0x00]); // All notes off
-        }
+        this.midiModality.allNotesOff();
     }
-    
+
     sendMIDINote(pitch, velocity, duration) {
-        if (this.midiOutput) {
-            // Send MIDI with detailed byte logging
-            const noteOnBytes = [0x90, pitch, velocity];
-            const noteOffBytes = [0x80, pitch, 0];
-            
-            // console.log(`🎵 MIDI Note ON  to "${this.midiOutput.name}": [${noteOnBytes.map(b => '0x' + b.toString(16).toUpperCase()).join(', ')}] = Channel 1, Note ${pitch} (${this.midiToNoteName(pitch)}), Velocity ${velocity}`);
-            
-            try {
-                this.midiOutput.send(noteOnBytes);
-                
-                setTimeout(() => {
-                    // console.log(`🎵 MIDI Note OFF to "${this.midiOutput.name}": [${noteOffBytes.map(b => '0x' + b.toString(16).toUpperCase()).join(', ')}] = Channel 1, Note ${pitch}, Velocity 0`);
-                    this.midiOutput.send(noteOffBytes);
-                }, duration);
-            } catch (error) {
-                console.error(`❌ MIDI send error:`, error);
-            }
-        } else {
-            // Disable Web Audio fallback for debugging
-            console.log(`❌ NO MIDI OUTPUT AVAILABLE - Note ${pitch} velocity ${velocity} NOT PLAYED`);
-            // this.playWebAudioNote(pitch, velocity, duration);
-        }
+        this.midiModality.sendNote(pitch, velocity, duration);
     }
-    
+
+    mutate(rate = 0.1) {
+        this.binaryRep.mutate(this.genome, rate);
+    }
+
+    crossover(other) {
+        const [child1Genome, child2Genome] = this.binaryRep.crossover(this.genome, other.genome);
+        return [new MusicIndividual(child1Genome), new MusicIndividual(child2Genome)];
+    }
+
     clone() {
-        const clone = new this.constructor();
-        clone.genome = [...this.genome];
+        const clone = new MusicIndividual(this.binaryRep.clone(this.genome));
         clone.fitness = this.fitness;
+        clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
         return clone;
     }
 }

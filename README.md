@@ -24,6 +24,16 @@ It might ask you to enable MIDI. That's for music. You can say no if you just wa
 
 Yes, but there is no training corpus. 
 
+# Architecture (for developers)
+
+The system separates three concerns:
+
+- **Representations** (`representations/`) — genome structure and genetic operators (`TreeRepresentation`, `FloatRepresentation`, `DAGRepresentation`, etc.)
+- **Modalities** (`modalities/`) — output mechanisms (`Canvas2DModality`, `MIDIModality` with Web Audio fallback, `ThreeDModality`)
+- **Individuals** (root `*.js`) — application code that composes a representation and a modality
+
+Each individual holds a representation object and delegates `mutate`, `crossover`, and `clone` to it. Rendering is either done inline or via a modality helper. See `CLAUDE.md` for the full architecture reference.
+
 # Creation
 
 This was designed and partly implemented by me (jmmcd) but mostly implemented by Claude Code. 

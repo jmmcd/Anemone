@@ -1,20 +1,21 @@
 class SheepIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.genomeLength = 8; // 8 input genes for neural network
-        this.genome = genome || this.generateRandomGenome();
-        
+
+        this.floatRep = new FloatRepresentation({
+            length: 8,
+            bounds: Array(8).fill({min: 0, max: 1}),
+            mutationStrength: 0.12
+        });
+
+        this.genome = genome || this.floatRep.generateRandom();
+
         // Neural network architecture: 8 inputs -> 6 hidden -> 8 outputs
         this.hiddenSize = 6;
         this.outputSize = 8;
-        
+
         // Initialize random neural network weights
         this.initializeNeuralNetwork();
-    }
-    
-    generateRandomGenome() {
-        // 8 input genes (will be fed to neural network)
-        return Array(8).fill(0).map(() => Math.random());
     }
     
     initializeNeuralNetwork() {
@@ -587,45 +588,19 @@ class SheepIndividual extends withPaletteExtensions(Individual) {
     }
     
     mutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                // Gaussian mutation
-                const noise = (Math.random() - 0.5) * 0.3;
-                this.genome[i] = Math.max(0, Math.min(1, this.genome[i] + noise));
-            }
-        }
+        this.floatRep.mutate(this.genome, rate);
         this.invalidateImageCache();
     }
-    
+
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < 0.5) {
-                child1Genome.push(this.genome[i]);
-                child2Genome.push(other.genome[i]);
-            } else {
-                child1Genome.push(other.genome[i]);
-                child2Genome.push(this.genome[i]);
-            }
-        }
-        
-        const child1 = new SheepIndividual(child1Genome);
-        const child2 = new SheepIndividual(child2Genome);
-        
-        // Children inherit parents' neural networks (could also mutate these)
-        child1.initializeNeuralNetwork();
-        child2.initializeNeuralNetwork();
-        
-        return [child1, child2];
+        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
+        // Each new SheepIndividual constructor calls initializeNeuralNetwork()
+        return [new SheepIndividual(g1), new SheepIndividual(g2)];
     }
-    
+
     clone() {
-        const clone = new SheepIndividual([...this.genome]);
+        const clone = new SheepIndividual(this.floatRep.clone(this.genome));
         clone.fitness = this.fitness;
-        // Clone gets same neural network architecture but new random weights
-        clone.initializeNeuralNetwork();
         return clone;
     }
     

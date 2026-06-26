@@ -1,10 +1,16 @@
 class CharacterIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.genomeLength = 43; // Fixed-length genome for character features
+
+        this.floatRep = new FloatRepresentation({
+            length: 43,
+            bounds: Array(43).fill({min: 0, max: 1}),
+            mutationStrength: 0.1
+        });
+
         this.genome = genome || this.generateRandomGenome();
     }
-    
+
     generateRandomGenome() {
         return [
             // Head (4 params)
@@ -336,39 +342,17 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
     }
     
     mutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                // Add Gaussian noise for smooth mutations
-                const noise = (Math.random() - 0.5) * 0.2;
-                this.genome[i] = Math.max(0, Math.min(1, this.genome[i] + noise));
-            }
-        }
+        this.floatRep.mutate(this.genome, rate);
         this.invalidateImageCache();
     }
-    
+
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        // Use uniform crossover
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < 0.5) {
-                child1Genome.push(this.genome[i]);
-                child2Genome.push(other.genome[i]);
-            } else {
-                child1Genome.push(other.genome[i]);
-                child2Genome.push(this.genome[i]);
-            }
-        }
-        
-        const child1 = new CharacterIndividual(child1Genome);
-        const child2 = new CharacterIndividual(child2Genome);
-        
-        return [child1, child2];
+        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
+        return [new CharacterIndividual(g1), new CharacterIndividual(g2)];
     }
-    
+
     clone() {
-        const clone = new CharacterIndividual([...this.genome]);
+        const clone = new CharacterIndividual(this.floatRep.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

@@ -1,27 +1,43 @@
+/**
+ * SuperFormulaIndividual
+ *
+ * REFACTORED: Uses FloatRepresentation for basic genome operations.
+ * Implements custom mutation/crossover due to mixed integer/float genome.
+ * Renders Gielis superformula: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
+ */
+
 class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.genomeLength = 7; // 7 parameters: m_numerator, m_denominator, n1, n2, n3, a, b
+
+        // Configure float representation with bounds for each gene
+        this.floatRep = new FloatRepresentation({
+            length: 7,
+            bounds: [
+                {min: 1, max: 20},    // m_numerator (treated as int)
+                {min: 1, max: 12},    // m_denominator (treated as int)
+                {min: 0.1, max: 10},  // n1
+                {min: 0.1, max: 10},  // n2
+                {min: 0.1, max: 10},  // n3
+                {min: 0.1, max: 3},   // a
+                {min: 0.1, max: 3}    // b
+            ]
+        });
+
         this.genome = genome || this.generateRandomGenome();
-        this.numPoints = 1000; // Number of points to sample around the curve
-        this.phiRange = 2 * Math.PI; // Default φ range (0 to 2π)
+        this.numPoints = 1000;
+        this.phiRange = 2 * Math.PI;
     }
     
     generateRandomGenome() {
-        // Generate 7 parameters: m_numerator (int), m_denominator (int), n1, n2, n3, a, b (reals)
-        return [
-            Math.floor(Math.random() * 20) + 1,    // m_numerator: 1-20 (integer)
-            this.generateDenominator(),             // m_denominator: reasonable values (integer)
-            Math.random() * 10 + 0.1,              // n1: 0.1-10.1 (overall shape)
-            Math.random() * 10 + 0.1,              // n2: 0.1-10.1 (cos component)
-            Math.random() * 10 + 0.1,              // n3: 0.1-10.1 (sin component)
-            Math.random() * 3 + 0.1,               // a: 0.1-3.1 (x-axis scaling)
-            Math.random() * 3 + 0.1                // b: 0.1-3.1 (y-axis scaling)
-        ];
+        const genome = this.floatRep.generateRandom();
+        // Round first two parameters to integers
+        genome[0] = Math.round(genome[0]);  // m_numerator
+        genome[1] = this.generateDenominator();  // m_denominator (from preset list)
+        return genome;
     }
-    
+
     generateDenominator() {
-        // Generate reasonable denominators for m = numerator/denominator
         const denominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
         return denominators[Math.floor(Math.random() * denominators.length)];
     }
@@ -366,16 +382,16 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                     case 3: // n2 (cos component)
                     case 4: // n3 (sin component)
                         // Apply Gaussian noise mutation for real-valued parameters
-                        const noise = this.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(20, 
+                        const noise = this.floatRep.gaussianRandom(0, 1);
+                        this.genome[i] = Math.max(0.01, Math.min(20,
                             this.genome[i] + noise * 0.5
                         ));
                         break;
                     case 5: // a (x-axis scaling) - smaller mutations
                     case 6: // b (y-axis scaling)
                         // Apply Gaussian noise mutation for scaling parameters
-                        const scaleNoise = this.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(5, 
+                        const scaleNoise = this.floatRep.gaussianRandom(0, 1);
+                        this.genome[i] = Math.max(0.01, Math.min(5,
                             this.genome[i] + scaleNoise * 0.2
                         ));
                         break;
@@ -384,83 +400,22 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
         }
         this.invalidateImageCache();
     }
-    
-    // Generate Gaussian random number using Box-Muller transformation
-    gaussianRandom(mean = 0, stdDev = 1) {
-        // Use static variables to generate pairs of random numbers
-        if (this._spare !== undefined) {
-            const spare = this._spare;
-            delete this._spare;
-            return spare * stdDev + mean;
-        }
-        
-        const u = Math.random();
-        const v = Math.random();
-        const mag = stdDev * Math.sqrt(-2.0 * Math.log(u));
-        const z0 = mag * Math.cos(2.0 * Math.PI * v) + mean;
-        const z1 = mag * Math.sin(2.0 * Math.PI * v) + mean;
-        
-        this._spare = z1;
-        return z0;
-    }
-    
+
     crossover(other) {
-        const child1Genome = [];
-        const child2Genome = [];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            // Apply bounds checking based on parameter type
-            switch (i) {
-                case 0: // m_numerator (integer crossover)
-                    // For integers, use uniform crossover (pick one parent)
-                    if (Math.random() < 0.5) {
-                        child1Genome.push(Math.max(1, Math.min(50, Math.round(this.genome[i]))));
-                        child2Genome.push(Math.max(1, Math.min(50, Math.round(other.genome[i]))));
-                    } else {
-                        child1Genome.push(Math.max(1, Math.min(50, Math.round(other.genome[i]))));
-                        child2Genome.push(Math.max(1, Math.min(50, Math.round(this.genome[i]))));
-                    }
-                    break;
-                case 1: // m_denominator (integer crossover)
-                    // For denominators, pick one parent's valid denominator
-                    if (Math.random() < 0.5) {
-                        child1Genome.push(Math.round(this.genome[i]));
-                        child2Genome.push(Math.round(other.genome[i]));
-                    } else {
-                        child1Genome.push(Math.round(other.genome[i]));
-                        child2Genome.push(Math.round(this.genome[i]));
-                    }
-                    break;
-                case 2: // n1 (overall shape)
-                case 3: // n2 (cos component)
-                case 4: // n3 (sin component)
-                    // Use arithmetic crossover with random blending for real values
-                    const alpha_n = Math.random();
-                    const value1_n = alpha_n * this.genome[i] + (1 - alpha_n) * other.genome[i];
-                    const value2_n = (1 - alpha_n) * this.genome[i] + alpha_n * other.genome[i];
-                    child1Genome.push(Math.max(0.01, Math.min(20, value1_n)));
-                    child2Genome.push(Math.max(0.01, Math.min(20, value2_n)));
-                    break;
-                case 5: // a (x-axis scaling)
-                case 6: // b (y-axis scaling)
-                    // Use arithmetic crossover with random blending for scaling
-                    const alpha_scale = Math.random();
-                    const value1_scale = alpha_scale * this.genome[i] + (1 - alpha_scale) * other.genome[i];
-                    const value2_scale = (1 - alpha_scale) * this.genome[i] + alpha_scale * other.genome[i];
-                    child1Genome.push(Math.max(0.01, Math.min(5, value1_scale)));
-                    child2Genome.push(Math.max(0.01, Math.min(5, value2_scale)));
-                    break;
-            }
-        }
-        
-        const child1 = new SuperFormulaIndividual(child1Genome);
-        const child2 = new SuperFormulaIndividual(child2Genome);
-        
-        return [child1, child2];
+        // Use FloatRepresentation for blend crossover
+        const [child1Genome, child2Genome] = this.floatRep.crossover(this.genome, other.genome);
+
+        // Round first two parameters to integers (m_numerator and m_denominator)
+        child1Genome[0] = Math.round(child1Genome[0]);
+        child1Genome[1] = Math.round(child1Genome[1]);
+        child2Genome[0] = Math.round(child2Genome[0]);
+        child2Genome[1] = Math.round(child2Genome[1]);
+
+        return [new SuperFormulaIndividual(child1Genome), new SuperFormulaIndividual(child2Genome)];
     }
     
     clone() {
-        const clone = new SuperFormulaIndividual([...this.genome]);
+        const clone = new SuperFormulaIndividual(this.floatRep.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

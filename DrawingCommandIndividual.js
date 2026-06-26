@@ -1,12 +1,22 @@
+/**
+ * DrawingCommandIndividual
+ *
+ * REFACTORED: Uses IntegerRepresentation for genome operations.
+ * Encodes drawing commands (circles, lines, rectangles, ellipses) in integer genome.
+ */
+
 class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
     constructor(genome = null) {
-        super(genome);
-        // Remove hardcoded palette - will use framework palette instead
-    }
-    
-    generateRandomGenome() {
-        const length = 60;
-        return Array.from({length}, () => Math.floor(Math.random() * 256));
+        super('SKIP_GENOME_GENERATION');
+
+        // Configure integer representation
+        this.integerRep = new IntegerRepresentation({
+            length: 60,
+            min: 0,
+            max: 255
+        });
+
+        this.genome = genome || this.integerRep.generateRandom();
     }
     
     getPhenotype() {
@@ -268,14 +278,6 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
         }
     }
     
-    valuesMutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                this.genome[i] = Math.floor(Math.random() * 256);
-            }
-        }
-    }
-    
     orderMutate() {
         const commandSize = 8; // Updated to 8
         const numCommands = Math.floor(this.genome.length / commandSize);
@@ -300,9 +302,21 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
     
     mutate(rate = 0.1) {
         if (Math.random() < 0.5) {
-            this.valuesMutate(rate);
+            this.integerRep.mutate(this.genome, rate);
         } else {
             this.orderMutate();
         }
+        this.invalidateImageCache();
+    }
+
+    crossover(other) {
+        const [child1Genome, child2Genome] = this.integerRep.crossover(this.genome, other.genome);
+        return [new DrawingCommandIndividual(child1Genome), new DrawingCommandIndividual(child2Genome)];
+    }
+
+    clone() {
+        const clone = new DrawingCommandIndividual(this.integerRep.clone(this.genome));
+        clone.fitness = this.fitness;
+        return clone;
     }
 }

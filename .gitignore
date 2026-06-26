@@ -92,3 +92,6 @@ coverage/
 screenshots/
 generated-images/
 movies/
+
+# Ignore data directory
+data/
