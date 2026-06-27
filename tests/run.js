@@ -97,6 +97,31 @@ check('SuperFormula3DIndividual is the only 3D type', () => {
     }
 });
 
+// --- Self-description ---
+// Each individual owns its display: toString() (concise summary) and describe()
+// (rich HTML panel) live on the individual, not the framework.
+console.log('\nSelf-description (toString / describe):');
+for (const name of INDIVIDUAL_CLASSES) {
+    check(name, () => {
+        const ind = new classes[name]();
+        const str = ind.toString();
+        assert(typeof str === 'string' && str.includes(name), 'toString() should mention the type');
+
+        const html = ind.describe();
+        assert(typeof html === 'string' && html.length > 0, 'describe() must return a non-empty string');
+        assert(html.includes(name), 'describe() should include the type');
+        assert(html.includes('Fitness'), 'describe() should include a Fitness label');
+    });
+}
+check('SuperFormula describe() includes its formula', () => {
+    assert(new classes.SuperFormulaIndividual().describe().includes('Formula'), 'missing formula block');
+    assert(new classes.SuperFormula3DIndividual().describe().includes('r₁(θ)'), 'missing 3D formula block');
+});
+check('tree / array genomes pick the right section', () => {
+    assert(new classes.GPPatternIndividual().describe().includes('Expression Tree'), 'GP should show its tree');
+    assert(new classes.BinaryPatternIndividual().describe().includes('Genome (64 elements)'), 'binary genome dump');
+});
+
 // --- Sheep regression: neural-network phenotype must be finite ---
 // Regression for the bug where the input->hidden weights were sized from an
 // undefined `this.genomeLength`, leaving them empty so the forward pass produced

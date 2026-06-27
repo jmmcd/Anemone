@@ -371,6 +371,15 @@ class SuperFormulaIndividual extends Individual {
            + Math.PI).toFixed(1)}π, n1=${params.n1.toFixed(3)}, n2=${params.n2.toFixed(3)}, n3=${params.n3.toFixed(3)}, a=${params.a.toFixed(3)}, b=${params.b.toFixed(3)}`;
     }
     
+    describeExtra() {
+        const p = this.getParameters();
+        return `\n<span class="genome-label">Formula:</span>\n${this._formulaLine(p, 'r(φ)')}\n`;
+    }
+
+    _formulaLine(p, label) {
+        return `${label} = [|cos(${p.m}·φ/4)/${p.a.toFixed(3)}|^${p.n2.toFixed(3)} + |sin(${p.m}·φ/4)/${p.b.toFixed(3)}|^${p.n3.toFixed(3)}]^(-1/${p.n1.toFixed(3)})`;
+    }
+
     getParameterInfo() {
         const params = this.getParameters();
         return {

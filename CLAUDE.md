@@ -44,6 +44,7 @@ All individual types inherit from this:
 - **Generic genetic operators**: `mutate(rate)`, `crossover(other)`, `clone()` are implemented in the base class and delegate to `this.representation` (the representation strategy object). A typical subclass only sets up `this.representation` + `this.genome` and implements `visualize()`; it does **not** override the operators. Override only for non-standard genome semantics (variable length, mixed int/float, MIDI re-wiring on clone, etc.).
 - **Capability flags**: `is3D()` and `usesColorPalette()` (both default `false`). The framework reads these — `is3D()` drives the shared-3D render path; `usesColorPalette()` makes the framework attach the palette UI panel.
 - **Optional methods**: `getPhenotype()`, `playMIDI()`, `stopMIDI()`
+- **Self-description**: `describe()` returns the rich HTML shown in the genome panel (header + informative phenotype + genome dump); `toString()` is a concise one-line summary. The base class implements both generically; subclasses usually override only `describeExtra()` to inject type-specific detail (e.g. SuperFormula's formula) into the default layout.
 - **Caching**: `visualizeWithCache()` caches ImageData by genome+canvas-size hash
 - Pass `'SKIP_GENOME_GENERATION'` as the genome argument to `super()` when the subclass manages genome creation itself
 
@@ -136,7 +137,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 
 - **Palette system** (`ContinuousPaletteSystem.js` + `Palette.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.continuousPaletteSystem.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
 - **Image cache**: `visualizeWithCache(canvas, renderFn)` skips the render when the genome and canvas size are unchanged. Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
-- **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked) and calls `displayCurrentGenome()` to show type-specific formatted genome/phenotype below the grid.
+- **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked); `displayCurrentGenome()` just sets the panel to `currentIndividual.describe()`. All formatting lives on the individual (base `describe()`/`_format*` helpers + per-type `describeExtra()`), not the framework.
 - **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and wires the output into the single shared `framework.sharedMIDI`.
 - **EEG**: `EEGPreprocessing.js` (`EEGDataStream` class) parses Muse-headband CSV, aligns to 200ms grid, and computes 5 normalised features (mean, variance, peak, baseline, asymmetry) per window. The framework distributes the stream to EEG individuals via `setEEGDataStream()`.
 

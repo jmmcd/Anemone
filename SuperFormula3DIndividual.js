@@ -366,4 +366,17 @@ class SuperFormula3DIndividual extends Individual {
     is3D() {
         return true;
     }
+
+    describeExtra() {
+        const p = this.getParameters();
+        let s = `\n<span class="genome-label">Formulas:</span>\n`;
+        s += `${this._formulaLine(p.r1, 'r₁(θ)')}\n`;
+        s += `${this._formulaLine(p.r2, 'r₂(φ)')}\n`;
+        s += `\nCombined: r(θ,φ) = r₁(θ) × r₂(φ)\n`;
+        return s;
+    }
+
+    _formulaLine(p, label) {
+        return `${label} = [|cos(${p.m}·φ/4)/${p.a.toFixed(3)}|^${p.n2.toFixed(3)} + |sin(${p.m}·φ/4)/${p.b.toFixed(3)}|^${p.n3.toFixed(3)}]^(-1/${p.n1.toFixed(3)})`;
+    }
 }
