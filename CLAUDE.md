@@ -65,7 +65,7 @@ All individual types inherit from this:
 
 | File | Purpose |
 |---|---|
-| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static raw-ImageData drawing helpers `Canvas2DModality.drawLine/drawThickLine/drawCircle` used by path-drawing individuals |
+| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static raw-ImageData helpers used by path-drawing individuals: `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
 | `MIDIModality.js` | `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop |
 | `ThreeDModality.js` | `createMesh(vertices, indices, colors)` and `render(canvas, id, vertices, indices, colors, framework)` via the shared Three.js scene |
 

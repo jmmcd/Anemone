@@ -59,6 +59,9 @@ class GERadiusDrawingIndividual extends Individual {
                 this.drawPolarCurve(data, width, height, polarPoints);
             }
 
+            // Soften and add a palette-coloured glow over the finished render.
+            Canvas2DModality.bloom(imageData, { radius: 2, strength: 2.0, background: backgroundColor });
+
             return imageData;
         });
         
@@ -79,91 +82,88 @@ class GERadiusDrawingIndividual extends Individual {
     }
     
     drawPolarCurve(data, width, height, polarPoints) {
-        // Find min/max radius for scaling
+        // Find min/max radius for scaling. (Per-point values are already finite:
+        // the compiled expression maps Infinity/NaN to a safe number.)
         const radii = polarPoints.map(p => p.r);
         const minR = Math.min(...radii);
         const maxR = Math.max(...radii);
-        
-        // Ensure we have valid radii
-        if (!isFinite(minR) || !isFinite(maxR) || maxR === minR) {
-            console.warn('Invalid radii range, using default circle');
-            // Draw a simple circle as fallback
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const radius = Math.min(width, height) / 4;
-            const foregroundColor = window.Palette.color(1);
-            
-            for (let i = 0; i < 100; i++) {
-                const angle = (i / 100) * 2 * Math.PI;
-                const x = centerX + radius * Math.cos(angle);
-                const y = centerY + radius * Math.sin(angle);
-                
-                if (x >= 0 && x < width && y >= 0 && y < height) {
-                    const index = (Math.floor(y) * width + Math.floor(x)) * 4;
-                    data[index] = foregroundColor.r;
-                    data[index + 1] = foregroundColor.g;
-                    data[index + 2] = foregroundColor.b;
-                    data[index + 3] = 255;
-                }
-            }
-            return;
-        }
-        
+        const maxRadius = Math.max(Math.abs(minR), Math.abs(maxR));
+
         // Scale factor to fit in canvas with some padding
         const padding = 20;
         const maxDimension = Math.min(width, height) - 2 * padding;
-        const maxRadius = Math.max(Math.abs(minR), Math.abs(maxR));
-        const scale = maxRadius > 0 ? maxDimension / (2 * maxRadius) : 1;
+
+        // Only bail to a placeholder when the curve is degenerate (essentially
+        // r = 0 everywhere). A constant non-zero radius is a perfectly good
+        // circle and is drawn by the normal path below — not the placeholder.
+        if (!isFinite(maxRadius) || maxRadius < 1e-6) {
+            this.drawCircleOutline(data, width, height, Math.min(width, height) / 4);
+            return;
+        }
+
+        const scale = maxDimension / (2 * maxRadius);
         
         // Center point
         const centerX = width / 2;
         const centerY = height / 2;
         
-        // Foreground color (last color in palette)
+        // Foreground color (last color in palette). Smoothing/glow is applied
+        // afterwards as a bloom post-filter (see visualize()).
         const foregroundColor = window.Palette.color(1);
-        
-        // Draw the curve
+
+        const toXY = (p) => ({
+            x: centerX + p.r * scale * Math.cos(p.t),
+            y: centerY + p.r * scale * Math.sin(p.t)
+        });
+
+        // Build the list of Cartesian segments to draw.
+        const segments = [];
         for (let i = 0; i < polarPoints.length - 1; i++) {
-            const p1 = polarPoints[i];
-            const p2 = polarPoints[i + 1];
-            
-            // Convert polar to Cartesian
-            const x1 = centerX + p1.r * scale * Math.cos(p1.t);
-            const y1 = centerY + p1.r * scale * Math.sin(p1.t);
-            const x2 = centerX + p2.r * scale * Math.cos(p2.t);
-            const y2 = centerY + p2.r * scale * Math.sin(p2.t);
-            
-            // Only draw if points are reasonable
-            if (isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
-                Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
+            const a = toXY(polarPoints[i]);
+            const b = toXY(polarPoints[i + 1]);
+            if (isFinite(a.x) && isFinite(a.y) && isFinite(b.x) && isFinite(b.y)) {
+                segments.push([a.x, a.y, b.x, b.y]);
             }
         }
-        
+
         // Close the curve only if its ends actually meet. Samples run over
         // t ∈ [0, 10π], so the first (t=0) and last (t=10π) points both sit on
         // the +x axis (angle ≡ 0). When r differs there — e.g. a spiral — a chord
-        // back to the start is a spurious radial line. So draw the closing segment
+        // back to the start is a spurious radial line. So add the closing segment
         // only when the endpoints nearly coincide (a genuinely closed, periodic
         // curve); otherwise leave the curve open. The small tolerance means a
         // near-closure shows at most a couple-pixel gap rather than a long chord.
         if (polarPoints.length > 2) {
-            const first = polarPoints[0];
-            const last = polarPoints[polarPoints.length - 1];
-
-            const x1 = centerX + last.r * scale * Math.cos(last.t);
-            const y1 = centerY + last.r * scale * Math.sin(last.t);
-            const x2 = centerX + first.r * scale * Math.cos(first.t);
-            const y2 = centerY + first.r * scale * Math.sin(first.t);
-
-            const gap = Math.hypot(x2 - x1, y2 - y1);
+            const a = toXY(polarPoints[polarPoints.length - 1]);
+            const b = toXY(polarPoints[0]);
+            const gap = Math.hypot(b.x - a.x, b.y - a.y);
             const closeTolerance = Math.max(2, 0.05 * maxDimension);
-
-            if (gap <= closeTolerance && isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
-                Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
+            if (gap <= closeTolerance && isFinite(a.x) && isFinite(a.y) && isFinite(b.x) && isFinite(b.y)) {
+                segments.push([a.x, a.y, b.x, b.y]);
             }
         }
+
+        for (const [x1, y1, x2, y2] of segments) {
+            Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
+        }
     }
-    
+
+    // Connected placeholder circle for degenerate (≈ zero-radius) curves.
+    drawCircleOutline(data, width, height, radius) {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const foregroundColor = window.Palette.color(1);
+        const steps = 120;
+        let prev = null;
+        for (let i = 0; i <= steps; i++) {
+            const angle = (i / steps) * 2 * Math.PI;
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            if (prev) Canvas2DModality.drawLine(data, width, height, prev.x, prev.y, x, y, foregroundColor);
+            prev = { x, y };
+        }
+    }
+
     // Override expression evaluation to work with single parameter t
     evaluateExpression(t, unused) {
         const expression = this.getPhenotype();
@@ -200,16 +200,12 @@ class GERadiusDrawingIndividual extends Individual {
                 .replace(/ceil/g, 'Math.ceil')
                 .replace(/3\.14159/g, 'Math.PI')
                 .replace(/6\.28318/g, '(2*Math.PI)');
-            
-            // Protected division and modulo
-            jsExpression = jsExpression.replace(/\/([^\/]+)/g, (match, divisor) => {
-                return `/(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`;
-            });
-            
-            jsExpression = jsExpression.replace(/%([^%]+)/g, (match, divisor) => {
-                return `%(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`;
-            });
-            
+
+            // Note: division/modulo by zero produces Infinity/NaN, which the
+            // isFinite guard below maps to a safe value. We deliberately do NOT
+            // rewrite '/' and '%' with a regex — that can't balance parentheses
+            // and would mangle most expressions into uncompilable code.
+
             // Create function that takes t parameter
             const compiledFn = new Function('t', `
                 try {

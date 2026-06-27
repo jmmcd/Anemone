@@ -124,13 +124,20 @@ function load() {
     // Re-expose the lexically-scoped class declarations on the sandbox global.
     combined += `;globalThis.__classes = { ${INDIVIDUAL_CLASSES.join(', ')} };\n`;
     combined += `;globalThis.__MIDIModality = MIDIModality;\n`;
+    combined += `;globalThis.__Canvas2DModality = Canvas2DModality;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
     // Mirror the app: a single shared MIDIModality on the framework, which sound
     // individuals reference instead of each constructing their own.
     sandbox.window.framework.sharedMIDI = new sandbox.__MIDIModality();
 
-    return { sandbox, classes: sandbox.__classes, makeCanvas, MIDIModality: sandbox.__MIDIModality };
+    return {
+        sandbox,
+        classes: sandbox.__classes,
+        makeCanvas,
+        MIDIModality: sandbox.__MIDIModality,
+        Canvas2DModality: sandbox.__Canvas2DModality,
+    };
 }
 
 module.exports = { load, makeCanvas, INDIVIDUAL_CLASSES };

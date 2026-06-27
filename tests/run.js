@@ -122,6 +122,41 @@ check('tree / array genomes pick the right section', () => {
     assert(new classes.BinaryPatternIndividual().describe().includes('Genome (64 elements)'), 'binary genome dump');
 });
 
+// --- Bloom post-filter ---
+console.log('\nBloom post-filter:');
+check('spreads bright pixels into a halo but leaves flat background unchanged', () => {
+    const Canvas2D = load().Canvas2DModality;
+    const W = 9, H = 9;
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let i = 0; i < data.length; i += 4) data[i + 3] = 255; // opaque black
+    const c = (4 * W + 4) * 4;            // bright pixel at the centre
+    data[c] = data[c + 1] = data[c + 2] = 200;
+
+    Canvas2D.bloom({ width: W, height: H, data }, { radius: 2, strength: 1, background: { r: 0, g: 0, b: 0 } });
+
+    const neighbour = (4 * W + 5) * 4;
+    assert(data[neighbour] > 0, 'an adjacent pixel should receive glow');
+    assert(data[c] >= 200, 'the bright core should stay at least as bright');
+    assert(data[0] === 0, 'a far background pixel must not be brightened');
+});
+
+// --- GE Radius expression compilation regression ---
+// Regression for the protected-division regex that mangled any expression
+// containing '/' or '%' into uncompilable code, so it fell back to a constant
+// r = 1.0 (the dotty fallback circle). Division expressions must now evaluate.
+console.log('\nGE Radius expression compilation:');
+check('division/modulo expressions compile and vary with t (not constant 1.0)', () => {
+    const ind = new classes.GERadiusDrawingIndividual();
+    const f = ind.compileExpressionForT('5.0*(t/2)');
+    assert(Math.abs(f(2) - 5.0) < 1e-9 && Math.abs(f(4) - 10.0) < 1e-9, 'division expr did not evaluate correctly');
+
+    const g = ind.compileExpressionForT('(t*3)/tan((t*2)+log((t*2))-(t/2))');
+    assert(g(1) !== 1.0 || g(5) !== 1.0, 'complex expr collapsed to the 1.0 fallback');
+
+    const c = ind.compileExpressionForT('6.28318');
+    assert(Math.abs(c(0) - c(9)) < 1e-9 && Math.abs(c(0) - 2 * Math.PI) < 1e-6, 'constant should compile to a constant');
+});
+
 // --- Sheep regression: neural-network phenotype must be finite ---
 // Regression for the bug where the input->hidden weights were sized from an
 // undefined `this.genomeLength`, leaving them empty so the forward pass produced
