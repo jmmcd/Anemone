@@ -25,9 +25,6 @@ class InteractiveEAFramework {
         // EEG data stream (for EEGSonificationIndividual)
         this.eegStream = null;
 
-        // Continuous playback status update loop
-        this.playbackUpdateInterval = null;
-        
         // Initialize MIDI first
         this.initializeMIDI().then(() => {
             this.ea = new EvolutionaryAlgorithm(individualClass, 16, this.midiOutput);
@@ -350,7 +347,6 @@ class InteractiveEAFramework {
         this.populationSizeSpan = document.getElementById('population-size');
         this.avgFitnessSpan = document.getElementById('avg-fitness');
         this.historyList = document.getElementById('history-list');
-        this.playbackContent = document.getElementById('playback-content');
         this.genomeContent = document.getElementById('genome-content');
         this.eegCsvInput = document.getElementById('eeg-csv-input');
         this.eegLoadBtn = document.getElementById('eeg-load-btn');
@@ -508,86 +504,6 @@ class InteractiveEAFramework {
         this.genomeContent.innerHTML = this.currentIndividual.describe();
     }
 
-    startPlaybackStatusUpdates() {
-        // Clear any existing interval
-        if (this.playbackUpdateInterval) {
-            clearInterval(this.playbackUpdateInterval);
-        }
-
-        // Update playback status frequently during playback
-        this.playbackUpdateInterval = setInterval(() => {
-            // Check if the current individual is still running
-            if (this.currentIndividual && this.currentIndividual.isRunning) {
-                this.displayPlaybackStatus();
-            } else {
-                // Stop updates if playback has stopped
-                this.stopPlaybackStatusUpdates();
-            }
-        }, 50); // Update every 50ms for smooth display
-    }
-
-    stopPlaybackStatusUpdates() {
-        if (this.playbackUpdateInterval) {
-            clearInterval(this.playbackUpdateInterval);
-            this.playbackUpdateInterval = null;
-        }
-    }
-
-    displayPlaybackStatus() {
-        if (!this.playbackContent) return;
-
-        if (!this.currentIndividual) {
-            this.playbackContent.innerHTML = '<em>Select an individual to see playback status</em>';
-            return;
-        }
-
-        // Get playback info from individual if it supports it
-        const statusHTML = this.getPlaybackStatusHTML(this.currentIndividual);
-        if (statusHTML) {
-            this.playbackContent.innerHTML = statusHTML;
-        } else {
-            this.playbackContent.innerHTML = '<em>No playback information available</em>';
-        }
-    }
-
-    getPlaybackStatusHTML(individual) {
-        // For MouseMusicIndividual and EEGSonificationIndividual, show current notes
-        if (individual.outputNodes && Array.isArray(individual.outputNodes)) {
-            const now = Date.now();
-            const noteInfo = individual.outputNodes.map((node, idx) => {
-                if (node && typeof node.lastPitch !== 'undefined') {
-                    const noteName = this.midiNoteToName(node.lastPitch);
-                    // Check if note is currently playing (within noteDuration of lastNoteTime)
-                    const noteDuration = node.noteDuration || 200;
-                    const isActive = (now - node.lastNoteTime) < noteDuration;
-
-                    if (isActive) {
-                        const elapsed = now - node.lastNoteTime;
-                        const remaining = noteDuration - elapsed;
-                        return `Output ${idx + 1}: Playing <strong>${noteName}</strong> (${remaining.toFixed(0)}ms)`;
-                    } else {
-                        return `Output ${idx + 1}: Rest`;
-                    }
-                }
-                return null;
-            }).filter(x => x !== null);
-
-            if (noteInfo.length > 0) {
-                return noteInfo.join('<br>');
-            }
-        }
-
-        // For other individuals, don't show anything
-        return null;
-    }
-
-    midiNoteToName(noteNumber) {
-        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        const octave = Math.floor(noteNumber / 12) - 1;
-        const name = noteNames[noteNumber % 12];
-        return `${name}${octave}`;
-    }
-    
     cleanupOldIndividuals() {
         console.log('🧹 Cleaning up old individuals...');
         if (this.ea && this.ea.population) {
@@ -618,7 +534,6 @@ class InteractiveEAFramework {
         this.renderGrid();
         this.renderInfo();
         this.renderHistory();
-        this.displayPlaybackStatus(); // Update playback status
         this.displayCurrentGenome(); // Update genome display
     }
     
@@ -652,7 +567,6 @@ class InteractiveEAFramework {
 
                 // Set as current individual and display genome
                 this.currentIndividual = individual;
-                this.displayPlaybackStatus();
                 this.displayCurrentGenome();
 
                 this.ea.incrementFitness(individual);
@@ -684,7 +598,6 @@ class InteractiveEAFramework {
                         }
                         individual.playMIDI(); // starts, since it was not playing
                         this.currentlyPlaying = individual;
-                        this.startPlaybackStatusUpdates();
                     }
                 }
             });

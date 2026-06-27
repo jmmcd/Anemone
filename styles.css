@@ -277,33 +277,6 @@ h1, h2 {
 }
 
 /* Genome display styles */
-.playback-status {
-    margin: 20px 0;
-    padding: 15px;
-    background: #1a2a1a;
-    border-radius: 8px;
-    border-left: 4px solid #4CAF50;
-    min-height: 60px;
-}
-
-.playback-status h2 {
-    margin: 0 0 10px 0;
-    font-size: 18px;
-    color: #4CAF50;
-}
-
-.playback-content {
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    color: #7fd87f;
-    line-height: 1.6;
-}
-
-.playback-content em {
-    color: #555;
-    font-style: italic;
-}
-
 .genome-display {
     margin: 20px 0;
     padding: 15px;
