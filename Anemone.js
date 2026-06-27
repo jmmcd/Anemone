@@ -415,14 +415,13 @@ class InteractiveEAFramework {
             if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); }
         });
 
-        // Individual type switching
+        // Individual type switching: changing the selection switches immediately.
         this.individualTypeSelect = document.getElementById('individual-type-select');
-        this.switchIndividualTypeBtn = document.getElementById('switch-individual-type-btn');
-        
+
         // Set current individual type in selector
         this.updateIndividualTypeSelector();
-        
-        this.switchIndividualTypeBtn.addEventListener('click', () => {
+
+        this.individualTypeSelect.addEventListener('change', () => {
             this.switchIndividualType();
         });
 
