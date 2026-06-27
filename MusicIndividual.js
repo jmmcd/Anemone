@@ -16,7 +16,9 @@ class MusicIndividual extends Individual {
 
         this.genome = genome || this.representation.generateRandom();
 
-        this.midiModality = new MIDIModality();
+        // Use the framework's single shared MIDIModality (falls back to a local
+        // one outside the app, e.g. in tests).
+        this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
 
         this.diatonicScale = [60, 62, 64, 65, 67, 69, 71, 72]; // C major scale (C4 to C5)
         this.timeStep = 250; // milliseconds per beat
@@ -184,10 +186,4 @@ class MusicIndividual extends Individual {
         this.midiModality.sendNote(pitch, velocity, duration);
     }
 
-    clone() {
-        const clone = new MusicIndividual(this.representation.clone(this.genome));
-        clone.fitness = this.fitness;
-        clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
-        return clone;
-    }
 }

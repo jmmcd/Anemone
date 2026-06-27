@@ -26,7 +26,8 @@ The codebase separates three concerns:
 
 ### Framework Layer (`Anemone.js`)
 `InteractiveEAFramework` orchestrates the system:
-- Initialises MIDI access, and shared 3D resources (Three.js scene/renderer)
+- Initialises MIDI access, a single shared `MIDIModality` (`framework.sharedMIDI`), and shared 3D resources (Three.js scene/renderer)
+- Tracks `currentlyPlaying` so only one sound individual plays at a time (they share one modality)
 - Extension system: the framework attaches UI panels based on individual capability flags (e.g. the palette panel when `usesColorPalette()` is true)
 - Settings management: framework-level settings (e.g. `colorPalette`) accessed via `getFrameworkSetting()`
 - 3D resource management: single shared Three.js scene and renderer to avoid WebGL context exhaustion
@@ -67,7 +68,7 @@ All individual types inherit from this:
 | `MIDIModality.js` | `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop |
 | `ThreeDModality.js` | `createMesh(vertices, indices, colors)` and `render(canvas, id, vertices, indices, colors, framework)` via the shared Three.js scene |
 
-All sound-producing individuals hold a `MIDIModality` instance. MIDI output is wired in via `setMidiOutput(output)`; if no MIDI output is available (or a send fails), `sendNote` falls back to Web Audio synthesis automatically.
+All sound-producing individuals **share one** `MIDIModality` instance, owned by the framework (`framework.sharedMIDI`) — mirroring the shared 3D scene/renderer, and avoiding one Web Audio `AudioContext` per individual. Individuals reference it (`window.framework.sharedMIDI`, with a local fallback for tests) rather than constructing their own. The framework wires the resolved MIDI output into it; if no MIDI output is available (or a send fails), `sendNote` falls back to Web Audio synthesis automatically. Because the modality is shared, only one individual plays at a time (the framework stops the current one when another is started).
 
 ### Color Palette (`Palette.js`)
 `window.Palette` is an app-level, medium-agnostic color service consumed by both 2D and 3D individuals: `window.Palette.color(t)` returns an `{r,g,b}` for `t∈[0,1]` using the framework's current palette (`window.Palette.name()` reads `framework.settings.colorPalette`). It wraps `window.continuousPaletteSystem` with a small fallback. Individuals opt in by returning `true` from `usesColorPalette()`, which makes the framework attach `PaletteControlUI`. (This replaced the old `withPaletteExtensions` mixin, which is gone.)
@@ -94,7 +95,7 @@ class SomeIndividual extends Individual {
 
 Override `mutate`/`crossover`/`clone` only when the genome semantics are non-standard. The representation strategy object is conventionally named `this.representation`.
 
-Examples of non-standard overrides: `SuperFormula{,3D}` keep custom `mutate`/`crossover` for their mixed integer/float genome but still use `this.representation` for helpers like `gaussianRandom`/`clone`; `Music`/`DAG`/`EEG` keep a custom `clone` to re-wire MIDI output; `Creature` manages a variable-length genome directly and so has no `this.representation` at all (it overrides every operator).
+Examples of non-standard overrides: `SuperFormula{,3D}` keep custom `mutate`/`crossover` for their mixed integer/float genome but still use `this.representation` for helpers like `gaussianRandom`/`clone`; `Creature` manages a variable-length genome directly and so has no `this.representation` at all (it overrides every operator).
 
 **CreatureIndividual** is intentionally not refactored into a representation: its genome is variable-length (insert/delete/change mutation, two-point crossover with independent cut points), and its rendering is path-based rather than pixel-based, so neither IntegerRepresentation nor Canvas2DModality applies cleanly.
 
@@ -136,7 +137,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 - **Palette system** (`ContinuousPaletteSystem.js` + `Palette.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.continuousPaletteSystem.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
 - **Image cache**: `visualizeWithCache(canvas, renderFn)` skips the render when the genome and canvas size are unchanged. Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
 - **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked) and calls `displayCurrentGenome()` to show type-specific formatted genome/phenotype below the grid.
-- **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and passes the output to individuals via `setMidiOutput()`.
+- **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and wires the output into the single shared `framework.sharedMIDI`.
 - **EEG**: `EEGPreprocessing.js` (`EEGDataStream` class) parses Muse-headband CSV, aligns to 200ms grid, and computes 5 normalised features (mean, variance, peak, baseline, asymmetry) per window. The framework distributes the stream to EEG individuals via `setEEGDataStream()`.
 
 ## Common Patterns
@@ -152,15 +153,16 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 ```javascript
 constructor(genome = null) {
     // ...
-    this.midiModality = new MIDIModality();
+    // Reference the framework's single shared modality (local fallback for tests)
+    this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
 }
-setMidiOutput(output) { this.midiModality.setMidiOutput(output); }
 // send notes:
 this.midiModality.sendNote(pitch, velocity, duration); // falls back to Web Audio
 // interval loop (DAG-style):
 this.midiModality.start(() => this.evaluate(), this.timeStep);
 this.midiModality.stop();
 ```
+The modality is shared, so `clone()` needs no MIDI re-wiring — the generic base `clone` works. The framework guarantees only one individual drives the shared modality at a time.
 
 **3D individual:**
 ```javascript

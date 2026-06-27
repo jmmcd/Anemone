@@ -121,6 +121,40 @@ check('bodySize and legLength are within range (so body/legs render)', () => {
     assert(p.legLength >= 0.6 && p.legLength <= 1.4, `legLength out of range: ${p.legLength}`);
 });
 
+// --- Shared MIDI modality ---
+// All sound individuals reference the framework's single shared MIDIModality
+// (rather than each constructing their own AudioContext), and clones keep that
+// shared reference so no per-individual MIDI re-wiring is needed.
+console.log('\nShared MIDI modality:');
+const soundTypes = ['MusicIndividual', 'DAGIndividual', 'EEGSonificationIndividual'];
+check('all sound individuals reference the framework shared modality', () => {
+    const env = load();
+    const fwShared = env.sandbox.window.framework.sharedMIDI;
+    for (const name of soundTypes) {
+        const ind = new env.classes[name]();
+        assert(ind.midiModality === fwShared, `${name} should reference the shared modality`);
+    }
+});
+check('clones keep the shared modality reference (no per-clone re-wiring)', () => {
+    const env = load();
+    const fwShared = env.sandbox.window.framework.sharedMIDI;
+    for (const name of soundTypes) {
+        const ind = new env.classes[name]();
+        const clone = ind.clone();
+        assert(clone.midiModality === fwShared, `${name} clone should still share the modality`);
+        const [c1, c2] = ind.crossover(new env.classes[name]());
+        assert(c1.midiModality === fwShared && c2.midiModality === fwShared, `${name} children should share the modality`);
+    }
+});
+check('two individuals of the same type share one modality instance', () => {
+    const env = load();
+    for (const name of soundTypes) {
+        const a = new env.classes[name]();
+        const b = new env.classes[name]();
+        assert(a.midiModality === b.midiModality, `${name} instances must share the modality`);
+    }
+});
+
 // --- Summary ---
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

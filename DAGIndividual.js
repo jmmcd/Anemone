@@ -25,7 +25,9 @@ class DAGIndividual extends Individual {
             connectionStartIndex: 30
         });
 
-        this.midiModality = new MIDIModality();
+        // Use the framework's single shared MIDIModality (falls back to a local
+        // one outside the app, e.g. in tests).
+        this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
 
         this.genome = genome || this.representation.generateRandom();
 
@@ -206,10 +208,4 @@ class DAGIndividual extends Individual {
         this.buildDAGFromGenome();
     }
 
-    clone() {
-        const clone = new DAGIndividual(this.representation.clone(this.genome));
-        clone.fitness = this.fitness;
-        clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
-        return clone;
-    }
 }

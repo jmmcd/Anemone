@@ -5,6 +5,11 @@ class InteractiveEAFramework {
         this.audioContext = null;
         this.currentIndividual = null; // Track the last clicked individual
 
+        // Single shared MIDIModality for all sound individuals (avoids one
+        // AudioContext per individual). Mirrors the shared 3D scene/renderer.
+        this.sharedMIDI = new MIDIModality();
+        this.currentlyPlaying = null; // The individual currently producing sound
+
         // Framework settings
         this.settings = {
             colorPalette: 'viridis'
@@ -87,8 +92,12 @@ class InteractiveEAFramework {
         } else {
             console.log('Web MIDI API not supported');
         }
+
+        // Wire the resolved output (or null → Web Audio fallback) into the
+        // single shared modality that every sound individual references.
+        this.sharedMIDI.setMidiOutput(this.midiOutput);
     }
-    
+
     initializeShared3D() {
         console.log('🎮 Initializing shared 3D resources...');
         
@@ -850,6 +859,7 @@ class InteractiveEAFramework {
                 }
             });
         }
+        this.currentlyPlaying = null;
     }
     
     render() {
@@ -908,18 +918,22 @@ class InteractiveEAFramework {
                 // Update info panel only
                 this.renderInfo();
 
-                // If this is a music individual, play it
+                // If this is a sound individual, toggle its playback. Because all
+                // sound individuals share one MIDIModality, only one can play at a
+                // time: clicking a different one switches to it; clicking the
+                // currently-playing one stops it.
                 if (individual.playMIDI) {
-                    console.log('Calling playMIDI on individual');
-                    // Pass MIDI output to individual if it needs it
-                    if (individual.setMidiOutput) {
-                        individual.setMidiOutput(this.midiOutput);
+                    if (this.currentlyPlaying === individual) {
+                        individual.stopMIDI();
+                        this.currentlyPlaying = null;
+                    } else {
+                        if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
+                            this.currentlyPlaying.stopMIDI();
+                        }
+                        individual.playMIDI(); // starts, since it was not playing
+                        this.currentlyPlaying = individual;
+                        this.startPlaybackStatusUpdates();
                     }
-                    individual.playMIDI();
-                    // Start real-time playback status updates
-                    this.startPlaybackStatusUpdates();
-                } else {
-                    console.log('Individual does not have playMIDI method');
                 }
             });
             
@@ -982,6 +996,11 @@ class InteractiveEAFramework {
             }
             
             span.addEventListener('click', () => {
+                // Stop any sound before swapping in a different generation.
+                if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
+                    this.currentlyPlaying.stopMIDI();
+                }
+                this.currentlyPlaying = null;
                 this.ea.loadGeneration(index);
                 this.render();
             });

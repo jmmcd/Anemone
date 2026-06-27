@@ -142,11 +142,4 @@ class EEGSonificationIndividual extends DAGIndividual {
         const child2 = new EEGSonificationIndividual(g2);
         return [child1, child2];
     }
-
-    clone() {
-        const clone = new EEGSonificationIndividual(this.representation.clone(this.genome));
-        clone.fitness = this.fitness;
-        clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
-        return clone;
-    }
 }
