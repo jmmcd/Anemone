@@ -14,6 +14,8 @@ Evolutionary computation means algorithms inspired by Darwinian evolution, like 
 
 You should see a grid of images. Click the ones you like, then click "Evolve", and repeat endlessly.
 
+If you select zero, it throws them all away to make totally new ones. If you select one, it makes new ones by mutating that good one. If you select two or more, it uses crossover to make children and mutation as well.
+
 You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Best ones: Anemone, SuperShape3D, Pattern, Robot.
 
 # MIDI?
@@ -36,7 +38,10 @@ Each individual holds a representation object and delegates `mutate`, `crossover
 
 # Deployment
 
-I deploy this to Surge just by running `surge` in the current directory, and then typing in `anemone.surge.sh` at the `domain` prompt.
+I deploy this to Surge just by running this in the current directory:
+
+```surge . anemone.surge.sh``` 
+
 
 # Creation
 

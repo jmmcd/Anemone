@@ -62,7 +62,29 @@ class EvolutionaryAlgorithm {
         console.warn(`Unable to produce two valid children for ${this.individualClass.name} after ${maxAttempts} attempts; using fallback individuals.`);
         return [this.createValidIndividual(), this.createValidIndividual()];
     }
-    
+
+    // Produce a single mutated variant of one parent (no crossover). Used when
+    // exactly one individual is liked, so the whole next generation is mutants
+    // of that individual.
+    createValidMutant(parent) {
+        const maxAttempts = 100;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const child = parent.clone();
+            child.mutate(0.1);
+
+            if (child.setMidiOutput && this.midiOutput) {
+                child.setMidiOutput(this.midiOutput);
+            }
+
+            if (child.validate()) {
+                return child;
+            }
+        }
+
+        console.warn(`Unable to produce a valid mutant for ${this.individualClass.name} after ${maxAttempts} attempts; using a fallback individual.`);
+        return this.createValidIndividual();
+    }
+
     stopAllPlayback() {
         this.population.forEach(individual => {
             if (individual.stopMIDI) {
@@ -72,19 +94,26 @@ class EvolutionaryAlgorithm {
     }
     
     evolve() {
-        if (this.selectedIndividuals.length < 2) {
-            alert("Please select at least 2 individuals for evolution");
-            return;
-        }
-        
-        console.log(`Evolving from ${this.selectedIndividuals.length} selected individuals`);
-        console.log(`Individual class: ${this.individualClass.name}`);
-        
         // Stop all playback before evolution
         this.stopAllPlayback();
-        
+
+        // No likes: nothing to breed from, so start a fresh random generation.
+        if (this.selectedIndividuals.length === 0) {
+            console.log('No individuals liked — re-initialising the population');
+            this.generation++;
+            this.initializePopulation();
+            return;
+        }
+
+        console.log(`Evolving from ${this.selectedIndividuals.length} liked individuals`);
+        console.log(`Individual class: ${this.individualClass.name}`);
+
+        // One like → mutation only (every child is a mutant of that individual);
+        // two or more → crossover + mutation between liked parents.
+        const singleParent = this.selectedIndividuals.length === 1;
+
         const newPopulation = [];
-        
+
         const elite = this.selectedIndividuals.slice(0, 2);
         const eliteClones = elite.map(ind => {
             const clone = ind.clone();
@@ -95,22 +124,27 @@ class EvolutionaryAlgorithm {
             return clone.validate() ? clone : this.createValidIndividual();
         });
         newPopulation.push(...eliteClones);
-        
+
         while (newPopulation.length < this.populationSize) {
+            if (singleParent) {
+                newPopulation.push(this.createValidMutant(this.selectedIndividuals[0]));
+                continue;
+            }
+
             const parent1 = this.selectParent();
             const parent2 = this.selectParent();
 
             console.log(`Parents: ${parent1.constructor.name}, ${parent2.constructor.name}`);
-            
+
             const [child1, child2] = this.createValidChildren(parent1, parent2);
             console.log(`Children: ${child1.constructor.name}, ${child2.constructor.name}`);
-            
+
             newPopulation.push(child1);
             if (newPopulation.length < this.populationSize) {
                 newPopulation.push(child2);
             }
         }
-        
+
         console.log(`Final population types: ${newPopulation.map(ind => ind.constructor.name).join(', ')}`);
         
         this.population = newPopulation;
