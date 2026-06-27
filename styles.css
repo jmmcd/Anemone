@@ -367,7 +367,9 @@ select:focus { outline: none; border-color: var(--accent); }
 @media (hover: hover) and (pointer: fine) {
     .fab { display: none; }
     .evolve-bar {
-        position: relative;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
         display: inline-flex;
         align-items: center;
         padding: 8px 18px;
