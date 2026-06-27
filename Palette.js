@@ -10,7 +10,7 @@ window.Palette = {
     /** Current palette name from framework settings (default 'viridis'). */
     name() {
         const fw = window.framework;
-        return (fw && fw.settings && fw.settings.colorPalette) || 'viridis';
+        return (fw && fw.settings && fw.settings.colorPalette) || 'forest';
     },
 
     /**
@@ -41,7 +41,7 @@ window.Palette = {
     },
 
     _fallbackColor(name, t) {
-        const palette = this._fallbackPalettes[name] || this._fallbackPalettes.viridis;
+        const palette = this._fallbackPalettes[name] || this._fallbackPalettes.forest;
         t = Math.max(0, Math.min(1, t));
         if (palette.length === 1) return palette[0];
 

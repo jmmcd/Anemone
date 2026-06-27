@@ -12,7 +12,7 @@ class InteractiveEAFramework {
 
         // Framework settings
         this.settings = {
-            colorPalette: 'viridis'
+            colorPalette: 'forest'
         };
 
         // Extension system
