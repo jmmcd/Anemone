@@ -33,8 +33,8 @@ The codebase separates three concerns:
 - 3D resource management: single shared Three.js scene and renderer to avoid WebGL context exhaustion
 
 ### Evolutionary Algorithm (`EvolutionaryAlgorithm.js`)
-- Tournament selection from user-selected individuals (fitness > 0)
-- Elitism: top 2 selected individuals cloned into next generation
+- Direct ("truncation") selection: a click is a binary "like" (`toggleLike`, fitness 0/1); parents are drawn uniformly at random from the liked individuals (`selectParent`), since binary likes give no fitness gradient
+- Elitism: first 2 liked individuals cloned into next generation
 - Crossover and mutation fill remaining slots
 - Generation history for time-travel (reload previous generations)
 

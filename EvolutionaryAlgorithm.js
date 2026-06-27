@@ -97,9 +97,9 @@ class EvolutionaryAlgorithm {
         newPopulation.push(...eliteClones);
         
         while (newPopulation.length < this.populationSize) {
-            const parent1 = this.tournamentSelection(this.selectedIndividuals);
-            const parent2 = this.tournamentSelection(this.selectedIndividuals);
-            
+            const parent1 = this.selectParent();
+            const parent2 = this.selectParent();
+
             console.log(`Parents: ${parent1.constructor.name}, ${parent2.constructor.name}`);
             
             const [child1, child2] = this.createValidChildren(parent1, parent2);
@@ -126,14 +126,12 @@ class EvolutionaryAlgorithm {
         this.saveGeneration();
     }
     
-    tournamentSelection(candidates, tournamentSize = 3) {
-        const tournament = [];
-        for (let i = 0; i < tournamentSize; i++) {
-            tournament.push(candidates[Math.floor(Math.random() * candidates.length)]);
-        }
-        return tournament.reduce((best, current) => 
-            current.fitness > best.fitness ? current : best
-        );
+    // Direct ("truncation") selection: parents are drawn uniformly at random
+    // from the individuals the user liked. Likes are binary, so there is no
+    // fitness gradient — every liked individual is an equally likely parent.
+    selectParent() {
+        const liked = this.selectedIndividuals;
+        return liked[Math.floor(Math.random() * liked.length)];
     }
     
     // Binary "like": a single tap/click toggles whether an individual is liked.
