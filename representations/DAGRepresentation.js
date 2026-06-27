@@ -1,11 +1,14 @@
 /**
- * DAGRepresentation
+ * DAG node classes + PTO generator
  *
- * Encapsulates the DAG genome representation: node classes and the logic
- * that builds a runnable DAG from an integer array genome.
+ * The DAG node classes (InputNode/ProcessingNode/OutputNode) and a `createDAGGenerator`
+ * factory: a PTO generator that builds a runnable DAG *directly* from `rnd`
+ * decisions (rather than decoding an integer array). The trace of those decisions
+ * is the genotype; the built DAG is the phenotype.
  *
- * Configurable so the same class handles both MouseMusicIndividual (3 mouse inputs,
- * 3 outputs) and EEGSonificationIndividual (5 EEG inputs, 2 outputs).
+ * `createDAGGenerator({ numInputs, numOutputs })` is configurable so it serves both
+ * MouseMusicIndividual (3 mouse inputs, 3 outputs) and EEGSonificationIndividual
+ * (5 EEG inputs, 2 outputs).
  *
  * OutputNode uses MIDIModality.sendNote() rather than calling midiOutput.send()
  * directly, so Web Audio fallback is available to all DAG individuals.
@@ -37,7 +40,8 @@ class DAGNode {
 class InputNode extends DAGNode {
     constructor(id, value = 0) {
         super(id, 'input');
-        this.value = value;
+        this.baseValue = value; // immutable initial value from the generator
+        this.value = value;     // mutated each evaluation (mouse/EEG/time)
         this.output = value;
     }
 
@@ -137,112 +141,64 @@ class OutputNode extends DAGNode {
 }
 
 // ---------------------------------------------------------------------------
-// DAGRepresentation — builds and manages a DAG from an integer genome
+// createDAGGenerator — a PTO generator that builds a DAG directly from rnd
 // ---------------------------------------------------------------------------
 
-class DAGRepresentation {
-    /**
-     * @param {object} config
-     * @param {number} config.genomeLength
-     * @param {number} config.numInputs        - Number of input nodes
-     * @param {number} config.numOutputs       - Number of output nodes
-     * @param {number} config.numProcIndex     - Genome index that encodes numProcessingNodes
-     * @param {number} config.procOpsStartIndex - Genome index where processing-node ops begin
-     * @param {number} config.outputThresholdIndex - Genome index where output thresholds begin
-     * @param {number} config.connectionStartIndex - Genome index where connection spec begins
-     */
-    constructor(config = {}) {
-        this.genomeLength = config.genomeLength || 100;
-        this.numInputs = config.numInputs || 3;
-        this.numOutputs = config.numOutputs || 3;
-        this.numProcIndex = config.numProcIndex !== undefined ? config.numProcIndex : this.numInputs;
-        this.procOpsStartIndex = config.procOpsStartIndex !== undefined ? config.procOpsStartIndex : this.numInputs + 1;
-        this.outputThresholdIndex = config.outputThresholdIndex !== undefined ? config.outputThresholdIndex : 20;
-        this.connectionStartIndex = config.connectionStartIndex || 30;
+const DAG_OPERATIONS = ['add', 'sub', 'mul', 'sin', 'min', 'max', 'abs', 'if_gt_zero'];
+const DAG_ARITIES = { add: 2, sub: 2, mul: 2, sin: 1, min: 2, max: 2, abs: 1, if_gt_zero: 3 };
 
-        this.operations = ['add', 'sub', 'mul', 'sin', 'min', 'max', 'abs', 'if_gt_zero'];
-        this.arities    = [2,     2,     2,     1,     2,     2,     1,     3           ];
-    }
-
-    generateRandom() {
-        return Array.from({length: this.genomeLength}, () => Math.floor(Math.random() * 256));
-    }
-
-    /**
-     * Build a DAG from the genome.
-     * @returns {{allNodes, inputNodes, outputNodes, processingNodes}}
-     */
-    build(genome) {
+/**
+ * Build a PTO generator for a DAG with the given input/output counts. The
+ * generator constructs the node graph directly using `rnd`, so PTO's trace of
+ * those decisions is the genotype and the built DAG is the phenotype. Use it
+ * with PTORepresentation; the individual reads the DAG via `this.phenotype`.
+ *
+ * @param {object} config
+ * @param {number} config.numInputs
+ * @param {number} config.numOutputs
+ * @returns {(rnd) => {allNodes, inputNodes, outputNodes, processingNodes}}
+ */
+function createDAGGenerator({ numInputs, numOutputs }) {
+    return (rnd) => {
         const allNodes = [], inputNodes = [], outputNodes = [], processingNodes = [];
 
-        for (let i = 0; i < this.numInputs; i++) {
-            const node = new InputNode(`x${i + 1}`, (genome[i] / 255) * 2 - 1);
+        for (let i = 0; i < numInputs; i++) {
+            const node = new InputNode(`x${i + 1}`, rnd.uniform(-1, 1));
             inputNodes.push(node);
             allNodes.push(node);
         }
 
-        const numProc = (genome[this.numProcIndex] % 8) + 2;
+        const numProc = rnd.randint(2, 9); // 2..9 processing nodes
         for (let i = 0; i < numProc; i++) {
-            const opIndex = genome[this.procOpsStartIndex + i] % this.operations.length;
-            const node = new ProcessingNode(`p${i + 1}`, this.operations[opIndex], this.arities[opIndex]);
+            const op = rnd.choice(DAG_OPERATIONS);
+            const node = new ProcessingNode(`p${i + 1}`, op, DAG_ARITIES[op]);
             processingNodes.push(node);
             allNodes.push(node);
         }
 
-        for (let i = 0; i < this.numOutputs; i++) {
-            const threshold = (genome[this.outputThresholdIndex + i] / 255) * 2 + 0.5;
-            const node = new OutputNode(`y${i + 1}`, threshold);
+        for (let i = 0; i < numOutputs; i++) {
+            const node = new OutputNode(`y${i + 1}`, rnd.uniform(0.5, 2.5));
             outputNodes.push(node);
             allNodes.push(node);
         }
 
-        this._createConnections(processingNodes, inputNodes, outputNodes, genome);
-
-        return { allNodes, inputNodes, outputNodes, processingNodes };
-    }
-
-    _createConnections(processingNodes, inputNodes, outputNodes, genome) {
-        let idx = this.connectionStartIndex;
-
+        // Processing nodes connect to earlier nodes only (inputs + already-created
+        // processing nodes), which keeps the graph acyclic.
         for (let i = 0; i < processingNodes.length; i++) {
             const node = processingNodes[i];
             const available = [...inputNodes, ...processingNodes.slice(0, i)];
-            for (let j = 0; j < node.arity && j < available.length; j++) {
-                if (idx < genome.length) {
-                    node.addInput(available[genome[idx++] % available.length]);
-                }
+            for (let j = 0; j < node.arity; j++) {
+                node.addInput(rnd.choice(available));
             }
         }
 
-        const allPossible = [...inputNodes, ...processingNodes];
+        // Each output reads two upstream nodes (pitch source, energy source).
+        const upstream = [...inputNodes, ...processingNodes];
         for (const node of outputNodes) {
-            if (idx < genome.length - 1 && allPossible.length > 0) {
-                node.addInput(allPossible[genome[idx++] % allPossible.length]);
-                node.addInput(allPossible[genome[idx++] % allPossible.length]);
-            }
+            node.addInput(rnd.choice(upstream));
+            node.addInput(rnd.choice(upstream));
         }
-    }
 
-    mutate(genome, rate = 0.1) {
-        for (let i = 0; i < genome.length; i++) {
-            if (Math.random() < rate) {
-                genome[i] = Math.floor(Math.random() * 256);
-            }
-        }
-        return genome;
-    }
-
-    crossover(genome1, genome2) {
-        const child1 = [...genome1];
-        const child2 = [...genome2];
-        const point = Math.floor(Math.random() * genome1.length);
-        for (let i = point; i < genome1.length; i++) {
-            [child1[i], child2[i]] = [child2[i], child1[i]];
-        }
-        return [child1, child2];
-    }
-
-    clone(genome) {
-        return [...genome];
-    }
+        return { allNodes, inputNodes, outputNodes, processingNodes };
+    };
 }

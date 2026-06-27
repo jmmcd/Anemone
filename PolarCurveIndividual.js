@@ -1,24 +1,34 @@
 /**
  * PolarCurveIndividual
  *
- * REFACTORED: Uses GrammaticalRepresentation + Canvas2DModality (inherited from parent).
- * Generates polar coordinate curves (radius as function of angle).
+ * Grammatical evolution under PTO. The genome (PTO trace) expresses to a codon
+ * array (this.phenotype); a shared GrammaticalRepresentation maps it through the
+ * polar grammar to an r(t) expression string. PTO's generic operators handle
+ * mutation/crossover/clone.
  */
 
+const POLAR_CURVE_LENGTH = 100;
+
+// Grammar mapper (codon array → expression). Reused for derivePhenotype only;
+// this individual compiles its own single-parameter r(t) function below.
+const polarCurveMapper = new GrammaticalRepresentation({
+    length: POLAR_CURVE_LENGTH,
+    grammar: Grammar.createPolarDrawingGrammar(),
+    startSymbol: '<polar>',
+    maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
+});
+
+const polarCurveRepresentation = new PTORepresentation(
+    (rnd) => Array.from({ length: POLAR_CURVE_LENGTH }, () => rnd.randint(0, 255))
+);
+
 class PolarCurveIndividual extends Individual {
-    constructor(genome = null, genomeLength = 100) {
+    constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        // Configure grammatical representation for polar coordinates
-        this.representation = new GrammaticalRepresentation({
-            length: genomeLength,
-            grammar: Grammar.createPolarDrawingGrammar(),
-            startSymbol: '<polar>',
-            maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
-        });
-
+        this.representation = polarCurveRepresentation;
+        this.grammar = polarCurveMapper;
         this.genome = genome || this.representation.generateRandom();
-        this.genomeLength = genomeLength;
 
         // Polar coordinate parameters
         this.tMin = 0;
@@ -26,8 +36,10 @@ class PolarCurveIndividual extends Individual {
         this.numPoints = 500; // Number of points to sample
     }
 
+    // The interpreted phenotype: the derived r(t) expression string (this.phenotype
+    // is the raw codon array PTO produced).
     getPhenotype() {
-        return this.representation.derivePhenotype(this.genome);
+        return this.grammar.derivePhenotype(this.phenotype);
     }
 
     validate() {
@@ -176,13 +188,16 @@ class PolarCurveIndividual extends Individual {
     // Override expression evaluation to work with single parameter t
     evaluateExpression(t, unused) {
         const expression = this.getPhenotype();
-        
+
         try {
-            // Pre-compile the expression for faster evaluation
-            if (!this._compiledExpression) {
+            // Pre-compile the expression for faster evaluation. Cache keyed by the
+            // expression string, so it auto-invalidates when the genome changes
+            // (mutation/crossover produce a new genome → new expression).
+            if (this._compiledExpression == null || this._compiledKey !== expression) {
                 this._compiledExpression = this.compileExpressionForT(expression);
+                this._compiledKey = expression;
             }
-            
+
             const result = this._compiledExpression(t);
             
             // Clamp result to reasonable range to prevent extreme values
@@ -230,23 +245,6 @@ class PolarCurveIndividual extends Individual {
         } catch (error) {
             return () => 1.0;
         }
-    }
-    
-    mutate(rate = 0.1) {
-        this.representation.mutate(this.genome, rate);
-        this._compiledExpression = null; // Reset compiled expression for t
-        this.invalidateImageCache();
-    }
-
-    crossover(other) {
-        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
-        return [new PolarCurveIndividual(child1Genome, this.genomeLength), new PolarCurveIndividual(child2Genome, this.genomeLength)];
-    }
-
-    clone() {
-        const clone = new PolarCurveIndividual(this.representation.clone(this.genome), this.genomeLength);
-        clone.fitness = this.fitness;
-        return clone;
     }
     
 }

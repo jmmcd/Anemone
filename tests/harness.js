@@ -18,13 +18,12 @@ const ROOT = path.join(__dirname, '..');
 // Source files in dependency order (classes use `extends` at definition time,
 // so base classes must come first; representations/modalities before individuals).
 const SOURCES = [
+    'vendor/pto-bundle.js',
     'Individual.js',
-    'representations/BinaryRepresentation.js',
-    'representations/IntegerRepresentation.js',
-    'representations/FloatRepresentation.js',
     'representations/TreeRepresentation.js',
     'representations/GrammaticalRepresentation.js',
     'representations/DAGRepresentation.js',
+    'representations/PTORepresentation.js',
     'Grammar.js',
     'modalities/Canvas2DModality.js',
     'modalities/MIDIModality.js',

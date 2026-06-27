@@ -1,27 +1,34 @@
 /**
  * PatternGrammarIndividual
  *
- * REFACTORED: Uses GrammaticalRepresentation + Canvas2DModality.
- * Evolves mathematical expressions using grammatical evolution.
+ * Grammatical evolution under PTO. The genome (PTO trace) expresses to a codon
+ * array (this.phenotype); a shared GrammaticalRepresentation maps that codon
+ * array through the BNF grammar to an expression string and compiles it. PTO's
+ * generic operators handle mutation/crossover/clone (standard GE codon mutation
+ * is exactly PTO coarse mutation on the integer genes).
  */
 
+const PATTERN_GRAMMAR_LENGTH = 100;
+
+// Grammar mapper (codon array → expression → compiled fn). Reused for its
+// derive/compile/evaluate helpers; its own generate/mutate/etc. are unused.
+const patternGrammarMapper = new GrammaticalRepresentation({
+    length: PATTERN_GRAMMAR_LENGTH,
+    grammar: Grammar.createImagePatternGrammar(),
+    startSymbol: '<pattern>',
+    maxDerivations: 1000
+});
+
+// PTO operators over a fixed-length codon array (0-255).
+const patternGrammarRepresentation = new PTORepresentation(
+    (rnd) => Array.from({ length: PATTERN_GRAMMAR_LENGTH }, () => rnd.randint(0, 255))
+);
+
 class PatternGrammarIndividual extends Individual {
-    constructor(genome = null, genomeLength = 100) {
+    constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-
-        // Configure grammatical representation
-        this.representation = new GrammaticalRepresentation({
-            length: genomeLength,
-            grammar: Grammar.createImagePatternGrammar(),
-            startSymbol: '<pattern>',
-            maxDerivations: 1000
-        });
-
-        // Configure 2D canvas renderer
-        this.canvasRenderer = new Canvas2DModality({
-            normalizer: (value) => (Math.tanh(value) + 1) / 2
-        });
-
+        this.representation = patternGrammarRepresentation;
+        this.grammar = patternGrammarMapper;
         this.genome = genome || this.representation.generateRandom();
     }
 
@@ -37,14 +44,16 @@ class PatternGrammarIndividual extends Individual {
         return hasVariable;
     }
 
+    // The interpreted phenotype: the derived expression string (this.phenotype is
+    // the raw codon array PTO produced).
     getPhenotype() {
-        return this.representation.derivePhenotype(this.genome);
+        return this.grammar.derivePhenotype(this.phenotype);
     }
 
     evaluateExpression(x, y) {
-        return this.representation.evaluate(this.genome, x, y);
+        return this.grammar.evaluate(this.phenotype, x, y);
     }
-    
+
     visualize(canvas) {
         console.time(`visualize-${this.id}`);
         
@@ -81,18 +90,6 @@ class PatternGrammarIndividual extends Individual {
         console.timeEnd(`visualize-${this.id}`);
     }
     
-    
-    crossover(other) {
-        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
-        const length = this.genome.length;
-        return [new PatternGrammarIndividual(child1Genome, length), new PatternGrammarIndividual(child2Genome, length)];
-    }
-
-    clone() {
-        const clone = new PatternGrammarIndividual(this.representation.clone(this.genome), this.genome.length);
-        clone.fitness = this.fitness;
-        return clone;
-    }
     
     getExpressionString() {
         return this.getPhenotype();

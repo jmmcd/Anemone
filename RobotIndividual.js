@@ -1,153 +1,130 @@
+// PTO generator: builds the 43-gene parameter vector, each gene drawn from its
+// own range (same ranges as the old generateRandomGenome). Backed by
+// PTORepresentation with distType 'fine' so mutation is Gaussian creep within
+// each gene's range — the interactive feel the old FloatRepresentation had.
+const robotGenerator = (rnd) => [
+    // Head (4)
+    rnd.uniform(0.6, 0.9),   // 0: head size
+    rnd.uniform(0.4, 0.6),   // 1: head x
+    rnd.uniform(0.15, 0.30), // 2: head y
+    rnd.uniform(0, 1),       // 3: head shape
+    // Head color (3)
+    rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), // 4-6
+    // Eyes (6)
+    rnd.uniform(0, 1),       // 7: eye type
+    rnd.uniform(0.35, 0.45), // 8: left eye x
+    rnd.uniform(0.2, 0.3),   // 9: left eye y
+    rnd.uniform(0.55, 0.65), // 10: right eye x
+    rnd.uniform(0.2, 0.3),   // 11: right eye y
+    rnd.uniform(0.02, 0.07), // 12: eye size
+    // Mouth (3)
+    rnd.uniform(0, 1),       // 13: mouth type
+    rnd.uniform(0.45, 0.55), // 14: mouth x
+    rnd.uniform(0.35, 0.45), // 15: mouth y
+    // Body (4)
+    rnd.uniform(0.3, 0.5),   // 16: body width
+    rnd.uniform(0.3, 0.6),   // 17: body height
+    rnd.uniform(0.45, 0.55), // 18: body x
+    rnd.uniform(0.5, 0.6),   // 19: body y
+    // Body color (3)
+    rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), // 20-22
+    // Arms (5)
+    rnd.uniform(0.25, 0.4),  // 23: left arm x
+    rnd.uniform(0.55, 0.65), // 24: left arm y
+    rnd.uniform(0.6, 0.75),  // 25: right arm x
+    rnd.uniform(0.55, 0.65), // 26: right arm y
+    rnd.uniform(0.01, 0.04), // 27: arm thickness
+    // Legs (5)
+    rnd.uniform(0.4, 0.5),   // 28: left leg x
+    rnd.uniform(0.75, 0.85), // 29: left leg y
+    rnd.uniform(0.5, 0.6),   // 30: right leg x
+    rnd.uniform(0.75, 0.85), // 31: right leg y
+    rnd.uniform(0.01, 0.04), // 32: leg thickness
+    // Limb color (3)
+    rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), // 33-35
+    // Feature flags (4): hair, ears, teeth, hat
+    rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1), // 36-39
+    // Accessories (3): sword flag, hair/hat color, accessory color
+    rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1) // 40-42
+];
+
+const robotRepresentation = new PTORepresentation(robotGenerator, { distType: 'fine' });
+
 class RobotIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-
-        this.representation = new FloatRepresentation({
-            length: 43,
-            bounds: Array(43).fill({min: 0, max: 1}),
-            mutationStrength: 0.1
-        });
-
-        this.genome = genome || this.generateRandomGenome();
+        this.representation = robotRepresentation;
+        this.genome = genome || this.representation.generateRandom();
     }
 
-    generateRandomGenome() {
-        return [
-            // Head (4 params)
-            Math.random() * 0.3 + 0.6,      // 0: head size (0.6-0.9)
-            Math.random() * 0.2 + 0.4,      // 1: head x position (0.4-0.6)
-            Math.random() * 0.15 + 0.15,    // 2: head y position (0.15-0.3)
-            Math.random(),                   // 3: head shape (0=circle, 1=oval)
-            
-            // Head color (3 params)
-            Math.random(),                   // 4: head color R
-            Math.random(),                   // 5: head color G  
-            Math.random(),                   // 6: head color B
-            
-            // Eyes (6 params)
-            Math.random(),                   // 7: eye type (0-1 for different styles)
-            Math.random() * 0.1 + 0.35,     // 8: left eye x (0.35-0.45)
-            Math.random() * 0.1 + 0.2,      // 9: left eye y (0.2-0.3)
-            Math.random() * 0.1 + 0.55,     // 10: right eye x (0.55-0.65)
-            Math.random() * 0.1 + 0.2,      // 11: right eye y (0.2-0.3)
-            Math.random() * 0.05 + 0.02,    // 12: eye size (0.02-0.07)
-            
-            // Mouth (3 params)
-            Math.random(),                   // 13: mouth type (0-1 for different styles)
-            Math.random() * 0.1 + 0.45,     // 14: mouth x (0.45-0.55)
-            Math.random() * 0.1 + 0.35,     // 15: mouth y (0.35-0.45)
-            
-            // Body (4 params)
-            Math.random() * 0.2 + 0.3,      // 16: body width (0.3-0.5)
-            Math.random() * 0.3 + 0.3,      // 17: body height (0.3-0.6)
-            Math.random() * 0.1 + 0.45,     // 18: body x (0.45-0.55)
-            Math.random() * 0.1 + 0.5,      // 19: body y (0.5-0.6)
-            
-            // Body color (3 params)
-            Math.random(),                   // 20: body color R
-            Math.random(),                   // 21: body color G
-            Math.random(),                   // 22: body color B
-            
-            // Arms (5 params)
-            Math.random() * 0.15 + 0.25,    // 23: left arm start x (0.25-0.4)
-            Math.random() * 0.1 + 0.55,     // 24: left arm start y (0.55-0.65)
-            Math.random() * 0.15 + 0.6,     // 25: right arm start x (0.6-0.75)
-            Math.random() * 0.1 + 0.55,     // 26: right arm start y (0.55-0.65)
-            Math.random() * 0.03 + 0.01,    // 27: arm thickness (0.01-0.04)
-            
-            // Legs (5 params)
-            Math.random() * 0.1 + 0.4,      // 28: left leg start x (0.4-0.5)
-            Math.random() * 0.1 + 0.75,     // 29: left leg start y (0.75-0.85)
-            Math.random() * 0.1 + 0.5,      // 30: right leg start x (0.5-0.6)
-            Math.random() * 0.1 + 0.75,     // 31: right leg start y (0.75-0.85)
-            Math.random() * 0.03 + 0.01,    // 32: leg thickness (0.01-0.04)
-            
-            // Limb color (3 params)
-            Math.random(),                   // 33: limb color R
-            Math.random(),                   // 34: limb color G
-            Math.random(),                   // 35: limb color B
-            
-            // Optional features flags (4 params)
-            Math.random(),                   // 36: hair flag (>0.5 = has hair)
-            Math.random(),                   // 37: ears flag (>0.5 = has ears)
-            Math.random(),                   // 38: teeth flag (>0.5 = has teeth)
-            Math.random(),                   // 39: hat flag (>0.5 = has hat)
-            
-            // Accessories (4 params)
-            Math.random(),                   // 40: sword flag (>0.5 = has sword)
-            Math.random(),                   // 41: hair/hat color
-            Math.random(),                   // 42: accessory color
-        ];
-    }
-    
     getParameters() {
         return {
             // Head
-            headSize: this.genome[0],
-            headX: this.genome[1],
-            headY: this.genome[2],
-            headShape: this.genome[3],
+            headSize: this.phenotype[0],
+            headX: this.phenotype[1],
+            headY: this.phenotype[2],
+            headShape: this.phenotype[3],
             headColor: {
-                r: Math.floor(this.genome[4] * 255),
-                g: Math.floor(this.genome[5] * 255),
-                b: Math.floor(this.genome[6] * 255)
+                r: Math.floor(this.phenotype[4] * 255),
+                g: Math.floor(this.phenotype[5] * 255),
+                b: Math.floor(this.phenotype[6] * 255)
             },
             
             // Eyes
-            eyeType: Math.floor(this.genome[7] * 3), // 3 eye types
-            leftEyeX: this.genome[8],
-            leftEyeY: this.genome[9],
-            rightEyeX: this.genome[10],
-            rightEyeY: this.genome[11],
-            eyeSize: this.genome[12],
+            eyeType: Math.floor(this.phenotype[7] * 3), // 3 eye types
+            leftEyeX: this.phenotype[8],
+            leftEyeY: this.phenotype[9],
+            rightEyeX: this.phenotype[10],
+            rightEyeY: this.phenotype[11],
+            eyeSize: this.phenotype[12],
             
             // Mouth
-            mouthType: Math.floor(this.genome[13] * 4), // 4 mouth types
-            mouthX: this.genome[14],
-            mouthY: this.genome[15],
+            mouthType: Math.floor(this.phenotype[13] * 4), // 4 mouth types
+            mouthX: this.phenotype[14],
+            mouthY: this.phenotype[15],
             
             // Body
-            bodyWidth: this.genome[16],
-            bodyHeight: this.genome[17],
-            bodyX: this.genome[18],
-            bodyY: this.genome[19],
+            bodyWidth: this.phenotype[16],
+            bodyHeight: this.phenotype[17],
+            bodyX: this.phenotype[18],
+            bodyY: this.phenotype[19],
             bodyColor: {
-                r: Math.floor(this.genome[20] * 255),
-                g: Math.floor(this.genome[21] * 255),
-                b: Math.floor(this.genome[22] * 255)
+                r: Math.floor(this.phenotype[20] * 255),
+                g: Math.floor(this.phenotype[21] * 255),
+                b: Math.floor(this.phenotype[22] * 255)
             },
             
             // Arms
-            leftArmX: this.genome[23],
-            leftArmY: this.genome[24],
-            rightArmX: this.genome[25],
-            rightArmY: this.genome[26],
-            armThickness: this.genome[27],
+            leftArmX: this.phenotype[23],
+            leftArmY: this.phenotype[24],
+            rightArmX: this.phenotype[25],
+            rightArmY: this.phenotype[26],
+            armThickness: this.phenotype[27],
             
             // Legs
-            leftLegX: this.genome[28],
-            leftLegY: this.genome[29],
-            rightLegX: this.genome[30],
-            rightLegY: this.genome[31],
-            legThickness: this.genome[32],
+            leftLegX: this.phenotype[28],
+            leftLegY: this.phenotype[29],
+            rightLegX: this.phenotype[30],
+            rightLegY: this.phenotype[31],
+            legThickness: this.phenotype[32],
             
             // Limb color
             limbColor: {
-                r: Math.floor(this.genome[33] * 255),
-                g: Math.floor(this.genome[34] * 255),
-                b: Math.floor(this.genome[35] * 255)
+                r: Math.floor(this.phenotype[33] * 255),
+                g: Math.floor(this.phenotype[34] * 255),
+                b: Math.floor(this.phenotype[35] * 255)
             },
             
             // Features
-            hasHair: this.genome[36] > 0.5,
-            hasEars: this.genome[37] > 0.5,
-            hasTeeth: this.genome[38] > 0.5,
-            hasHat: this.genome[39] > 0.5,
-            hasSword: this.genome[40] > 0.5,
+            hasHair: this.phenotype[36] > 0.5,
+            hasEars: this.phenotype[37] > 0.5,
+            hasTeeth: this.phenotype[38] > 0.5,
+            hasHat: this.phenotype[39] > 0.5,
+            hasSword: this.phenotype[40] > 0.5,
             
             // Colors
-            hairColor: Math.floor(this.genome[41] * 360), // Hue for hair/hat
-            accessoryColor: Math.floor(this.genome[42] * 360) // Hue for accessories
+            hairColor: Math.floor(this.phenotype[41] * 360), // Hue for hair/hat
+            accessoryColor: Math.floor(this.phenotype[42] * 360) // Hue for accessories
         };
     }
     

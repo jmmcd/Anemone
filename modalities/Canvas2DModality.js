@@ -248,8 +248,13 @@ class Canvas2DModality {
         const width = canvas.width;
         const height = canvas.height;
 
-        // Array genomes stringify as "1,2,3,…"; string/other genomes coerce too.
-        const cacheKey = `${holder.genome}_${width}x${height}`;
+        // The cache key must change whenever the rendered output would. By default
+        // that is the genome (array genomes stringify as "1,2,3,…"; string/other
+        // genomes coerce too). Individuals whose genotype is not directly
+        // renderable (e.g. a PTO trace) can expose renderKey() to return a key
+        // derived from the phenotype instead.
+        const keySource = (typeof holder.renderKey === 'function') ? holder.renderKey() : holder.genome;
+        const cacheKey = `${keySource}_${width}x${height}`;
 
         if (holder._cacheKey === cacheKey && holder._cachedImageData) {
             ctx.putImageData(holder._cachedImageData, 0, 0);

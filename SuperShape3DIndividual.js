@@ -1,84 +1,65 @@
+// Genome: two SuperShape blocks (14 genes) — 7 for r1(θ) + 7 for r2(φ).
+// Each block: [m_numerator (int), m_denominator (preset), n1, n2, n3, a, b].
+// Backed by PTORepresentation; distType 'fine' gives Gaussian creep for reals
+// and small steps for the integer genes, replacing the old custom operators.
+const supershape3dDenominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
+const supershape3dBlock = (rnd) => [
+    rnd.randint(1, 20),                  // m_numerator (integer)
+    rnd.choice(supershape3dDenominators), // m_denominator (from preset list)
+    rnd.uniform(0.1, 10),                // n1
+    rnd.uniform(0.1, 10),                // n2
+    rnd.uniform(0.1, 10),                // n3
+    rnd.uniform(0.1, 3),                 // a
+    rnd.uniform(0.1, 3)                  // b
+];
+const supershape3dGenerator = (rnd) => [...supershape3dBlock(rnd), ...supershape3dBlock(rnd)];
+const supershape3dRepresentation = new PTORepresentation(supershape3dGenerator, { distType: 'fine' });
+
 class SuperShape3DIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        // 14 params: 7 for r1(θ) + 7 for r2(φ), same structure as SuperShapeIndividual × 2
-        this.representation = new FloatRepresentation({
-            length: 14,
-            bounds: [
-                {min: 1, max: 20},   // m1_numerator (int)
-                {min: 1, max: 12},   // m1_denominator (int)
-                {min: 0.1, max: 10}, // n1_1
-                {min: 0.1, max: 10}, // n2_1
-                {min: 0.1, max: 10}, // n3_1
-                {min: 0.1, max: 3},  // a1
-                {min: 0.1, max: 3},  // b1
-                {min: 1, max: 20},   // m2_numerator (int)
-                {min: 1, max: 12},   // m2_denominator (int)
-                {min: 0.1, max: 10}, // n1_2
-                {min: 0.1, max: 10}, // n2_2
-                {min: 0.1, max: 10}, // n3_2
-                {min: 0.1, max: 3},  // a2
-                {min: 0.1, max: 3}   // b2
-            ]
-        });
-
+        this.representation = supershape3dRepresentation;
         this.threeDModality = new ThreeDModality();
 
-        this.genome = genome || this.generateRandomGenome();
+        this.genome = genome || this.representation.generateRandom();
         this.thetaPoints = 50;
         this.phiPoints = 100;
     }
 
     usesColorPalette() { return true; }
 
-    generateRandomGenome() {
-        const genome = this.representation.generateRandom();
-        // Integer params: m numerators and denominators
-        genome[0] = Math.round(genome[0]);
-        genome[1] = this.generateDenominator();
-        genome[7] = Math.round(genome[7]);
-        genome[8] = this.generateDenominator();
-        return genome;
-    }
-    
-    generateDenominator() {
-        // Generate reasonable denominators for m = numerator/denominator
-        const denominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
-        return denominators[Math.floor(Math.random() * denominators.length)];
-    }
-    
     getParameters() {
         // Extract parameters from genome: [m1_num, m1_den, n1_1, n2_1, n3_1, a1, b1, m2_num, m2_den, n1_2, n2_2, n3_2, a2, b2]
         
         // r1 parameters (for polar angle θ)
-        const m1_numerator = Math.max(1, Math.min(50, Math.round(this.genome[0])));
-        const m1_denominator = Math.max(1, Math.min(12, Math.round(this.genome[1])));
+        const m1_numerator = Math.max(1, Math.min(50, Math.round(this.phenotype[0])));
+        const m1_denominator = Math.max(1, Math.min(12, Math.round(this.phenotype[1])));
         
         const r1Params = {
             m_numerator: m1_numerator,
             m_denominator: m1_denominator,
             m: m1_numerator / m1_denominator,
-            n1: Math.max(0.01, Math.min(20, this.genome[2])),
-            n2: Math.max(0.01, Math.min(20, this.genome[3])),
-            n3: Math.max(0.01, Math.min(20, this.genome[4])),
-            a: Math.max(0.01, Math.min(5, this.genome[5])),
-            b: Math.max(0.01, Math.min(5, this.genome[6]))
+            n1: Math.max(0.01, Math.min(20, this.phenotype[2])),
+            n2: Math.max(0.01, Math.min(20, this.phenotype[3])),
+            n3: Math.max(0.01, Math.min(20, this.phenotype[4])),
+            a: Math.max(0.01, Math.min(5, this.phenotype[5])),
+            b: Math.max(0.01, Math.min(5, this.phenotype[6]))
         };
         
         // r2 parameters (for azimuthal angle φ)
-        const m2_numerator = Math.max(1, Math.min(50, Math.round(this.genome[7])));
-        const m2_denominator = Math.max(1, Math.min(12, Math.round(this.genome[8])));
+        const m2_numerator = Math.max(1, Math.min(50, Math.round(this.phenotype[7])));
+        const m2_denominator = Math.max(1, Math.min(12, Math.round(this.phenotype[8])));
         
         const r2Params = {
             m_numerator: m2_numerator,
             m_denominator: m2_denominator,
             m: m2_numerator / m2_denominator,
-            n1: Math.max(0.01, Math.min(20, this.genome[9])),
-            n2: Math.max(0.01, Math.min(20, this.genome[10])),
-            n3: Math.max(0.01, Math.min(20, this.genome[11])),
-            a: Math.max(0.01, Math.min(5, this.genome[12])),
-            b: Math.max(0.01, Math.min(5, this.genome[13]))
+            n1: Math.max(0.01, Math.min(20, this.phenotype[9])),
+            n2: Math.max(0.01, Math.min(20, this.phenotype[10])),
+            n3: Math.max(0.01, Math.min(20, this.phenotype[11])),
+            a: Math.max(0.01, Math.min(5, this.phenotype[12])),
+            b: Math.max(0.01, Math.min(5, this.phenotype[13]))
         };
         
         return { r1: r1Params, r2: r2Params };
@@ -304,56 +285,6 @@ class SuperShape3DIndividual extends Individual {
     // Legacy methods removed - now using shared Three.js scene
     // Individual Three.js initialization, mesh management, and cleanup 
     // are now handled by the InteractiveEAFramework's shared scene system
-    
-    mutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                
-                switch (i) {
-                    case 0: // m1_numerator (integer mutation)
-                    case 7: // m2_numerator (integer mutation)
-                        const numeratorDelta = Math.floor(Math.random() * 7) - 3; // -3 to +3
-                        this.genome[i] = Math.max(1, Math.min(50, 
-                            Math.round(this.genome[i]) + numeratorDelta
-                        ));
-                        break;
-                    case 1: // m1_denominator (integer mutation)
-                    case 8: // m2_denominator (integer mutation)
-                        this.genome[i] = this.generateDenominator();
-                        break;
-                    case 2: case 3: case 4: // r1: n1, n2, n3
-                    case 9: case 10: case 11: // r2: n1, n2, n3
-                        const noise = this.representation.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(20, 
-                            this.genome[i] + noise * 0.5
-                        ));
-                        break;
-                    case 5: case 6: // r1: a, b
-                    case 12: case 13: // r2: a, b
-                        const scaleNoise = this.representation.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(5, 
-                            this.genome[i] + scaleNoise * 0.2
-                        ));
-                        break;
-                }
-            }
-        }
-        this.invalidateImageCache();
-    }
-    
-    crossover(other) {
-        const [g1, g2] = this.representation.crossover(this.genome, other.genome);
-        // Round integer params: m numerators (0,7) and denominators (1,8)
-        for (const idx of [0, 7]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
-        for (const idx of [1, 8]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
-        return [new SuperShape3DIndividual(g1), new SuperShape3DIndividual(g2)];
-    }
-
-    clone() {
-        const clone = new SuperShape3DIndividual(this.representation.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
-    }
     
     getPhenotype() {
         const params = this.getParameters();

@@ -41,31 +41,39 @@ The codebase separates three concerns:
 ### Individual Base Class (`Individual.js`)
 All individual types inherit from this:
 - **Required method**: `visualize(canvas)`
-- **Generic genetic operators**: `mutate(rate)`, `crossover(other)`, `clone()` are implemented in the base class and delegate to `this.representation` (the representation strategy object). A typical subclass only sets up `this.representation` + `this.genome` and implements `visualize()`; it does **not** override the operators. Override only for non-standard genome semantics (variable length, mixed int/float, MIDI re-wiring on clone, etc.).
+- **Generic genetic operators**: `mutate(rate)`, `crossover(other)`, `clone()` are implemented in the base class and delegate to `this.representation` (the representation strategy object). A typical subclass only sets up `this.representation` + `this.genome` and implements `visualize()`; it does **not** override the operators. With `PTORepresentation` (see below) covering variable-length and mixed int/float structures, overriding the operators is now rarely necessary.
+- **Genotype vs phenotype**: `this.genome` is the heritable material the operators act on. `this.phenotype` (a base getter) is the genome *expressed*: for most representations it is the genome itself, but for a `PTORepresentation` the genome is a trace and `this.phenotype` is whatever its generator produced (array, matrix, tree, … — opaque). Rendering/decoding should read `this.phenotype`, not `this.genome`. `getPhenotype()` returns `this.phenotype` by default; subclasses override it to return an interpreted form (a decoded object, a note list, a turtle-program string, …).
 - **Capability flags**: `is3D()` and `usesColorPalette()` (both default `false`). The framework reads these — `is3D()` drives the shared-3D render path; `usesColorPalette()` makes the framework attach the palette UI panel.
 - **Optional methods**: `getPhenotype()`, `playMIDI()`, `stopMIDI()`
-- **Self-description**: `describe()` returns the rich HTML shown in the genome panel (header + informative phenotype + genome dump); `toString()` is a concise one-line summary. The base class implements both generically; subclasses usually override only `describeExtra()` to inject type-specific detail (e.g. SuperFormula's formula) into the default layout.
-- **Caching**: the render cache state (`_cachedImageData`/`_cacheKey`) lives here and is cleared by `invalidateImageCache()`; the 2D-canvas caching mechanism itself is `Canvas2DModality.renderCached(canvas, individual, renderFn)`
+- **Self-description**: `describe()` returns the rich HTML shown in the genome panel (header + informative phenotype + genome dump); `toString()` is a concise one-line summary. The base class implements both generically (and `_formatGenomeSection` renders a PTO trace as its list of recorded decisions); subclasses usually override only `describeExtra()` to inject type-specific detail (e.g. SuperFormula's formula) into the default layout.
+- **Caching**: the render cache state (`_cachedImageData`/`_cacheKey`) lives here and is cleared by `invalidateImageCache()`; the 2D-canvas caching mechanism itself is `Canvas2DModality.renderCached(canvas, individual, renderFn)`, which keys on `individual.renderKey()` (the base returns `this.phenotype`).
 - Pass `'SKIP_GENOME_GENERATION'` as the genome argument to `super()` when the subclass manages genome creation itself
 
 ## Representations
 
 | File | Genome type | Used by |
 |---|---|---|
+| `PTORepresentation.js` | **Program Trace Optimisation**: genome = trace of random decisions; phenotype = generator output | AnemoneIndividual, ShapesIndividual, GridIndividual, MelodyIndividual, SuperShape{,3D}, RobotIndividual, SheepIndividual, PenroseIndividual |
 | `TreeRepresentation.js` | GP expression tree | PatternIndividual |
-| `BinaryRepresentation.js` | `0/1` array | GridIndividual, MelodyIndividual |
-| `IntegerRepresentation.js` | integer array 0-255 | ShapesIndividual, MouseMusicIndividual, EEGSonificationIndividual |
-| `FloatRepresentation.js` | float array with per-gene bounds, Gaussian mutation | SuperFormula{,3D}, Character, Sheep, Penrose |
+| `IntegerRepresentation.js` | integer array 0-255 | MouseMusicIndividual, EEGSonificationIndividual |
 | `GrammaticalRepresentation.js` | integer array → BNF derivation → compiled JS function | PatternGrammarIndividual, PolarCurveIndividual |
 | `DAGRepresentation.js` | integer array → DAG of InputNode/ProcessingNode/OutputNode | MouseMusicIndividual, EEGSonificationIndividual |
 
 `DAGRepresentation` is configurable: pass `numInputs`, `numOutputs`, `numProcIndex`, `procOpsStartIndex`, `outputThresholdIndex`, `connectionStartIndex` to handle both the mouse-driven DAG (3 inputs, 3 outputs) and the EEG variant (5 inputs, 2 outputs).
 
+### PTORepresentation (`representations/PTORepresentation.js`)
+A representation backed by [Program Trace Optimisation](https://github.com/Program-Trace-Optimisation/PTO) (vendored at `vendor/pto-bundle.js`, loaded as a global `PTO`). Instead of a fixed genome shape, the search space is defined by a **generator** `generator(rnd)` that builds a phenotype using PTO's `rnd` (`rnd.random/uniform/randint/choice/sample`). PTO records the sequence of `rnd` decisions — the **trace** — and that trace is the genotype; one representation can thus emulate any structure (fixed/variable length, mixed int/float, etc.), so an individual only supplies a generator, not bespoke operators.
+
+- `generateRandom()` → a trace; `express(geno)` replays the generator to derive the phenotype (cached per-trace in a `WeakMap`).
+- `mutate(geno, rate)` is position-wise ("1/n type"): each trace entry mutates independently with probability `rate` (so the **caller controls mutation strength** — important for interactive EC), then the generator is replayed. `crossover` is uniform over the aligned traces; `clone` shares the immutable trace.
+- `distType` option: `'fine'` gives Gaussian creep for real-valued genes (use for float genomes — matches the old `FloatRepresentation` feel); `'coarse'` (default) re-samples a gene on mutation (fine for int/binary/categorical).
+- This replaced the former `FloatRepresentation` and `BinaryRepresentation` (now deleted) and the hand-rolled operators in the individuals above.
+
 ## Modalities
 
 | File | Purpose |
 |---|---|
-| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static helpers used by path-drawing individuals: `renderCached(canvas, individual, renderFn)` (ImageData caching by genome+size), `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
+| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static helpers used by path-drawing individuals: `renderCached(canvas, individual, renderFn)` (ImageData caching by `individual.renderKey()` + size), `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
 | `MIDIModality.js` | `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop |
 | `ThreeDModality.js` | `createMesh(vertices, indices, colors)` and `render(canvas, id, vertices, indices, colors, framework)` via the shared Three.js scene |
 
@@ -76,29 +84,36 @@ All sound-producing individuals **share one** `MIDIModality` instance, owned by 
 
 ## Composition Pattern
 
-A standard individual is just a constructor (representation + genome) plus `visualize()`; `mutate`/`crossover`/`clone` are inherited from `Individual` and delegate to `this.representation`:
+Most individuals are now backed by `PTORepresentation`: the individual-specific part is a **generator** `generator(rnd)` (the search space); `mutate`/`crossover`/`clone` are inherited from `Individual` and delegate to the representation. The generator's output is the phenotype, read via `this.phenotype` (the genome itself is the PTO trace).
 
 ```javascript
+// One shared, stateless representation per type (lazily builds a single PTO Op).
+const someGenerator = (rnd) => [
+    rnd.uniform(0, 1),                    // a float gene
+    rnd.randint(1, 20),                   // an int gene
+    rnd.choice([1, 2, 3, 4, 6, 8, 12]),  // a categorical gene
+];
+const someRepresentation = new PTORepresentation(someGenerator, { distType: 'fine' });
+
 class SomeIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.representation = new FloatRepresentation({ length: N, bounds: [...] });
-        this.genome = genome || this.representation.generateRandom();
+        this.representation = someRepresentation;
+        this.genome = genome || this.representation.generateRandom();   // genome = trace
     }
 
     usesColorPalette() { return true; }            // optional: opt into the palette UI
 
     visualize(canvas) {
+        const p = this.phenotype;                  // the generator's output array
         // domain-specific rendering; for color use window.Palette.color(t)
     }
 }
 ```
 
-Override `mutate`/`crossover`/`clone` only when the genome semantics are non-standard. The representation strategy object is conventionally named `this.representation`.
+Use `distType: 'fine'` for float genomes (Gaussian creep), the default `'coarse'` for int/binary/categorical (re-sample on mutation). Override `mutate`/`crossover`/`clone` only when the genome semantics genuinely fall outside this model.
 
-Examples of non-standard overrides: `SuperFormula{,3D}` keep custom `mutate`/`crossover` for their mixed integer/float genome but still use `this.representation` for helpers like `gaussianRandom`/`clone`; `Creature` manages a variable-length genome directly and so has no `this.representation` at all (it overrides every operator).
-
-**AnemoneIndividual** is intentionally not refactored into a representation: its genome is variable-length (insert/delete/change mutation, two-point crossover with independent cut points), and its rendering is path-based rather than pixel-based, so neither IntegerRepresentation nor Canvas2DModality applies cleanly.
+A few individuals use a different representation: `PatternIndividual` (`TreeRepresentation`), `PatternGrammarIndividual`/`PolarCurveIndividual` (`GrammaticalRepresentation`), and `MouseMusicIndividual`/`EEGSonificationIndividual` (`IntegerRepresentation` + `DAGRepresentation`). For those the genome *is* the working structure, so `this.phenotype === this.genome` and rendering reads `this.genome` directly. These (trees, grammars, DAGs) were intentionally left non-PTO.
 
 ## Individual Types
 
@@ -107,15 +122,15 @@ Examples of non-standard overrides: `SuperFormula{,3D}` keep custom `mutate`/`cr
 | `PatternIndividual` | Tree | Canvas2D | GP over x,y,r,theta |
 | `PatternGrammarIndividual` | Grammatical | Canvas2D | BNF grammar → expression |
 | `PolarCurveIndividual` | Grammatical | Canvas2D | Polar coordinate curves |
-| `ShapesIndividual` | Integer | Canvas2D | Sequence of drawing ops |
-| `GridIndividual` | Binary | Canvas2D | 8×8 grid |
-| `SuperShapeIndividual` | Float | Canvas2D | Gielis polar curve |
-| `SuperShape3DIndividual` | Float | ThreeD | 3D Gielis surface |
-| `AnemoneIndividual` | custom | Canvas2D | Variable-length turtle graphics |
-| `RobotIndividual` | Float | Canvas2D | Parametric cartoon character |
-| `SheepIndividual` | Float | Canvas2D | Float genome fed into fixed-random neural network |
-| `PenroseIndividual` | Float | Canvas2D | Kite-and-dart tiling |
-| `MelodyIndividual` | Binary | MIDI | 8-note sequences |
+| `ShapesIndividual` | PTO (60 bytes) | Canvas2D | Sequence of drawing ops |
+| `GridIndividual` | PTO (64 bits) | Canvas2D | 8×8 grid |
+| `SuperShapeIndividual` | PTO (mixed, fine) | Canvas2D | Gielis polar curve |
+| `SuperShape3DIndividual` | PTO (mixed, fine) | ThreeD | 3D Gielis surface |
+| `AnemoneIndividual` | PTO (variable-length bytes) | Canvas2D | Variable-length turtle graphics |
+| `RobotIndividual` | PTO (43 floats, fine) | Canvas2D | Parametric cartoon character |
+| `SheepIndividual` | PTO (8 floats, fine) | Canvas2D | Float genome fed into fixed-random neural network |
+| `PenroseIndividual` | PTO (8 params, fine) | Canvas2D | Kite-and-dart tiling |
+| `MelodyIndividual` | PTO (64 bits) | MIDI | 8-note sequences |
 | `MouseMusicIndividual` | Integer + DAG | MIDI | Mouse-driven DAG → notes |
 | `EEGSonificationIndividual` | Integer + DAG | MIDI | EEG-stream-driven DAG → notes |
 
@@ -136,7 +151,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 ## Key Implementation Notes
 
 - **Palette system** (`Palette.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.Palette.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
-- **Image cache**: `Canvas2DModality.renderCached(canvas, individual, renderFn)` skips the render when the individual's genome and canvas size are unchanged (cache state stored on the individual). Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
+- **Image cache**: `Canvas2DModality.renderCached(canvas, individual, renderFn)` skips the render when `individual.renderKey()` (the base returns `this.phenotype`) and the canvas size are unchanged (cache state stored on the individual). Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
 - **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked); `displayCurrentGenome()` just sets the panel to `currentIndividual.describe()`. All formatting lives on the individual (base `describe()`/`_format*` helpers + per-type `describeExtra()`), not the framework.
 - **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and wires the output into the single shared `framework.sharedMIDI`.
 - **EEG**: `EEGPreprocessing.js` (`EEGDataStream` class) parses Muse-headband CSV, aligns to 200ms grid, and computes 5 normalised features (mean, variance, peak, baseline, asymmetry) per window. The framework distributes the stream to EEG individuals via `setEEGDataStream()`.
@@ -145,10 +160,10 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 
 **Adding a new individual type:**
 1. Extend `Individual`
-2. Pick or create a `Representation` for the genome and assign it to `this.representation`
-3. Implement `visualize(canvas)` (and pick a `Modality` if it helps); return `true` from `usesColorPalette()` and/or `is3D()` as appropriate
+2. Write a `generator(rnd)` and a shared `new PTORepresentation(generator, { distType })`, assign it to `this.representation`, and set `this.genome = genome || this.representation.generateRandom()`. (Only reach for `Tree`/`Grammatical`/`Integer`/`DAG` representations if the structure is genuinely a tree/grammar/DAG.)
+3. Implement `visualize(canvas)` reading `this.phenotype` (and pick a `Modality` if it helps); return `true` from `usesColorPalette()` and/or `is3D()` as appropriate
 4. Inherited `mutate`/`crossover`/`clone` delegate to `this.representation` — only override for non-standard genome semantics
-5. Register in `Anemone.js` individual type selector and add `<script>` tags to `index.html`
+5. Register in `Anemone.js` individual type selector and add `<script>` tags to `index.html` (PTO-backed types need `vendor/pto-bundle.js` and `representations/PTORepresentation.js`, which are already loaded)
 
 **Sound-producing individual:**
 ```javascript

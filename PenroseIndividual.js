@@ -1,23 +1,25 @@
+// PTO generator: 8 parameters, each from its own range (rotation, offsets,
+// scale, tile count, hues, brightness). distType 'fine' gives Gaussian-creep
+// mutation bounded to each gene's range — note this is more correct than the old
+// custom mutate, which clamped scale/brightness/offsets to [0,1].
+const penroseGenerator = (rnd) => [
+    rnd.uniform(0, 2 * Math.PI), // 0: rotation
+    rnd.uniform(-1, 1),          // 1: x offset
+    rnd.uniform(-1, 1),          // 2: y offset
+    rnd.uniform(0.8, 1.3),       // 3: scale
+    rnd.uniform(40, 70),         // 4: num tiles (floored at read → 40-69)
+    rnd.uniform(0, 1),           // 5: kite hue
+    rnd.uniform(0, 1),           // 6: dart hue
+    rnd.uniform(0.6, 1.1)        // 7: brightness
+];
+const penroseRepresentation = new PTORepresentation(penroseGenerator, { distType: 'fine' });
+
 class PenroseIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.representation = new FloatRepresentation({
-            length: 8,
-            bounds: [
-                {min: 0, max: 2 * Math.PI}, // 0: rotation
-                {min: -1, max: 1},           // 1: x offset
-                {min: -1, max: 1},           // 2: y offset
-                {min: 0.8, max: 1.3},        // 3: scale
-                {min: 40, max: 69},          // 4: num tiles
-                {min: 0, max: 1},            // 5: kite hue
-                {min: 0, max: 1},            // 6: dart hue
-                {min: 0.6, max: 1.1}         // 7: brightness
-            ],
-            mutationStrength: 0.15
-        });
-
-        this.genome = genome || this.generateRandomGenome();
+        this.representation = penroseRepresentation;
+        this.genome = genome || this.representation.generateRandom();
 
         // Golden ratio
         this.phi = (1 + Math.sqrt(5)) / 2;
@@ -26,29 +28,16 @@ class PenroseIndividual extends Individual {
         this.tileSize = 1.0;
     }
 
-    generateRandomGenome() {
-        return [
-            Math.random() * 2 * Math.PI,         // 0: rotation
-            Math.random() * 2 - 1,               // 1: x offset
-            Math.random() * 2 - 1,               // 2: y offset
-            Math.random() * 0.5 + 0.8,           // 3: scale
-            Math.floor(Math.random() * 30) + 40, // 4: num tiles (40-69)
-            Math.random(),                       // 5: kite hue
-            Math.random(),                       // 6: dart hue
-            Math.random() * 0.5 + 0.6            // 7: brightness
-        ];
-    }
-    
     getParameters() {
         return {
-            rotation: this.genome[0],
-            offsetX: this.genome[1],
-            offsetY: this.genome[2],
-            scale: this.genome[3],
-            numTiles: Math.floor(this.genome[4]),
-            kiteHue: this.genome[5] * 360,
-            dartHue: this.genome[6] * 360,
-            brightness: this.genome[7]
+            rotation: this.phenotype[0],
+            offsetX: this.phenotype[1],
+            offsetY: this.phenotype[2],
+            scale: this.phenotype[3],
+            numTiles: Math.floor(this.phenotype[4]),
+            kiteHue: this.phenotype[5] * 360,
+            dartHue: this.phenotype[6] * 360,
+            brightness: this.phenotype[7]
         };
     }
     
@@ -293,23 +282,6 @@ class PenroseIndividual extends Individual {
         ctx.fillText(`Tiles: ${tiles.length}/${params.numTiles}`, 5, height - 5);
     }
     
-    mutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                const noise = (Math.random() - 0.5) * 0.3;
-                
-                if (i === 0) { // rotation
-                    this.genome[i] = (this.genome[i] + noise) % (2 * Math.PI);
-                } else if (i === 4) { // numTiles
-                    this.genome[i] = Math.max(20, Math.min(80, this.genome[i] + (Math.random() - 0.5) * 10));
-                } else {
-                    this.genome[i] = Math.max(0, Math.min(1, this.genome[i] + noise * 0.3));
-                }
-            }
-        }
-        this.invalidateImageCache();
-    }
-
     getPhenotype() {
         const params = this.getParameters();
         return `Penrose: ${params.numTiles} tiles, rot=${(params.rotation * 180 / Math.PI).toFixed(0)}°`;

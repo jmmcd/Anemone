@@ -1,8 +1,11 @@
 /**
- * TreeRepresentation
+ * GP tree node classes + PTO generator
  *
- * Handles tree-based genetic programming representation.
- * Provides genome generation, mutation, crossover, and evaluation for GP expression trees.
+ * The expression-tree node classes (TerminalNode/FunctionNode) and a
+ * `createTreeGenerator` factory: a PTO generator that builds a random expression
+ * tree directly from `rnd` (the same shape as the old createRandomTree). The
+ * trace of those decisions is the genotype; the built tree is the phenotype, and
+ * PTO's generic operators provide mutation/crossover/clone.
  */
 
 class TreeNode {
@@ -141,155 +144,45 @@ class FunctionNode extends TreeNode {
 }
 
 /**
- * TreeRepresentation manages GP tree genomes
+ * Build a PTO generator that creates random GP expression trees, mirroring the
+ * old TreeRepresentation.createRandomTree ("grow" method). Constants are drawn
+ * with rnd.uniform (so they can evolve), preserving the old terminal mix of
+ * ~10 constants : 4 variables. Use with PTORepresentation; the individual reads
+ * the built tree via this.phenotype.
+ *
+ * @param {object} config
+ * @param {number} config.maxDepth
+ * @returns {(rnd) => TreeNode}
  */
-class TreeRepresentation {
-    constructor(config = {}) {
-        this.maxDepth = config.maxDepth || 6;
-        this.binaryFunctions = config.binaryOps || ['+', '-', '*', '/', 'max', 'min', 'mod'];
-        this.unaryFunctions = config.unaryOps || ['sin', 'cos', 'exp', 'log', 'sqrt', 'abs'];
-        this.ternaryFunctions = config.ternaryOps || ['ifpos'];
-        this.terminals = config.terminals || ['x', 'y', 'r', 'theta'];
+function createTreeGenerator(config = {}) {
+    const maxDepth = config.maxDepth || 6;
+    const binaryFns = config.binaryOps || ['+', '-', '*', '/', 'max', 'min', 'mod'];
+    const unaryFns = config.unaryOps || ['sin', 'cos', 'exp', 'log', 'sqrt', 'abs'];
+    const ternaryFns = config.ternaryOps || ['ifpos'];
+    const variables = config.terminals || ['x', 'y', 'r', 'theta'];
+    // Old terminal list was 4 variables + 10 constants, picked uniformly.
+    const constProb = config.constProb !== undefined ? config.constProb : 10 / 14;
 
-        // Add random constants if requested
-        if (config.numConstants) {
-            for (let i = 0; i < config.numConstants; i++) {
-                this.terminals.push((Math.random() - 0.5) * 4);
+    function build(rnd, depth) {
+        if (depth <= 1 || rnd.random() < 0.3) {
+            // Terminal: a constant or a coordinate variable.
+            if (rnd.random() < constProb) {
+                return new TerminalNode(rnd.uniform(-2, 2));
             }
+            return new TerminalNode(rnd.choice(variables));
         }
-    }
-
-    /**
-     * Generate a random tree genome
-     */
-    generateRandom(method = 'grow') {
-        return this.createRandomTree(this.maxDepth, method);
-    }
-
-    /**
-     * Create a random tree with specified depth and method
-     */
-    createRandomTree(maxDepth, method = 'grow') {
-        if (maxDepth <= 1 || (method === 'grow' && Math.random() < 0.3)) {
-            // Create terminal
-            const terminalValue = this.terminals[Math.floor(Math.random() * this.terminals.length)];
-            return new TerminalNode(terminalValue);
+        const kind = rnd.random();
+        if (kind < 0.6) {
+            const func = rnd.choice(binaryFns);
+            return new FunctionNode(func, [build(rnd, depth - 1), build(rnd, depth - 1)]);
+        } else if (kind < 0.9) {
+            const func = rnd.choice(unaryFns);
+            return new FunctionNode(func, [build(rnd, depth - 1)]);
         } else {
-            // Create function node
-            const functionChoice = Math.random();
-            if (functionChoice < 0.6) {
-                // Binary function
-                const func = this.binaryFunctions[Math.floor(Math.random() * this.binaryFunctions.length)];
-                const leftChild = this.createRandomTree(maxDepth - 1, method);
-                const rightChild = this.createRandomTree(maxDepth - 1, method);
-                return new FunctionNode(func, [leftChild, rightChild]);
-            } else if (functionChoice < 0.9) {
-                // Unary function
-                const func = this.unaryFunctions[Math.floor(Math.random() * this.unaryFunctions.length)];
-                const child = this.createRandomTree(maxDepth - 1, method);
-                return new FunctionNode(func, [child]);
-            } else {
-                // Ternary function
-                const func = this.ternaryFunctions[Math.floor(Math.random() * this.ternaryFunctions.length)];
-                const child1 = this.createRandomTree(maxDepth - 1, method);
-                const child2 = this.createRandomTree(maxDepth - 1, method);
-                const child3 = this.createRandomTree(maxDepth - 1, method);
-                return new FunctionNode(func, [child1, child2, child3]);
-            }
+            const func = rnd.choice(ternaryFns);
+            return new FunctionNode(func, [build(rnd, depth - 1), build(rnd, depth - 1), build(rnd, depth - 1)]);
         }
     }
 
-    /**
-     * Evaluate a tree genome at given coordinates
-     */
-    evaluate(genome, x, y) {
-        return genome.evaluate(x, y);
-    }
-
-    /**
-     * Mutate a tree genome (subtree replacement)
-     */
-    mutate(genome, rate = 0.1) {
-        if (Math.random() < rate) {
-            const allNodes = genome.getAllNodes();
-            if (allNodes.length > 1) {
-                // Select random node for mutation
-                const mutationPoint = allNodes[Math.floor(Math.random() * allNodes.length)];
-                const newSubtree = this.createRandomTree(Math.floor(Math.random() * 3) + 1);
-
-                // Replace the mutation point with new subtree
-                this.replaceNode(genome, mutationPoint, newSubtree);
-            }
-        }
-        return genome;
-    }
-
-    /**
-     * Crossover two tree genomes (subtree swapping)
-     */
-    crossover(genome1, genome2) {
-        const child1 = genome1.copy();
-        const child2 = genome2.copy();
-
-        // Get all nodes from both trees
-        const nodes1 = child1.getAllNodes();
-        const nodes2 = child2.getAllNodes();
-
-        if (nodes1.length > 1 && nodes2.length > 1) {
-            // Select crossover points (avoid root)
-            const crossPoint1 = nodes1[Math.floor(Math.random() * (nodes1.length - 1)) + 1];
-            const crossPoint2 = nodes2[Math.floor(Math.random() * (nodes2.length - 1)) + 1];
-
-            // Swap subtrees
-            const temp = crossPoint1.copy();
-            this.replaceNode(child1, crossPoint1, crossPoint2.copy());
-            this.replaceNode(child2, crossPoint2, temp);
-        }
-
-        return [child1, child2];
-    }
-
-    /**
-     * Clone a tree genome
-     */
-    clone(genome) {
-        return genome.copy();
-    }
-
-    /**
-     * Helper to replace a node in a tree
-     */
-    replaceNode(tree, oldNode, newNode) {
-        if (tree === oldNode) {
-            return newNode;
-        }
-
-        if (tree instanceof FunctionNode) {
-            for (let i = 0; i < tree.children.length; i++) {
-                if (tree.children[i] === oldNode) {
-                    tree.children[i] = newNode;
-                    return tree;
-                } else {
-                    const result = this.replaceNode(tree.children[i], oldNode, newNode);
-                    if (result !== tree.children[i]) {
-                        tree.children[i] = result;
-                        return tree;
-                    }
-                }
-            }
-        }
-
-        return tree;
-    }
-
-    /**
-     * Get phenotype information (tree structure)
-     */
-    getPhenotype(genome) {
-        return {
-            expression: genome.toString(),
-            depth: genome.depth(),
-            size: genome.size()
-        };
-    }
+    return (rnd) => build(rnd, maxDepth);
 }

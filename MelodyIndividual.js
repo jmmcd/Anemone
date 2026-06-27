@@ -1,19 +1,18 @@
 /**
  * MelodyIndividual
  *
- * REFACTORED: Uses BinaryRepresentation for genome operations.
- * Generates MIDI note sequences encoded as binary genome (8 bits per note).
+ * Backed by PTORepresentation. The genome is a 64-bit array (8 notes × 8 bits);
+ * PTO's generic operators handle mutation/crossover.
  */
+
+const melodyGenerator = (rnd) => Array.from({ length: 64 }, () => rnd.randint(0, 1)); // 8 notes × 8 bits
+const melodyRepresentation = new PTORepresentation(melodyGenerator);
 
 class MelodyIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        // Configure binary representation
-        this.representation = new BinaryRepresentation({
-            length: 64 // 8 notes × 8 bits per note
-        });
-
+        this.representation = melodyRepresentation;
         this.genome = genome || this.representation.generateRandom();
 
         // Use the framework's single shared MIDIModality (falls back to a local
@@ -37,8 +36,9 @@ class MelodyIndividual extends Individual {
         const notes = [];
         const segmentSize = 8; // 8 bits per note
         
-        for (let i = 0; i < this.genome.length; i += segmentSize) {
-            const segment = this.genome.slice(i, i + segmentSize);
+        const genome = this.phenotype;
+        for (let i = 0; i < genome.length; i += segmentSize) {
+            const segment = genome.slice(i, i + segmentSize);
             
             // Convert 8-bit segment to decimal
             const value = segment.reduce((acc, bit, index) => acc + bit * Math.pow(2, 7 - index), 0);

@@ -32,8 +32,29 @@ class Individual {
         throw new Error("visualize() must be implemented by subclass");
     }
 
-    getPhenotype() {
+    // The phenotype is the genome expressed. For most representations the genome
+    // is itself the working structure, so phenotype === genome. For PTO-style
+    // representations the genome is a trace (the genotype) and the phenotype is
+    // whatever its generator produced (array, matrix, tree, …) — the
+    // representation derives it via express(). Opaque: callers interpret it.
+    get phenotype() {
+        if (this.representation && typeof this.representation.express === 'function') {
+            return this.representation.express(this.genome);
+        }
         return this.genome;
+    }
+
+    getPhenotype() {
+        return this.phenotype;
+    }
+
+    // Cache key for Canvas2DModality.renderCached: keyed on the phenotype, since
+    // that is what gets drawn. For direct representations phenotype === genome,
+    // so this matches the previous behaviour; for PTO ones it keys on the
+    // expressed output rather than the trace object (which would not stringify
+    // usefully).
+    renderKey() {
+        return this.phenotype;
     }
 
     validate() {
@@ -96,6 +117,18 @@ class Individual {
 
     _formatGenomeSection() {
         const genome = this.genome;
+
+        // PTO trace genome: a dict of recorded random decisions (the genotype).
+        // Show their values as a numeric list, independent of phenotype shape.
+        if (this.representation && typeof this.representation.express === 'function'
+            && genome && typeof genome === 'object' && !Array.isArray(genome)) {
+            const vals = Object.values(genome).map(d => (d && d.val !== undefined) ? d.val : d);
+            let s = `<span class="genome-label">Genome (PTO trace, ${vals.length} decisions):</span>\n`;
+            if (vals.length > 0) {
+                s += vals.every(Number.isInteger) ? this._formatIntegerGenome(vals) : this._formatFloatGenome(vals);
+            }
+            return s;
+        }
 
         // Tree genome (GP): expression + stats
         if (genome && typeof genome.toString === 'function' && genome.getAllNodes) {
@@ -204,7 +237,11 @@ class Individual {
 
     // --- Generic genetic operators delegated to the representation ---
     mutate(rate = 0.1) {
-        this.representation.mutate(this.genome, rate);
+        // In-place representations mutate this.genome and return it (or nothing);
+        // functional ones (e.g. PTORepresentation, whose genome is an immutable
+        // PTO solution) return a new genome. Reassign when a value comes back.
+        const mutated = this.representation.mutate(this.genome, rate);
+        if (mutated !== undefined) this.genome = mutated;
         this.invalidateImageCache();
     }
 

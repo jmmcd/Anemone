@@ -1,13 +1,13 @@
+// PTO generator: 8 floats in [0,1] (the neural-network inputs). distType 'fine'
+// gives Gaussian-creep mutation, matching the old FloatRepresentation feel.
+const sheepGenerator = (rnd) => Array.from({ length: 8 }, () => rnd.uniform(0, 1));
+const sheepRepresentation = new PTORepresentation(sheepGenerator, { distType: 'fine' });
+
 class SheepIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.representation = new FloatRepresentation({
-            length: 8,
-            bounds: Array(8).fill({min: 0, max: 1}),
-            mutationStrength: 0.12
-        });
-
+        this.representation = sheepRepresentation;
         this.genome = genome || this.representation.generateRandom();
 
         // Neural network architecture: 8 inputs -> 6 hidden -> 8 outputs
@@ -20,7 +20,7 @@ class SheepIndividual extends Individual {
     
     initializeNeuralNetwork() {
         // Weights from input (genome length) to hidden (6)
-        const inputSize = this.genome.length;
+        const inputSize = this.phenotype.length;
         this.weightsInputHidden = [];
         for (let h = 0; h < this.hiddenSize; h++) {
             this.weightsInputHidden[h] = [];
@@ -77,7 +77,7 @@ class SheepIndividual extends Individual {
     
     // Convert neural network outputs to sheep phenotype
     getPhenotype() {
-        const outputs = this.forwardPass(this.genome);
+        const outputs = this.forwardPass(this.phenotype);
         
         return {
             woolColor: Math.max(0.2, Math.min(0.9, (outputs[0] + 1) / 2)), // 0.2-0.9 (light gray to white)

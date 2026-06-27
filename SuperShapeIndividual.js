@@ -1,52 +1,39 @@
 /**
  * SuperShapeIndividual
  *
- * REFACTORED: Uses FloatRepresentation for basic genome operations.
- * Implements custom mutation/crossover due to mixed integer/float genome.
+ * Backed by PTORepresentation. The mixed integer/float genome is expressed by
+ * the generator below; PTO's generic operators handle mutation/crossover, so no
+ * custom operators are needed. distType 'fine' gives Gaussian creep for the
+ * real-valued genes and small steps for the integer gene.
  * Renders Gielis superformula: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
  */
+
+// Genome: [m_numerator (int), m_denominator (preset), n1, n2, n3, a, b].
+const supershapeGenerator = (rnd) => [
+    rnd.randint(1, 20),                          // m_numerator (integer)
+    rnd.choice([1, 2, 3, 4, 5, 6, 8, 10, 12]),  // m_denominator (from preset list)
+    rnd.uniform(0.1, 10),                        // n1
+    rnd.uniform(0.1, 10),                        // n2
+    rnd.uniform(0.1, 10),                        // n3
+    rnd.uniform(0.1, 3),                         // a
+    rnd.uniform(0.1, 3)                          // b
+];
+const supershapeRepresentation = new PTORepresentation(supershapeGenerator, { distType: 'fine' });
 
 class SuperShapeIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-
-        // Configure float representation with bounds for each gene
-        this.representation = new FloatRepresentation({
-            length: 7,
-            bounds: [
-                {min: 1, max: 20},    // m_numerator (treated as int)
-                {min: 1, max: 12},    // m_denominator (treated as int)
-                {min: 0.1, max: 10},  // n1
-                {min: 0.1, max: 10},  // n2
-                {min: 0.1, max: 10},  // n3
-                {min: 0.1, max: 3},   // a
-                {min: 0.1, max: 3}    // b
-            ]
-        });
-
-        this.genome = genome || this.generateRandomGenome();
+        this.representation = supershapeRepresentation;
+        this.genome = genome || this.representation.generateRandom();
         this.numPoints = 1000;
         this.phiRange = 2 * Math.PI;
     }
 
     usesColorPalette() { return true; }
-    
-    generateRandomGenome() {
-        const genome = this.representation.generateRandom();
-        // Round first two parameters to integers
-        genome[0] = Math.round(genome[0]);  // m_numerator
-        genome[1] = this.generateDenominator();  // m_denominator (from preset list)
-        return genome;
-    }
 
-    generateDenominator() {
-        const denominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
-        return denominators[Math.floor(Math.random() * denominators.length)];
-    }
-    
     getParameters() {
         // Extract parameters from genome: [m_numerator, m_denominator, n1, n2, n3, a, b]
-        const [m_numerator, m_denominator, n1, n2, n3, a, b] = this.genome;
+        const [m_numerator, m_denominator, n1, n2, n3, a, b] = this.phenotype;
         
         // Ensure integers are valid
         const num = Math.max(1, Math.min(50, Math.round(m_numerator)));
@@ -307,64 +294,6 @@ class SuperShapeIndividual extends Individual {
         }
     }
     
-    mutate(rate = 0.1) {
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                
-                switch (i) {
-                    case 0: // m_numerator (integer mutation)
-                        // Integer mutation: +/- 1 to 3
-                        const numeratorDelta = Math.floor(Math.random() * 7) - 3; // -3 to +3
-                        this.genome[i] = Math.max(1, Math.min(50, 
-                            Math.round(this.genome[i]) + numeratorDelta
-                        ));
-                        break;
-                    case 1: // m_denominator (integer mutation)
-                        // Replace with new valid denominator
-                        this.genome[i] = this.generateDenominator();
-                        break;
-                    case 2: // n1 (overall shape) - medium mutations
-                    case 3: // n2 (cos component)
-                    case 4: // n3 (sin component)
-                        // Apply Gaussian noise mutation for real-valued parameters
-                        const noise = this.representation.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(20,
-                            this.genome[i] + noise * 0.5
-                        ));
-                        break;
-                    case 5: // a (x-axis scaling) - smaller mutations
-                    case 6: // b (y-axis scaling)
-                        // Apply Gaussian noise mutation for scaling parameters
-                        const scaleNoise = this.representation.gaussianRandom(0, 1);
-                        this.genome[i] = Math.max(0.01, Math.min(5,
-                            this.genome[i] + scaleNoise * 0.2
-                        ));
-                        break;
-                }
-            }
-        }
-        this.invalidateImageCache();
-    }
-
-    crossover(other) {
-        // Use FloatRepresentation for blend crossover
-        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
-
-        // Round first two parameters to integers (m_numerator and m_denominator)
-        child1Genome[0] = Math.round(child1Genome[0]);
-        child1Genome[1] = Math.round(child1Genome[1]);
-        child2Genome[0] = Math.round(child2Genome[0]);
-        child2Genome[1] = Math.round(child2Genome[1]);
-
-        return [new SuperShapeIndividual(child1Genome), new SuperShapeIndividual(child2Genome)];
-    }
-    
-    clone() {
-        const clone = new SuperShapeIndividual(this.representation.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
-    }
-    
     getPhenotype() {
         const params = this.getParameters();
         return `m=${params.m_numerator}/${params.m_denominator} (${params.m.toFixed(2)}), φRange=${(this.phiRange /
@@ -383,7 +312,7 @@ class SuperShapeIndividual extends Individual {
     getParameterInfo() {
         const params = this.getParameters();
         return {
-            genome: this.genome,
+            genome: this.phenotype,
             parameters: params,
             description: {
                 m: 'Rotational symmetry (higher = more petals/sides)',

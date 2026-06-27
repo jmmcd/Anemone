@@ -1,29 +1,24 @@
 /**
  * MouseMusicIndividual
  *
- * REFACTORED: Uses IntegerRepresentation for genome operations,
- * DAGRepresentation for the DAG node structure, and MIDIModality
- * for note output (with Web Audio fallback).
+ * Backed by PTORepresentation: a generator builds the DAG node graph directly
+ * (see createDAGGenerator in DAGRepresentation.js). The genome is the PTO trace;
+ * the built DAG is this.phenotype. MIDIModality provides note output (with Web
+ * Audio fallback).
  *
  * Mouse position feeds x1/x2; time variation feeds x3.
  * Output nodes accumulate energy and trigger notes at threshold.
  */
 
+const mouseMusicRepresentation = new PTORepresentation(
+    createDAGGenerator({ numInputs: 3, numOutputs: 3 })
+);
+
 class MouseMusicIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.representation = new IntegerRepresentation({ length: 100, min: 0, max: 255 });
-
-        this.dagRep = new DAGRepresentation({
-            genomeLength: 100,
-            numInputs: 3,
-            numOutputs: 3,
-            numProcIndex: 3,
-            procOpsStartIndex: 4,
-            outputThresholdIndex: 20,
-            connectionStartIndex: 30
-        });
+        this.representation = this.makeRepresentation();
 
         // Use the framework's single shared MIDIModality (falls back to a local
         // one outside the app, e.g. in tests).
@@ -40,19 +35,20 @@ class MouseMusicIndividual extends Individual {
         this.canvas = null;
 
         console.log(`🎵 DAG Individual ${this.id} created`);
-
-        this.buildDAGFromGenome();
     }
 
-    buildDAGFromGenome() {
-        const dag = this.dagRep.build(this.genome);
-        this.allNodes = dag.allNodes;
-        this.inputNodes = dag.inputNodes;
-        this.outputNodes = dag.outputNodes;
-        this.processingNodes = dag.processingNodes;
+    // Which PTO representation this individual uses; overridden by subclasses
+    // (e.g. EEG uses 5 inputs / 2 outputs). Called from the constructor.
+    makeRepresentation() {
+        return mouseMusicRepresentation;
+    }
 
-        // Wire MIDI modality into output nodes
-        this.outputNodes.forEach(node => node.setMidiModality(this.midiModality));
+    // The built DAG (this.phenotype) with this individual's MIDI modality wired
+    // into its output nodes (idempotent; the modality is the shared one).
+    wiredDAG() {
+        const dag = this.phenotype;
+        dag.outputNodes.forEach(node => node.setMidiModality(this.midiModality));
+        return dag;
     }
 
     setMidiOutput(midiOutput) {
@@ -60,14 +56,15 @@ class MouseMusicIndividual extends Individual {
     }
 
     setupMouseTracking(canvas) {
+        const dag = this.phenotype;
         this.mouseListener = (event) => {
             const rect = canvas.getBoundingClientRect();
             this.mouseX = (event.clientX - rect.left) / rect.width * 2 - 1;
             this.mouseY = 1 - (event.clientY - rect.top) / rect.height * 2;
 
-            if (this.inputNodes.length >= 2) {
-                this.inputNodes[0].setValue(this.mouseX);
-                this.inputNodes[1].setValue(this.mouseY);
+            if (dag.inputNodes.length >= 2) {
+                dag.inputNodes[0].setValue(this.mouseX);
+                dag.inputNodes[1].setValue(this.mouseY);
             }
         };
         canvas.addEventListener('mousemove', this.mouseListener);
@@ -83,34 +80,39 @@ class MouseMusicIndividual extends Individual {
     }
 
     evaluateDAG() {
-        this.allNodes.forEach(node => node.reset());
+        const dag = this.phenotype;
+        dag.allNodes.forEach(node => node.reset());
 
-        if (this.inputNodes.length >= 3) {
+        if (dag.inputNodes.length >= 3) {
             const time = Date.now() / 1000;
             if (!this.mouseListener) {
-                this.inputNodes.forEach((node, i) => {
-                    node.setValue((this.genome[i] / 255) * 2 - 1 + Math.sin(time * (0.1 + i * 0.05)) * 0.3);
+                // Input base values come from the generator (node.baseValue); add
+                // gentle time variation so a static individual still drifts.
+                dag.inputNodes.forEach((node, i) => {
+                    node.setValue(node.baseValue + Math.sin(time * (0.1 + i * 0.05)) * 0.3);
                 });
             } else {
                 // x1/x2 set by mouse; x3 gets time variation
-                const baseValue = (this.genome[2] / 255) * 2 - 1;
-                this.inputNodes[2].setValue(baseValue + Math.sin(time * 0.2) * 0.3);
+                dag.inputNodes[2].setValue(dag.inputNodes[2].baseValue + Math.sin(time * 0.2) * 0.3);
             }
         }
 
-        this.outputNodes.forEach(node => node.evaluate());
+        dag.outputNodes.forEach(node => node.evaluate());
     }
 
+    // Interpreted phenotype: a plain description of the DAG (this.phenotype is the
+    // live DAG of stateful nodes).
     getPhenotype() {
+        const dag = this.phenotype;
         return {
-            inputNodes: this.inputNodes.map(node => ({
+            inputNodes: dag.inputNodes.map(node => ({
                 id: node.id, value: node.value, type: 'input'
             })),
-            processingNodes: this.processingNodes.map(node => ({
+            processingNodes: dag.processingNodes.map(node => ({
                 id: node.id, operation: node.operation, arity: node.arity,
                 inputs: node.inputs.map(n => n.id), type: 'processing'
             })),
-            outputNodes: this.outputNodes.map(node => ({
+            outputNodes: dag.outputNodes.map(node => ({
                 id: node.id, threshold: node.threshold,
                 energyAccumulator: node.energyAccumulator,
                 inputs: node.inputs.map(n => n.id), type: 'output'
@@ -189,6 +191,8 @@ class MouseMusicIndividual extends Individual {
 
     startDAG() {
         if (!this.midiModality.isRunning) {
+            // Wire MIDI and clear any leftover energy before this play session.
+            this.wiredDAG().outputNodes.forEach(node => { node.energyAccumulator = 0; });
             if (this.canvas) this.setupMouseTracking(this.canvas);
             console.log(`🔄 Starting DAG ${this.id}`);
             this.midiModality.start(() => this.evaluateDAG(), this.timeStep);
@@ -201,11 +205,6 @@ class MouseMusicIndividual extends Individual {
             this.midiModality.stop();
             if (this.canvas) this.removeMouseTracking(this.canvas);
         }
-    }
-
-    mutate(rate = 0.1) {
-        this.representation.mutate(this.genome, rate);
-        this.buildDAGFromGenome();
     }
 
 }

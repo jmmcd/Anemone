@@ -55,7 +55,13 @@ for (const name of INDIVIDUAL_CLASSES) {
         const clone = a.clone();
         assert(clone instanceof C, 'clone must be same type');
         assert(clone.fitness === 0.42, 'clone must preserve fitness');
-        assert(clone !== a && clone.genome !== a.genome, 'clone must be a distinct object');
+        assert(clone !== a, 'clone must be a distinct individual');
+        // Cloning must be safe to evolve independently. (PTO-backed individuals
+        // intentionally share the immutable genome/trace with their clone, so we
+        // assert the safety contract — isolation — not object distinctness.)
+        const originalPheno = a.phenotype;
+        clone.mutate(1.0);
+        assert(a.phenotype === originalPheno, 'mutating a clone must not change the original');
     });
 }
 
@@ -77,7 +83,8 @@ console.log('\nValidation / evolutionary filtering:');
 check('PatternIndividual.validate() rejects constant expressions', () => {
     const env = load();
     const ind = new env.classes.PatternIndividual();
-    ind.genome = new env.TerminalNode(42);
+    // validate() reads this.phenotype (the built tree); force a constant-only tree.
+    Object.defineProperty(ind, 'phenotype', { value: new env.TerminalNode(42), configurable: true });
     assert(ind.validate() === false, 'constant terminal should be rejected');
 });
 check('PatternGrammarIndividual.validate() rejects constant expressions', () => {
@@ -151,9 +158,10 @@ check('SuperFormula describe() includes its formula', () => {
     assert(new classes.SuperShapeIndividual().describe().includes('Formula'), 'missing formula block');
     assert(new classes.SuperShape3DIndividual().describe().includes('r₁(θ)'), 'missing 3D formula block');
 });
-check('tree / array genomes pick the right section', () => {
+check('tree / PTO-trace genomes pick the right section', () => {
     assert(new classes.PatternIndividual().describe().includes('Expression Tree'), 'GP should show its tree');
-    assert(new classes.GridIndividual().describe().includes('Genome (64 elements)'), 'binary genome dump');
+    assert(new classes.GridIndividual().describe().includes('PTO trace'), 'PTO genome shows its trace');
+    assert(new classes.MouseMusicIndividual().describe().includes('PTO trace'), 'DAG (PTO) genome shows its trace');
 });
 
 // --- Bloom post-filter ---
@@ -222,7 +230,7 @@ check('input->hidden weights are sized to the genome', () => {
     const sheep = new classes.SheepIndividual();
     assert(sheep.weightsInputHidden.length === sheep.hiddenSize, 'wrong hidden count');
     for (const row of sheep.weightsInputHidden) {
-        assert(row.length === sheep.genome.length, 'each hidden node needs one weight per genome input');
+        assert(row.length === sheep.phenotype.length, 'each hidden node needs one weight per genome input');
     }
 });
 check('phenotype values are all finite numbers', () => {

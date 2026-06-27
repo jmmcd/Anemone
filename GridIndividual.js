@@ -1,19 +1,17 @@
 /**
  * GridIndividual
  *
- * REFACTORED: Uses composition pattern with BinaryRepresentation.
- * Displays a grid pattern based on binary genome values.
+ * Backed by PTORepresentation. The genome is a 64-bit array (8x8 grid); PTO's
+ * generic operators handle mutation/crossover.
  */
+
+const gridGenerator = (rnd) => Array.from({ length: 64 }, () => rnd.randint(0, 1)); // 8x8 grid
+const gridRepresentation = new PTORepresentation(gridGenerator);
 
 class GridIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-
-        // Configure binary representation
-        this.representation = new BinaryRepresentation({
-            length: 64  // 8x8 grid
-        });
-
+        this.representation = gridRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }
 

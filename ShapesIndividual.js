@@ -1,21 +1,22 @@
 /**
  * ShapesIndividual
  *
- * REFACTORED: Uses IntegerRepresentation for genome operations.
- * Encodes drawing commands (circles, lines, rectangles, ellipses) in integer genome.
+ * Backed by PTORepresentation. The genome is a flat array of 60 bytes (0-255),
+ * decoded into drawing commands (circles, lines, rectangles, ellipses) in groups
+ * of 8. PTO's generic operators handle mutation/crossover.
+ *
+ * NOTE: the old custom mutate had a 50% "orderMutate" that swapped two command
+ * blocks. That reorders the phenotype, which is not heritable under PTO's trace
+ * model, so it was dropped; mutation is now PTO position-wise only.
  */
+
+const shapesGenerator = (rnd) => Array.from({ length: 60 }, () => rnd.randint(0, 255));
+const shapesRepresentation = new PTORepresentation(shapesGenerator);
 
 class ShapesIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-
-        // Configure integer representation
-        this.representation = new IntegerRepresentation({
-            length: 60,
-            min: 0,
-            max: 255
-        });
-
+        this.representation = shapesRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }
 
@@ -23,8 +24,8 @@ class ShapesIndividual extends Individual {
 
     getPhenotype() {
         const commands = [];
-        const genome = this.genome;
-        
+        const genome = this.phenotype;
+
         for (let i = 0; i < genome.length - 7; i += 8) {
             const commandType = genome[i] % 5; // Now 5 types
             const x = genome[i + 1] / 255;
@@ -220,34 +221,4 @@ class ShapesIndividual extends Individual {
         }
     }
     
-    orderMutate() {
-        const commandSize = 8; // Updated to 8
-        const numCommands = Math.floor(this.genome.length / commandSize);
-        
-        if (numCommands >= 2) {
-            const cmd1 = Math.floor(Math.random() * numCommands);
-            let cmd2 = Math.floor(Math.random() * numCommands);
-            while (cmd2 === cmd1) {
-                cmd2 = Math.floor(Math.random() * numCommands);
-            }
-            
-            const start1 = cmd1 * commandSize;
-            const start2 = cmd2 * commandSize;
-            
-            for (let i = 0; i < commandSize; i++) {
-                const temp = this.genome[start1 + i];
-                this.genome[start1 + i] = this.genome[start2 + i];
-                this.genome[start2 + i] = temp;
-            }
-        }
-    }
-    
-    mutate(rate = 0.1) {
-        if (Math.random() < 0.5) {
-            this.representation.mutate(this.genome, rate);
-        } else {
-            this.orderMutate();
-        }
-        this.invalidateImageCache();
-    }
 }

@@ -1,33 +1,25 @@
 /**
  * EEGSonificationIndividual
  *
- * REFACTORED: Extends MouseMusicIndividual, overriding the DAGRepresentation config
- * to use 5 EEG feature inputs instead of 3 mouse/time inputs, and 2 output
- * nodes instead of 3.  MIDI output (with Web Audio fallback) is inherited
- * from MouseMusicIndividual via MIDIModality.
+ * Extends MouseMusicIndividual, overriding makeRepresentation() to use a DAG
+ * generator with 5 EEG feature inputs and 2 output nodes (vs the mouse variant's
+ * 3 inputs / 3 outputs). MIDI output (with Web Audio fallback) and the PTO
+ * operators are inherited.
  */
+
+const eegRepresentation = new PTORepresentation(
+    createDAGGenerator({ numInputs: 5, numOutputs: 2 })
+);
+
 class EEGSonificationIndividual extends MouseMusicIndividual {
     constructor(genome = null) {
         super(genome);
-
-        // Override with EEG-specific DAG structure
-        this.dagRep = new DAGRepresentation({
-            genomeLength: 100,
-            numInputs: 5,
-            numOutputs: 2,
-            numProcIndex: 5,
-            procOpsStartIndex: 6,
-            outputThresholdIndex: 25,
-            connectionStartIndex: 30
-        });
-
-        // EEG stream data
         this.eegStream = null;
-
         console.log(`🧠 EEG Sonification Individual ${this.id} created`);
+    }
 
-        // Rebuild with EEG config (overrides the mouse-DAG built by super())
-        this.buildEEGDAGFromGenome();
+    makeRepresentation() {
+        return eegRepresentation;
     }
 
     /**
@@ -38,31 +30,23 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
         console.log(`🧠 EEG stream set for individual ${this.id}`);
     }
 
-    buildEEGDAGFromGenome() {
-        const dag = this.dagRep.build(this.genome);
-        this.allNodes = dag.allNodes;
-        this.inputNodes = dag.inputNodes;
-        this.outputNodes = dag.outputNodes;
-        this.processingNodes = dag.processingNodes;
-        this.outputNodes.forEach(node => node.setMidiModality(this.midiModality));
-    }
-
     evaluateEEGDAG() {
         try {
-            if (!this.allNodes || this.allNodes.length === 0) return;
-            this.allNodes.forEach(node => node.reset());
+            const dag = this.phenotype;
+            if (!dag.allNodes.length) return;
+            dag.allNodes.forEach(node => node.reset());
 
             if (!this.eegStream || !this.eegStream.data || this.eegStream.data.length === 0) return;
 
             const sample = this.eegStream.getCurrentSample();
             if (sample && sample.features && Array.isArray(sample.features)) {
-                for (let i = 0; i < 5; i++) {
+                for (let i = 0; i < dag.inputNodes.length; i++) {
                     const val = sample.features[i] !== undefined ? sample.features[i] : 0;
-                    if (this.inputNodes[i]) this.inputNodes[i].setValue(val);
+                    dag.inputNodes[i].setValue(val);
                 }
             }
 
-            this.outputNodes.forEach(node => node.evaluate());
+            dag.outputNodes.forEach(node => node.evaluate());
         } catch (error) {
             console.error(`Error in evaluateEEGDAG for ${this.id}:`, error);
         }
@@ -115,6 +99,8 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
 
     startEEG() {
         if (!this.midiModality.isRunning) {
+            // Wire MIDI and clear any leftover energy before this play session.
+            this.wiredDAG().outputNodes.forEach(node => { node.energyAccumulator = 0; });
             console.log(`🧠 Starting EEG sonification ${this.id}`);
             this.midiModality.start(() => {
                 try { this.evaluateEEGDAG(); } catch (e) {
@@ -129,17 +115,5 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
             console.log(`⏹ Stopping EEG sonification ${this.id}`);
             this.midiModality.stop();
         }
-    }
-
-    mutate(rate = 0.01) {
-        this.representation.mutate(this.genome, rate);
-        this.buildEEGDAGFromGenome();
-    }
-
-    crossover(other) {
-        const [g1, g2] = this.representation.crossover(this.genome, other.genome);
-        const child1 = new EEGSonificationIndividual(g1);
-        const child2 = new EEGSonificationIndividual(g2);
-        return [child1, child2];
     }
 }

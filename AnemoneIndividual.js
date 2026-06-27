@@ -52,15 +52,39 @@ class Turtle {
     }
 }
 
+// This individual is backed by PTORepresentation (Program Trace Optimisation):
+// the generic mutate/crossover/clone operators live there, and the only
+// Anemone-specific piece is the generator below — it defines the search space.
+//
+// The generator builds a variable-length array of bytes (0-255), the same shape
+// as the old hand-rolled genome, but routing all randomness through PTO's `rnd`
+// so each decision is recorded in the trace (the genotype PTO evolves).
+//
+// NOTE (revisit later): genome length is bounded to the generator's randint
+// range — it cannot grow indefinitely via incremental inserts the way the old
+// mutation did (which grew up to 200). Keeping it simple for the pilot.
+const ANEMONE_INIT_MIN_LEN = 12;
+const ANEMONE_INIT_MAX_LEN = 22;
+
+const anemoneGenerator = (rnd) => {
+    const length = rnd.randint(ANEMONE_INIT_MIN_LEN, ANEMONE_INIT_MAX_LEN);
+    return Array.from({ length }, () => rnd.randint(0, 255));
+};
+
+// One shared, stateless representation for all AnemoneIndividuals (it lazily
+// builds a single PTO Op on first use).
+const anemoneRepresentation = new PTORepresentation(anemoneGenerator);
+
 class AnemoneIndividual extends Individual {
+    // this.genome is the PTO trace (the genotype). this.phenotype (inherited,
+    // derived by the representation) is the byte array the generator produced.
+    // mutate/crossover/clone are inherited from Individual and delegate to
+    // this.representation (PTORepresentation), so there are no operator overrides.
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
-        this.minGenomeLength = 12;
-        this.maxGenomeLength = 200;
-        this.initialMinLength = 12;
-        this.initialMaxLength = 22;
-        this.genome = genome || this.generateRandomGenome();
-        
+        this.representation = anemoneRepresentation;
+        this.genome = genome || this.representation.generateRandom();
+
         // Command mapping
         this.commands = {
             'F': 'moveForward',
@@ -87,23 +111,16 @@ class AnemoneIndividual extends Individual {
     validate() {
         return this.executeGenome().length > 0;
     }
-    
-    generateRandomGenome() {
-        const length = Math.floor(Math.random() * (this.initialMaxLength - this.initialMinLength + 1)) + this.initialMinLength;
-        return Array.from({length}, () => 
-            Math.floor(Math.random() * 256)
-        );
-    }
-    
+
     integerToCharacter(value) {
         return this.characters[value % this.characters.length];
     }
-    
+
     executeGenome() {
         const turtle = new Turtle(0, 0, 0, 2, 0, 10);
         const turtles = [turtle];
-        
-        this.executeGenomeOnTurtles(turtles, this.genome, 0);
+
+        this.executeGenomeOnTurtles(turtles, this.phenotype, 0);
         
         // Collect all paths from all turtles
         const allPaths = [];
@@ -274,127 +291,27 @@ class AnemoneIndividual extends Individual {
         });
     }
 
-    mutate(rate = 0.1) {
-        const mutationTypes = ['change', 'insert', 'delete'];
-        
-        for (let i = 0; i < this.genome.length; i++) {
-            if (Math.random() < rate) {
-                const mutationType = mutationTypes[Math.floor(Math.random() * mutationTypes.length)];
-                
-                switch (mutationType) {
-                    case 'change':
-                        // Standard point mutation - change the value
-                        this.genome[i] = Math.floor(Math.random() * 256);
-                        break;
-                        
-                    case 'insert':
-                        // Insert a new random integer at this position
-                        if (this.genome.length < this.maxGenomeLength) {
-                            const newValue = Math.floor(Math.random() * 256);
-                            this.genome.splice(i, 0, newValue);
-                            i++; // Skip the newly inserted element
-                        }
-                        break;
-                        
-                    case 'delete':
-                        // Delete the integer at this position
-                        if (this.genome.length > this.minGenomeLength) {
-                            this.genome.splice(i, 1);
-                            i--; // Adjust index after deletion
-                        }
-                        break;
-                }
-            }
-        }
-        
-        // Additional insertion mutations at the end (for growth)
-        if (Math.random() < rate && this.genome.length < this.maxGenomeLength) {
-            const newValue = Math.floor(Math.random() * 256);
-            this.genome.push(newValue);
-        }
-        
-        this.invalidateImageCache();
-    }
-    
-    crossover(other) {
-        // Two-point crossover with independently generated cut-points
-        const parent1 = this.genome;
-        const parent2 = other.genome;
-        
-        // Generate cut-points independently for each parent
-        const cutPoint1_P1 = Math.floor(Math.random() * (parent1.length + 1));
-        const cutPoint2_P1 = Math.floor(Math.random() * (parent1.length + 1));
-        const cutPoint1_P2 = Math.floor(Math.random() * (parent2.length + 1));
-        const cutPoint2_P2 = Math.floor(Math.random() * (parent2.length + 1));
-        
-        // Ensure cut-points are in order (start <= end)
-        const start1 = Math.min(cutPoint1_P1, cutPoint2_P1);
-        const end1 = Math.max(cutPoint1_P1, cutPoint2_P1);
-        const start2 = Math.min(cutPoint1_P2, cutPoint2_P2);
-        const end2 = Math.max(cutPoint1_P2, cutPoint2_P2);
-        
-        // Create child genomes
-        const child1Genome = [
-            ...parent1.slice(0, start1),          // Beginning from parent 1
-            ...parent2.slice(start2, end2),       // Middle from parent 2
-            ...parent1.slice(end1)                // End from parent 1
-        ];
-        
-        const child2Genome = [
-            ...parent2.slice(0, start2),          // Beginning from parent 2
-            ...parent1.slice(start1, end1),       // Middle from parent 1
-            ...parent2.slice(end2)                // End from parent 2
-        ];
-        
-        // Ensure minimum and maximum length constraints
-        const clampedChild1 = this.clampGenomeLength(child1Genome);
-        const clampedChild2 = this.clampGenomeLength(child2Genome);
-        
-        const child1 = new AnemoneIndividual(clampedChild1);
-        const child2 = new AnemoneIndividual(clampedChild2);
-        
-        return [child1, child2];
-    }
-    
-    clampGenomeLength(genome) {
-        // Ensure genome is within length constraints
-        if (genome.length < this.minGenomeLength) {
-            // Pad with random values if too short
-            while (genome.length < this.minGenomeLength) {
-                genome.push(Math.floor(Math.random() * 256));
-            }
-        } else if (genome.length > this.maxGenomeLength) {
-            // Truncate if too long
-            genome = genome.slice(0, this.maxGenomeLength);
-        }
-        return genome;
-    }
-    
-    clone() {
-        const clone = new AnemoneIndividual([...this.genome]);
-        clone.fitness = this.fitness;
-        // Copy length constraints in case they were modified
-        clone.minGenomeLength = this.minGenomeLength;
-        clone.maxGenomeLength = this.maxGenomeLength;
-        clone.initialMinLength = this.initialMinLength;
-        clone.initialMaxLength = this.initialMaxLength;
-        return clone;
-    }
-    
+    // The decoded turtle program (the meaningful phenotype). Distinct from
+    // this.phenotype, which is the raw byte array the generator produced.
     getPhenotype() {
-        return this.genome.map(val => this.integerToCharacter(val)).join('');
+        return this.phenotype.map(val => this.integerToCharacter(val)).join('');
     }
-    
-    getGenomeInfo() {
-        return {
-            length: this.genome.length,
-            phenotype: this.getPhenotype(),
-            lengthConstraints: {
-                min: this.minGenomeLength,
-                max: this.maxGenomeLength,
-                initialMin: this.initialMinLength,
-                initialMax: this.initialMaxLength
-            }
-        };
+
+    // Show both sides: the decoded turtle program + raw bytes (phenotype) and the
+    // PTO trace (genotype).
+    describe() {
+        let out = '';
+        out += `<span class="genome-label">Type:</span> ${this.constructor.name}\n`;
+        out += `<span class="genome-label">ID:</span> ${this.id}\n`;
+        out += `<span class="genome-label">Fitness:</span> ${this.fitness}\n\n`;
+
+        out += `<span class="genome-label">Phenotype (turtle program):</span>\n${this.getPhenotype()}\n\n`;
+
+        const bytes = this.phenotype;
+        out += `<span class="genome-label">Phenotype bytes (${bytes.length}):</span>\n`;
+        out += this._formatIntegerGenome(bytes) + '\n\n';
+
+        out += this._formatGenomeSection();
+        return out;
     }
 }
