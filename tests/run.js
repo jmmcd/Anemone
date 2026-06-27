@@ -140,6 +140,28 @@ check('spreads bright pixels into a halo but leaves flat background unchanged', 
     assert(data[0] === 0, 'a far background pixel must not be brightened');
 });
 
+// --- Canvas2D render cache ---
+console.log('\nCanvas2D render cache:');
+check('renderCached skips re-render until genome or size changes', () => {
+    const Canvas2D = load().Canvas2DModality;
+    const canvas = makeCanvas(8, 8);
+    const holder = { genome: [1, 2, 3], _cachedImageData: null, _cacheKey: null };
+    let calls = 0;
+    const renderFn = (ctx, w, h) => { calls++; return ctx.createImageData(w, h); };
+
+    Canvas2D.renderCached(canvas, holder, renderFn);
+    Canvas2D.renderCached(canvas, holder, renderFn);              // unchanged → cache hit
+    assert(calls === 1, 'unchanged genome/size should hit the cache');
+
+    holder.genome = [9, 9, 9];
+    Canvas2D.renderCached(canvas, holder, renderFn);              // genome changed → re-render
+    assert(calls === 2, 'changing the genome should re-render');
+
+    holder._cachedImageData = null; holder._cacheKey = null;     // simulate invalidateImageCache()
+    Canvas2D.renderCached(canvas, holder, renderFn);
+    assert(calls === 3, 'a cleared cache should re-render');
+});
+
 // --- GE Radius expression compilation regression ---
 // Regression for the protected-division regex that mangled any expression
 // containing '/' or '%' into uncompilable code, so it fell back to a constant

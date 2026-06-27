@@ -235,30 +235,31 @@ class Canvas2DModality {
     }
 
     /**
-     * Render with caching support
-     * Returns a function that can be used with Individual.visualizeWithCache()
+     * Render to a 2D canvas with per-individual ImageData caching: skips the
+     * render when the holder's genome and the canvas size are unchanged.
+     *
+     * The cache lives on the holder (an Individual) in `_cachedImageData` /
+     * `_cacheKey`, and is cleared by the holder's `invalidateImageCache()` (which
+     * the framework calls on every individual when a setting such as the palette
+     * changes). `renderFunction(ctx, width, height)` must return an ImageData.
      */
-    createCachedRenderer(evaluator, colorMapper) {
-        return (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
+    static renderCached(canvas, holder, renderFunction) {
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
 
-            for (let py = 0; py < height; py++) {
-                for (let px = 0; px < width; px++) {
-                    const coords = this.coordinateMapper(px, py, width, height);
-                    const value = evaluator(coords.x, coords.y);
-                    const normalizedValue = this.normalizer(value);
-                    const color = colorMapper(normalizedValue);
+        // Array genomes stringify as "1,2,3,…"; string/other genomes coerce too.
+        const cacheKey = `${holder.genome}_${width}x${height}`;
 
-                    const index = (py * width + px) * 4;
-                    data[index] = color.r;
-                    data[index + 1] = color.g;
-                    data[index + 2] = color.b;
-                    data[index + 3] = 255;
-                }
-            }
+        if (holder._cacheKey === cacheKey && holder._cachedImageData) {
+            ctx.putImageData(holder._cachedImageData, 0, 0);
+            return;
+        }
 
-            return imageData;
-        };
+        ctx.clearRect(0, 0, width, height);
+        const imageData = renderFunction(ctx, width, height);
+        holder._cachedImageData = imageData;
+        holder._cacheKey = cacheKey;
+        ctx.putImageData(imageData, 0, 0);
     }
 }

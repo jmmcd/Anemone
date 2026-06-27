@@ -215,35 +215,9 @@ class Individual {
         return clone;
     }
 
-    // --- Image caching for canvas-based visualization ---
-    visualizeWithCache(canvas, renderFunction) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-
-        // Create cache key based on genome, canvas size, and any additional params
-        const additionalParams = this.getCacheParams ? this.getCacheParams() : '';
-        const cacheKey = `${this.genome.join(',')}_${width}x${height}_${additionalParams}`;
-
-        // Check if we have cached image data
-        if (this._cacheKey === cacheKey && this._cachedImageData) {
-            ctx.putImageData(this._cachedImageData, 0, 0);
-            return;
-        }
-
-        ctx.clearRect(0, 0, width, height);
-
-        // Call the provided render function
-        const imageData = renderFunction(ctx, width, height);
-
-        // Cache the image data
-        this._cachedImageData = imageData;
-        this._cacheKey = cacheKey;
-
-        ctx.putImageData(imageData, 0, 0);
-    }
-
-    // Invalidate image cache (call after mutation/crossover)
+    // Render cache. The cached ImageData is produced by Canvas2DModality.renderCached
+    // (the 2D-canvas plumbing lives in that modality, not here). Call this after
+    // mutation, or when settings change, to force a re-render.
     invalidateImageCache() {
         this._cachedImageData = null;
         this._cacheKey = null;

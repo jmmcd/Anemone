@@ -36,7 +36,7 @@ class GERadiusDrawingIndividual extends Individual {
     visualize(canvas) {
         console.time(`visualize-${this.id}`);
 
-        this.visualizeWithCache(canvas, (ctx, width, height) => {
+        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
 

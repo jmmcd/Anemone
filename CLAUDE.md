@@ -45,7 +45,7 @@ All individual types inherit from this:
 - **Capability flags**: `is3D()` and `usesColorPalette()` (both default `false`). The framework reads these — `is3D()` drives the shared-3D render path; `usesColorPalette()` makes the framework attach the palette UI panel.
 - **Optional methods**: `getPhenotype()`, `playMIDI()`, `stopMIDI()`
 - **Self-description**: `describe()` returns the rich HTML shown in the genome panel (header + informative phenotype + genome dump); `toString()` is a concise one-line summary. The base class implements both generically; subclasses usually override only `describeExtra()` to inject type-specific detail (e.g. SuperFormula's formula) into the default layout.
-- **Caching**: `visualizeWithCache()` caches ImageData by genome+canvas-size hash
+- **Caching**: the render cache state (`_cachedImageData`/`_cacheKey`) lives here and is cleared by `invalidateImageCache()`; the 2D-canvas caching mechanism itself is `Canvas2DModality.renderCached(canvas, individual, renderFn)`
 - Pass `'SKIP_GENOME_GENERATION'` as the genome argument to `super()` when the subclass manages genome creation itself
 
 ## Representations
@@ -65,7 +65,7 @@ All individual types inherit from this:
 
 | File | Purpose |
 |---|---|
-| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static raw-ImageData helpers used by path-drawing individuals: `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
+| `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static helpers used by path-drawing individuals: `renderCached(canvas, individual, renderFn)` (ImageData caching by genome+size), `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
 | `MIDIModality.js` | `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop |
 | `ThreeDModality.js` | `createMesh(vertices, indices, colors)` and `render(canvas, id, vertices, indices, colors, framework)` via the shared Three.js scene |
 
@@ -136,7 +136,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 ## Key Implementation Notes
 
 - **Palette system** (`ContinuousPaletteSystem.js` + `Palette.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.continuousPaletteSystem.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
-- **Image cache**: `visualizeWithCache(canvas, renderFn)` skips the render when the genome and canvas size are unchanged. Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
+- **Image cache**: `Canvas2DModality.renderCached(canvas, individual, renderFn)` skips the render when the individual's genome and canvas size are unchanged (cache state stored on the individual). Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
 - **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked); `displayCurrentGenome()` just sets the panel to `currentIndividual.describe()`. All formatting lives on the individual (base `describe()`/`_format*` helpers + per-type `describeExtra()`), not the framework.
 - **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and wires the output into the single shared `framework.sharedMIDI`.
 - **EEG**: `EEGPreprocessing.js` (`EEGDataStream` class) parses Muse-headband CSV, aligns to 200ms grid, and computes 5 normalised features (mean, variance, peak, baseline, asymmetry) per window. The framework distributes the stream to EEG individuals via `setEEGDataStream()`.
