@@ -275,29 +275,11 @@ class InteractiveEAFramework {
     }
     
     loadExtensions() {
-        // Check if the individual class has framework extensions
-        if (this.individualClass.getFrameworkExtensions) {
-            const extensions = this.individualClass.getFrameworkExtensions();
-            
-            // Load UI extensions
-            if (extensions.ui) {
-                const uiExtension = new extensions.ui(this);
-                this.uiExtensions.push(uiExtension);
-            }
-            
-            // Load settings extensions
-            if (extensions.settings) {
-                extensions.settings.forEach(setting => {
-                    if (!(setting in this.settings)) {
-                        this.settings[setting] = null;
-                    }
-                });
-            }
-            
-            // Load hotkeys (for future implementation)
-            if (extensions.hotkeys) {
-                this.extensions.hotkeys = extensions.hotkeys;
-            }
+        // Attach the color-palette UI panel for individuals that use a palette.
+        // The capability is declared per individual via usesColorPalette().
+        const sample = this.ea && this.ea.population && this.ea.population[0];
+        if (sample && typeof sample.usesColorPalette === 'function' && sample.usesColorPalette()) {
+            this.uiExtensions.push(new PaletteControlUI(this));
         }
     }
     

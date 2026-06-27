@@ -1,9 +1,9 @@
-class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
+class SuperFormula3DIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
         // 14 params: 7 for r1(θ) + 7 for r2(φ), same structure as SuperFormulaIndividual × 2
-        this.floatRep = new FloatRepresentation({
+        this.representation = new FloatRepresentation({
             length: 14,
             bounds: [
                 {min: 1, max: 20},   // m1_numerator (int)
@@ -30,8 +30,10 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
         this.phiPoints = 100;
     }
 
+    usesColorPalette() { return true; }
+
     generateRandomGenome() {
-        const genome = this.floatRep.generateRandom();
+        const genome = this.representation.generateRandom();
         // Integer params: m numerators and denominators
         genome[0] = Math.round(genome[0]);
         genome[1] = this.generateDenominator();
@@ -153,10 +155,6 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
         const indices = [];
         const colors = [];
         
-        // Get palette for coloring
-        const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-        const palette = this.getPaletteByName(paletteName);
-        
         // Calculate proper angle ranges for both angles
         const thetaRange = this.calculateAngleRange(params.r1.m_numerator, params.r1.m_denominator);
         const phiRange = this.calculateAngleRange(params.r2.m_numerator, params.r2.m_denominator);
@@ -182,7 +180,7 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
                 
                 // Color based on position for variety
                 const colorT = (i / this.thetaPoints + j / this.phiPoints) / 2;
-                const color = this.interpolateColor(palette, colorT);
+                const color = window.Palette.color(colorT);
                 colors.push(color.r / 255, color.g / 255, color.b / 255);
             }
         }
@@ -225,11 +223,7 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
         const height = canvas.height;
         
         ctx.clearRect(0, 0, width, height);
-        
-        // Get palette
-        const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-        const palette = this.getPaletteByName(paletteName);
-        
+
         // Fill background
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
@@ -329,14 +323,14 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
                         break;
                     case 2: case 3: case 4: // r1: n1, n2, n3
                     case 9: case 10: case 11: // r2: n1, n2, n3
-                        const noise = this.floatRep.gaussianRandom(0, 1);
+                        const noise = this.representation.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(20, 
                             this.genome[i] + noise * 0.5
                         ));
                         break;
                     case 5: case 6: // r1: a, b
                     case 12: case 13: // r2: a, b
-                        const scaleNoise = this.floatRep.gaussianRandom(0, 1);
+                        const scaleNoise = this.representation.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(5, 
                             this.genome[i] + scaleNoise * 0.2
                         ));
@@ -348,7 +342,7 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
     }
     
     crossover(other) {
-        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
+        const [g1, g2] = this.representation.crossover(this.genome, other.genome);
         // Round integer params: m numerators (0,7) and denominators (1,8)
         for (const idx of [0, 7]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
         for (const idx of [1, 8]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
@@ -356,7 +350,7 @@ class SuperFormula3DIndividual extends withPaletteExtensions(Individual) {
     }
 
     clone() {
-        const clone = new SuperFormula3DIndividual(this.floatRep.clone(this.genome));
+        const clone = new SuperFormula3DIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

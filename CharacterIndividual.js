@@ -1,8 +1,8 @@
-class CharacterIndividual extends withPaletteExtensions(Individual) {
+class CharacterIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.floatRep = new FloatRepresentation({
+        this.representation = new FloatRepresentation({
             length: 43,
             bounds: Array(43).fill({min: 0, max: 1}),
             mutationStrength: 0.1
@@ -339,22 +339,6 @@ class CharacterIndividual extends withPaletteExtensions(Individual) {
         }
         
         ctx.restore();
-    }
-    
-    mutate(rate = 0.1) {
-        this.floatRep.mutate(this.genome, rate);
-        this.invalidateImageCache();
-    }
-
-    crossover(other) {
-        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
-        return [new CharacterIndividual(g1), new CharacterIndividual(g2)];
-    }
-
-    clone() {
-        const clone = new CharacterIndividual(this.floatRep.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
     }
     
     getPhenotype() {

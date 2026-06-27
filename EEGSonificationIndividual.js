@@ -132,19 +132,19 @@ class EEGSonificationIndividual extends DAGIndividual {
     }
 
     mutate(rate = 0.01) {
-        this.integerRep.mutate(this.genome, rate);
+        this.representation.mutate(this.genome, rate);
         this.buildEEGDAGFromGenome();
     }
 
     crossover(other) {
-        const [g1, g2] = this.integerRep.crossover(this.genome, other.genome);
+        const [g1, g2] = this.representation.crossover(this.genome, other.genome);
         const child1 = new EEGSonificationIndividual(g1);
         const child2 = new EEGSonificationIndividual(g2);
         return [child1, child2];
     }
 
     clone() {
-        const clone = new EEGSonificationIndividual(this.integerRep.clone(this.genome));
+        const clone = new EEGSonificationIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
         return clone;

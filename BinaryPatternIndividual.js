@@ -10,11 +10,11 @@ class BinaryPatternIndividual extends Individual {
         super('SKIP_GENOME_GENERATION');
 
         // Configure binary representation
-        this.binaryRep = new BinaryRepresentation({
+        this.representation = new BinaryRepresentation({
             length: 64  // 8x8 grid
         });
 
-        this.genome = genome || this.binaryRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
     }
 
     visualize(canvas) {
@@ -44,26 +44,4 @@ class BinaryPatternIndividual extends Individual {
         }
     }
 
-    getPhenotype() {
-        return this.genome;
-    }
-
-    mutate(rate = 0.1) {
-        this.binaryRep.mutate(this.genome, rate);
-    }
-
-    crossover(other) {
-        const [child1Genome, child2Genome] = this.binaryRep.crossover(this.genome, other.genome);
-
-        const child1 = new BinaryPatternIndividual(child1Genome);
-        const child2 = new BinaryPatternIndividual(child2Genome);
-
-        return [child1, child2];
-    }
-
-    clone() {
-        const clone = new BinaryPatternIndividual(this.binaryRep.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
-    }
 }

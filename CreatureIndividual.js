@@ -52,7 +52,7 @@ class Turtle {
     }
 }
 
-class CreatureIndividual extends withPaletteExtensions(Individual) {
+class CreatureIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
         this.minGenomeLength = 12;
@@ -81,6 +81,8 @@ class CreatureIndividual extends withPaletteExtensions(Individual) {
         // Available characters for genome generation
         this.characters = Object.keys(this.commands);
     }
+
+    usesColorPalette() { return true; }
     
     generateRandomGenome() {
         const length = Math.floor(Math.random() * (this.initialMaxLength - this.initialMinLength + 1)) + this.initialMinLength;
@@ -205,10 +207,6 @@ class CreatureIndividual extends withPaletteExtensions(Individual) {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
             
-            // Get palette from framework settings (for creature colors only)
-            const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-            const palette = this.getPaletteByName(paletteName);
-            
             // Always use black background
             const backgroundColor = { r: 0, g: 0, b: 0 };
             
@@ -256,7 +254,7 @@ class CreatureIndividual extends withPaletteExtensions(Individual) {
             paths.forEach(path => {
                 // Get color from palette
                 const colorIndex = path.colorIndex / 7; // Normalize to [0,1]
-                const color = this.interpolateColor(palette, colorIndex);
+                const color = window.Palette.color(colorIndex);
                 
                 // Scale and translate coordinates
                 const x1 = path.x1 * scale + offsetX;
@@ -265,66 +263,13 @@ class CreatureIndividual extends withPaletteExtensions(Individual) {
                 const y2 = path.y2 * scale + offsetY;
                 
                 // Draw line with appropriate width
-                this.drawLine(data, width, height, x1, y1, x2, y2, color, path.width);
+                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, path.width);
             });
-            
+
             return imageData;
         });
     }
-    
-    drawLine(data, width, height, x1, y1, x2, y2, color, lineWidth = 1) {
-        // Use Bresenham's algorithm for the line, with thickness
-        x1 = Math.round(x1);
-        y1 = Math.round(y1);
-        x2 = Math.round(x2);
-        y2 = Math.round(y2);
-        
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
-        
-        let x = x1;
-        let y = y1;
-        
-        while (true) {
-            // Draw a circle at each point for line thickness
-            this.drawCircle(data, width, height, x, y, Math.max(1, lineWidth / 2), color);
-            
-            if (x === x2 && y === y2) break;
-            
-            const e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y += sy;
-            }
-        }
-    }
-    
-    drawCircle(data, width, height, cx, cy, radius, color) {
-        const r2 = radius * radius;
-        for (let y = Math.max(0, cy - radius); y < Math.min(height, cy + radius); y++) {
-            for (let x = Math.max(0, cx - radius); x < Math.min(width, cx + radius); x++) {
-                const dx = x - cx;
-                const dy = y - cy;
-                if (dx * dx + dy * dy <= r2) {
-                    const index = (Math.floor(y) * width + Math.floor(x)) * 4;
-                    if (index >= 0 && index < data.length) {
-                        data[index] = color.r;
-                        data[index + 1] = color.g;
-                        data[index + 2] = color.b;
-                        data[index + 3] = 255;
-                    }
-                }
-            }
-        }
-    }
-    
+
     mutate(rate = 0.1) {
         const mutationTypes = ['change', 'insert', 'delete'];
         

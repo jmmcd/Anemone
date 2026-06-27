@@ -5,20 +5,22 @@
  * Encodes drawing commands (circles, lines, rectangles, ellipses) in integer genome.
  */
 
-class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
+class DrawingCommandIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
         // Configure integer representation
-        this.integerRep = new IntegerRepresentation({
+        this.representation = new IntegerRepresentation({
             length: 60,
             min: 0,
             max: 255
         });
 
-        this.genome = genome || this.integerRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
     }
-    
+
+    usesColorPalette() { return true; }
+
     getPhenotype() {
         const commands = [];
         const genome = this.genome;
@@ -101,12 +103,8 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
             
-            // Get palette from framework settings
-            const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-            const palette = this.getPaletteByName(paletteName);
-            
             // Background color (first color in palette)
-            const backgroundColor = this.interpolateColor(palette, 0);
+            const backgroundColor = window.Palette.color(0);
             
             // Fill background
             for (let i = 0; i < data.length; i += 4) {
@@ -121,11 +119,11 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
             commands.forEach(cmd => {
                 // Get color from palette based on colorIndex
                 const colorIndex = cmd.colorIndex / 4; // Normalize to [0,1]
-                const color = this.interpolateColor(palette, colorIndex);
+                const color = window.Palette.color(colorIndex);
                 
                 switch (cmd.type) {
                     case 'CIRCLE':
-                        this.drawCircle(data, width, height, 
+                        Canvas2DModality.drawCircle(data, width, height,
                             cmd.x * width, 
                             cmd.y * height, 
                             cmd.radius * Math.min(width, height), 
@@ -134,7 +132,7 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
                         break;
                         
                     case 'LINE':
-                        this.drawLine(data, width, height,
+                        Canvas2DModality.drawLine(data, width, height,
                             cmd.x1 * width, cmd.y1 * height,
                             cmd.x2 * width, cmd.y2 * height,
                             color
@@ -172,22 +170,6 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
         });
     }
     
-    drawCircle(data, width, height, cx, cy, radius, color) {
-        for (let y = Math.max(0, cy - radius); y < Math.min(height, cy + radius); y++) {
-            for (let x = Math.max(0, cx - radius); x < Math.min(width, cx + radius); x++) {
-                const dx = x - cx;
-                const dy = y - cy;
-                if (dx * dx + dy * dy <= radius * radius) {
-                    const index = (Math.floor(y) * width + Math.floor(x)) * 4;
-                    data[index] = color.r;
-                    data[index + 1] = color.g;
-                    data[index + 2] = color.b;
-                    data[index + 3] = 255;
-                }
-            }
-        }
-    }
-    
     drawRect(data, width, height, x, y, w, h, color) {
         for (let py = Math.max(0, y); py < Math.min(height, y + h); py++) {
             for (let px = Math.max(0, x); px < Math.min(width, x + w); px++) {
@@ -210,46 +192,6 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
         for (let i = 0; i < strokeWidth; i++) {
             this.drawRect(data, width, height, x + i, y, 1, h, color);
             this.drawRect(data, width, height, x + w - i - 1, y, 1, h, color);
-        }
-    }
-    
-    drawLine(data, width, height, x1, y1, x2, y2, color) {
-        // Simple line drawing using Bresenham's algorithm
-        x1 = Math.round(x1);
-        y1 = Math.round(y1);
-        x2 = Math.round(x2);
-        y2 = Math.round(y2);
-        
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
-        
-        let x = x1;
-        let y = y1;
-        
-        while (true) {
-            // Set pixel if within bounds
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                const index = (y * width + x) * 4;
-                data[index] = color.r;
-                data[index + 1] = color.g;
-                data[index + 2] = color.b;
-                data[index + 3] = 255;
-            }
-            
-            if (x === x2 && y === y2) break;
-            
-            const e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y += sy;
-            }
         }
     }
     
@@ -302,21 +244,10 @@ class DrawingCommandIndividual extends withPaletteExtensions(Individual) {
     
     mutate(rate = 0.1) {
         if (Math.random() < 0.5) {
-            this.integerRep.mutate(this.genome, rate);
+            this.representation.mutate(this.genome, rate);
         } else {
             this.orderMutate();
         }
         this.invalidateImageCache();
-    }
-
-    crossover(other) {
-        const [child1Genome, child2Genome] = this.integerRep.crossover(this.genome, other.genome);
-        return [new DrawingCommandIndividual(child1Genome), new DrawingCommandIndividual(child2Genome)];
-    }
-
-    clone() {
-        const clone = new DrawingCommandIndividual(this.integerRep.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
     }
 }

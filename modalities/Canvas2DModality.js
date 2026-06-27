@@ -75,6 +75,78 @@ class Canvas2DModality {
         ctx.putImageData(imageData, 0, 0);
     }
 
+    // --- Shared raw-ImageData drawing helpers ---
+    // These operate directly on an ImageData `data` buffer (Uint8ClampedArray),
+    // for individuals that draw paths/shapes rather than evaluating per pixel.
+
+    /** Filled circle centred at (cx, cy). */
+    static drawCircle(data, width, height, cx, cy, radius, color) {
+        const r2 = radius * radius;
+        for (let y = Math.max(0, cy - radius); y < Math.min(height, cy + radius); y++) {
+            for (let x = Math.max(0, cx - radius); x < Math.min(width, cx + radius); x++) {
+                const dx = x - cx;
+                const dy = y - cy;
+                if (dx * dx + dy * dy <= r2) {
+                    const index = (Math.floor(y) * width + Math.floor(x)) * 4;
+                    if (index >= 0 && index < data.length) {
+                        data[index] = color.r;
+                        data[index + 1] = color.g;
+                        data[index + 2] = color.b;
+                        data[index + 3] = 255;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Single-pixel-wide Bresenham line. */
+    static drawLine(data, width, height, x1, y1, x2, y2, color) {
+        x1 = Math.round(x1); y1 = Math.round(y1);
+        x2 = Math.round(x2); y2 = Math.round(y2);
+
+        const dx = Math.abs(x2 - x1);
+        const dy = Math.abs(y2 - y1);
+        const sx = x1 < x2 ? 1 : -1;
+        const sy = y1 < y2 ? 1 : -1;
+        let err = dx - dy;
+        let x = x1, y = y1;
+
+        while (true) {
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                const index = (y * width + x) * 4;
+                data[index] = color.r;
+                data[index + 1] = color.g;
+                data[index + 2] = color.b;
+                data[index + 3] = 255;
+            }
+            if (x === x2 && y === y2) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+        }
+    }
+
+    /** Bresenham line with thickness, stamping a circle at each step. */
+    static drawThickLine(data, width, height, x1, y1, x2, y2, color, lineWidth = 1) {
+        x1 = Math.round(x1); y1 = Math.round(y1);
+        x2 = Math.round(x2); y2 = Math.round(y2);
+
+        const dx = Math.abs(x2 - x1);
+        const dy = Math.abs(y2 - y1);
+        const sx = x1 < x2 ? 1 : -1;
+        const sy = y1 < y2 ? 1 : -1;
+        let err = dx - dy;
+        let x = x1, y = y1;
+
+        while (true) {
+            Canvas2DModality.drawCircle(data, width, height, x, y, Math.max(1, lineWidth / 2), color);
+            if (x === x2 && y === y2) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+        }
+    }
+
     /**
      * Render with caching support
      * Returns a function that can be used with Individual.visualizeWithCache()

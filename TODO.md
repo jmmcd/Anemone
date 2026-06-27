@@ -1,6 +1,8 @@
 # TODO
 
 
+* Remove clone, if it is unused. Move clone MIDI stuff to framework, ie outside individual.
+
 * Replace our EC with Program Trace Optimisation (simple version) or PODI
 
 * Provide GE as a built-in 

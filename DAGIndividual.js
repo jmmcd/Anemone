@@ -13,7 +13,7 @@ class DAGIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.integerRep = new IntegerRepresentation({ length: 100, min: 0, max: 255 });
+        this.representation = new IntegerRepresentation({ length: 100, min: 0, max: 255 });
 
         this.dagRep = new DAGRepresentation({
             genomeLength: 100,
@@ -27,7 +27,7 @@ class DAGIndividual extends Individual {
 
         this.midiModality = new MIDIModality();
 
-        this.genome = genome || this.integerRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
 
         this.timeStep = 100;
 
@@ -202,19 +202,12 @@ class DAGIndividual extends Individual {
     }
 
     mutate(rate = 0.1) {
-        this.integerRep.mutate(this.genome, rate);
+        this.representation.mutate(this.genome, rate);
         this.buildDAGFromGenome();
     }
 
-    crossover(other) {
-        const [g1, g2] = this.integerRep.crossover(this.genome, other.genome);
-        const child1 = new DAGIndividual(g1);
-        const child2 = new DAGIndividual(g2);
-        return [child1, child2];
-    }
-
     clone() {
-        const clone = new DAGIndividual(this.integerRep.clone(this.genome));
+        const clone = new DAGIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
         return clone;

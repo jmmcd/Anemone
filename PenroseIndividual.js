@@ -1,8 +1,8 @@
-class PenroseIndividual extends withPaletteExtensions(Individual) {
+class PenroseIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.floatRep = new FloatRepresentation({
+        this.representation = new FloatRepresentation({
             length: 8,
             bounds: [
                 {min: 0, max: 2 * Math.PI}, // 0: rotation
@@ -309,18 +309,7 @@ class PenroseIndividual extends withPaletteExtensions(Individual) {
         }
         this.invalidateImageCache();
     }
-    
-    crossover(other) {
-        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
-        return [new PenroseIndividual(g1), new PenroseIndividual(g2)];
-    }
 
-    clone() {
-        const clone = new PenroseIndividual(this.floatRep.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
-    }
-    
     getPhenotype() {
         const params = this.getParameters();
         return `Penrose: ${params.numTiles} tiles, rot=${(params.rotation * 180 / Math.PI).toFixed(0)}°`;

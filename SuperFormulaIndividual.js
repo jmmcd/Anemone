@@ -6,12 +6,12 @@
  * Renders Gielis superformula: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
  */
 
-class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
+class SuperFormulaIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
         // Configure float representation with bounds for each gene
-        this.floatRep = new FloatRepresentation({
+        this.representation = new FloatRepresentation({
             length: 7,
             bounds: [
                 {min: 1, max: 20},    // m_numerator (treated as int)
@@ -28,9 +28,11 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
         this.numPoints = 1000;
         this.phiRange = 2 * Math.PI;
     }
+
+    usesColorPalette() { return true; }
     
     generateRandomGenome() {
-        const genome = this.floatRep.generateRandom();
+        const genome = this.representation.generateRandom();
         // Round first two parameters to integers
         genome[0] = Math.round(genome[0]);  // m_numerator
         genome[1] = this.generateDenominator();  // m_denominator (from preset list)
@@ -187,12 +189,8 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
             
-            // Get palette from framework settings
-            const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-            const palette = this.getPaletteByName(paletteName);
-            
             // Background color (dark)
-            const backgroundColor = this.interpolateColor(palette, 0);
+            const backgroundColor = window.Palette.color(0);
             
             // Fill background
             for (let i = 0; i < data.length; i += 4) {
@@ -239,8 +237,8 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                 const p2 = points[i + 1];
                 
                 // Use angle for color variation
-                const colorT = 0.5 + 0.5 * (p1.phi / this.phiRange); 
-                const color = this.interpolateColor(palette, colorT);
+                const colorT = 0.5 + 0.5 * (p1.phi / this.phiRange);
+                const color = window.Palette.color(colorT);
                 
                 // Scale and translate coordinates
                 const x1 = p1.x * scale + offsetX;
@@ -249,70 +247,17 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                 const y2 = p2.y * scale + offsetY;
                 
                 // Draw line segment
-                this.drawLine(data, width, height, x1, y1, x2, y2, color, 2);
+                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, 2);
             }
             
             // Draw filled shape option (uncomment for filled shapes)
-            //this.drawFilledShape(data, width, height, points, scale, offsetX, offsetY, palette);
+            //this.drawFilledShape(data, width, height, points, scale, offsetX, offsetY);
             
             return imageData;
         });
     }
     
-    drawLine(data, width, height, x1, y1, x2, y2, color, lineWidth = 1) {
-        // Bresenham's line algorithm with thickness
-        x1 = Math.round(x1);
-        y1 = Math.round(y1);
-        x2 = Math.round(x2);
-        y2 = Math.round(y2);
-        
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
-        
-        let x = x1;
-        let y = y1;
-        
-        while (true) {
-            // Draw a small circle at each point for line thickness
-            this.drawCircle(data, width, height, x, y, Math.max(1, lineWidth / 2), color);
-            
-            if (x === x2 && y === y2) break;
-            
-            const e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y += sy;
-            }
-        }
-    }
-    
-    drawCircle(data, width, height, cx, cy, radius, color) {
-        const r2 = radius * radius;
-        for (let y = Math.max(0, cy - radius); y < Math.min(height, cy + radius); y++) {
-            for (let x = Math.max(0, cx - radius); x < Math.min(width, cx + radius); x++) {
-                const dx = x - cx;
-                const dy = y - cy;
-                if (dx * dx + dy * dy <= r2) {
-                    const index = (Math.floor(y) * width + Math.floor(x)) * 4;
-                    if (index >= 0 && index < data.length) {
-                        data[index] = color.r;
-                        data[index + 1] = color.g;
-                        data[index + 2] = color.b;
-                        data[index + 3] = 255;
-                    }
-                }
-            }
-        }
-    }
-    
-    drawFilledShape(data, width, height, points, scale, offsetX, offsetY, palette) {
+    drawFilledShape(data, width, height, points, scale, offsetX, offsetY) {
         // Alternative: filled shape rendering using scanline algorithm
         const scaledPoints = points.map(p => ({
             x: p.x * scale + offsetX,
@@ -348,7 +293,7 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                 
                 for (let x = x1; x < x2; x++) {
                     const colorT = Math.random(); // Random color variation
-                    const color = this.interpolateColor(palette, colorT);
+                    const color = window.Palette.color(colorT);
                     
                     const index = (Math.floor(y) * width + x) * 4;
                     if (index >= 0 && index < data.length) {
@@ -382,7 +327,7 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                     case 3: // n2 (cos component)
                     case 4: // n3 (sin component)
                         // Apply Gaussian noise mutation for real-valued parameters
-                        const noise = this.floatRep.gaussianRandom(0, 1);
+                        const noise = this.representation.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(20,
                             this.genome[i] + noise * 0.5
                         ));
@@ -390,7 +335,7 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
                     case 5: // a (x-axis scaling) - smaller mutations
                     case 6: // b (y-axis scaling)
                         // Apply Gaussian noise mutation for scaling parameters
-                        const scaleNoise = this.floatRep.gaussianRandom(0, 1);
+                        const scaleNoise = this.representation.gaussianRandom(0, 1);
                         this.genome[i] = Math.max(0.01, Math.min(5,
                             this.genome[i] + scaleNoise * 0.2
                         ));
@@ -403,7 +348,7 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
 
     crossover(other) {
         // Use FloatRepresentation for blend crossover
-        const [child1Genome, child2Genome] = this.floatRep.crossover(this.genome, other.genome);
+        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
 
         // Round first two parameters to integers (m_numerator and m_denominator)
         child1Genome[0] = Math.round(child1Genome[0]);
@@ -415,7 +360,7 @@ class SuperFormulaIndividual extends withPaletteExtensions(Individual) {
     }
     
     clone() {
-        const clone = new SuperFormulaIndividual(this.floatRep.clone(this.genome));
+        const clone = new SuperFormulaIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

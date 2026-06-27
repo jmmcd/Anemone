@@ -1,14 +1,14 @@
-class SheepIndividual extends withPaletteExtensions(Individual) {
+class SheepIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        this.floatRep = new FloatRepresentation({
+        this.representation = new FloatRepresentation({
             length: 8,
             bounds: Array(8).fill({min: 0, max: 1}),
             mutationStrength: 0.12
         });
 
-        this.genome = genome || this.floatRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
 
         // Neural network architecture: 8 inputs -> 6 hidden -> 8 outputs
         this.hiddenSize = 6;
@@ -19,11 +19,12 @@ class SheepIndividual extends withPaletteExtensions(Individual) {
     }
     
     initializeNeuralNetwork() {
-        // Weights from input (8) to hidden (6)
+        // Weights from input (genome length) to hidden (6)
+        const inputSize = this.genome.length;
         this.weightsInputHidden = [];
         for (let h = 0; h < this.hiddenSize; h++) {
             this.weightsInputHidden[h] = [];
-            for (let i = 0; i < this.genomeLength; i++) {
+            for (let i = 0; i < inputSize; i++) {
                 this.weightsInputHidden[h][i] = (Math.random() - 0.5) * 2; // Range: -1 to 1
             }
         }
@@ -585,23 +586,6 @@ class SheepIndividual extends withPaletteExtensions(Individual) {
                 }
             }
         }
-    }
-    
-    mutate(rate = 0.1) {
-        this.floatRep.mutate(this.genome, rate);
-        this.invalidateImageCache();
-    }
-
-    crossover(other) {
-        const [g1, g2] = this.floatRep.crossover(this.genome, other.genome);
-        // Each new SheepIndividual constructor calls initializeNeuralNetwork()
-        return [new SheepIndividual(g1), new SheepIndividual(g2)];
-    }
-
-    clone() {
-        const clone = new SheepIndividual(this.floatRep.clone(this.genome));
-        clone.fitness = this.fitness;
-        return clone;
     }
     
     getPhenotypeString() {

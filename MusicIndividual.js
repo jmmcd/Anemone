@@ -10,11 +10,11 @@ class MusicIndividual extends Individual {
         super('SKIP_GENOME_GENERATION');
 
         // Configure binary representation
-        this.binaryRep = new BinaryRepresentation({
+        this.representation = new BinaryRepresentation({
             length: 64 // 8 notes × 8 bits per note
         });
 
-        this.genome = genome || this.binaryRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
 
         this.midiModality = new MIDIModality();
 
@@ -184,17 +184,8 @@ class MusicIndividual extends Individual {
         this.midiModality.sendNote(pitch, velocity, duration);
     }
 
-    mutate(rate = 0.1) {
-        this.binaryRep.mutate(this.genome, rate);
-    }
-
-    crossover(other) {
-        const [child1Genome, child2Genome] = this.binaryRep.crossover(this.genome, other.genome);
-        return [new MusicIndividual(child1Genome), new MusicIndividual(child2Genome)];
-    }
-
     clone() {
-        const clone = new MusicIndividual(this.binaryRep.clone(this.genome));
+        const clone = new MusicIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         clone.midiModality.setMidiOutput(this.midiModality.midiOutput);
         return clone;

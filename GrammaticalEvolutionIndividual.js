@@ -5,12 +5,12 @@
  * Evolves mathematical expressions using grammatical evolution.
  */
 
-class GrammaticalEvolutionIndividual extends withPaletteExtensions(Individual) {
+class GrammaticalEvolutionIndividual extends Individual {
     constructor(genome = null, genomeLength = 100) {
         super('SKIP_GENOME_GENERATION');
 
         // Configure grammatical representation
-        this.grammaticalRep = new GrammaticalRepresentation({
+        this.representation = new GrammaticalRepresentation({
             length: genomeLength,
             grammar: Grammar.createImagePatternGrammar(),
             startSymbol: '<pattern>',
@@ -22,15 +22,17 @@ class GrammaticalEvolutionIndividual extends withPaletteExtensions(Individual) {
             normalizer: (value) => (Math.tanh(value) + 1) / 2
         });
 
-        this.genome = genome || this.grammaticalRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
     }
 
+    usesColorPalette() { return true; }
+
     getPhenotype() {
-        return this.grammaticalRep.derivePhenotype(this.genome);
+        return this.representation.derivePhenotype(this.genome);
     }
 
     evaluateExpression(x, y) {
-        return this.grammaticalRep.evaluate(this.genome, x, y);
+        return this.representation.evaluate(this.genome, x, y);
     }
     
     visualize(canvas) {
@@ -40,24 +42,20 @@ class GrammaticalEvolutionIndividual extends withPaletteExtensions(Individual) {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
             
-            // Get palette from framework settings
-            const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-            const palette = this.getPaletteByName(paletteName);
-            
             for (let py = 0; py < height; py++) {
                 for (let px = 0; px < width; px++) {
                     // Normalize coordinates to [-1, 1]
                     const x = (px / width) * 2 - 1;
                     const y = (py / height) * 2 - 1;
-                    
+
                     // Evaluate expression
                     const value = this.evaluateExpression(x, y);
-                    
+
                     // Normalize value to [0, 1] for palette lookup
                     const normalizedValue = (Math.tanh(value) + 1) / 2;
-                    
+
                     // Get color from palette
-                    const color = this.interpolateColor(palette, normalizedValue);
+                    const color = window.Palette.color(normalizedValue);
                     
                     const index = (py * width + px) * 4;
                     data[index] = color.r;       // Red
@@ -74,19 +72,14 @@ class GrammaticalEvolutionIndividual extends withPaletteExtensions(Individual) {
     }
     
     
-    mutate(rate = 0.1) {
-        this.grammaticalRep.mutate(this.genome, rate);
-        this.invalidateImageCache();
-    }
-
     crossover(other) {
-        const [child1Genome, child2Genome] = this.grammaticalRep.crossover(this.genome, other.genome);
+        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
         const length = this.genome.length;
         return [new GrammaticalEvolutionIndividual(child1Genome, length), new GrammaticalEvolutionIndividual(child2Genome, length)];
     }
 
     clone() {
-        const clone = new GrammaticalEvolutionIndividual(this.grammaticalRep.clone(this.genome), this.genome.length);
+        const clone = new GrammaticalEvolutionIndividual(this.representation.clone(this.genome), this.genome.length);
         clone.fitness = this.fitness;
         return clone;
     }

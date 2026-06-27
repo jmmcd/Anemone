@@ -5,19 +5,19 @@
  * Generates polar coordinate curves (radius as function of angle).
  */
 
-class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
+class GERadiusDrawingIndividual extends Individual {
     constructor(genome = null, genomeLength = 100) {
         super('SKIP_GENOME_GENERATION');
 
         // Configure grammatical representation for polar coordinates
-        this.grammaticalRep = new GrammaticalRepresentation({
+        this.representation = new GrammaticalRepresentation({
             length: genomeLength,
             grammar: Grammar.createPolarDrawingGrammar(),
             startSymbol: '<polar>',
             maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
         });
 
-        this.genome = genome || this.grammaticalRep.generateRandom();
+        this.genome = genome || this.representation.generateRandom();
         this.genomeLength = genomeLength;
 
         // Polar coordinate parameters
@@ -27,24 +27,22 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
     }
 
     getPhenotype() {
-        return this.grammaticalRep.derivePhenotype(this.genome);
+        return this.representation.derivePhenotype(this.genome);
     }
-    
+
+    usesColorPalette() { return true; }
+
     // Override visualization for polar coordinate drawing
     visualize(canvas) {
         console.time(`visualize-${this.id}`);
-        
+
         this.visualizeWithCache(canvas, (ctx, width, height) => {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
-            
-            // Get palette from framework settings
-            const paletteName = this.getFrameworkSetting('colorPalette') || 'viridis';
-            const palette = this.getPaletteByName(paletteName);
-            
+
             // Background color (first color in palette)
-            const backgroundColor = this.interpolateColor(palette, 0);
-            
+            const backgroundColor = window.Palette.color(0);
+
             // Fill background
             for (let i = 0; i < data.length; i += 4) {
                 data[i] = backgroundColor.r;     // Red
@@ -52,15 +50,15 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
                 data[i + 2] = backgroundColor.b; // Blue
                 data[i + 3] = 255;              // Alpha
             }
-            
+
             // Generate polar coordinates
             const polarPoints = this.generatePolarPoints();
-            
+
             if (polarPoints.length > 0) {
                 // Convert to Cartesian and draw
-                this.drawPolarCurve(data, width, height, polarPoints, palette);
+                this.drawPolarCurve(data, width, height, polarPoints);
             }
-            
+
             return imageData;
         });
         
@@ -80,7 +78,7 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
         return points;
     }
     
-    drawPolarCurve(data, width, height, polarPoints, palette) {
+    drawPolarCurve(data, width, height, polarPoints) {
         // Find min/max radius for scaling
         const radii = polarPoints.map(p => p.r);
         const minR = Math.min(...radii);
@@ -93,7 +91,7 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
             const centerX = width / 2;
             const centerY = height / 2;
             const radius = Math.min(width, height) / 4;
-            const foregroundColor = this.interpolateColor(palette, 1);
+            const foregroundColor = window.Palette.color(1);
             
             for (let i = 0; i < 100; i++) {
                 const angle = (i / 100) * 2 * Math.PI;
@@ -122,7 +120,7 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
         const centerY = height / 2;
         
         // Foreground color (last color in palette)
-        const foregroundColor = this.interpolateColor(palette, 1);
+        const foregroundColor = window.Palette.color(1);
         
         // Draw the curve
         for (let i = 0; i < polarPoints.length - 1; i++) {
@@ -137,7 +135,7 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
             
             // Only draw if points are reasonable
             if (isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
-                this.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
+                Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
             }
         }
         
@@ -152,47 +150,7 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
             const y2 = centerY + first.r * scale * Math.sin(first.t);
             
             if (isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
-                this.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
-            }
-        }
-    }
-    
-    drawLine(data, width, height, x1, y1, x2, y2, color) {
-        // Simple line drawing using Bresenham's algorithm
-        x1 = Math.round(x1);
-        y1 = Math.round(y1);
-        x2 = Math.round(x2);
-        y2 = Math.round(y2);
-        
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-        const sx = x1 < x2 ? 1 : -1;
-        const sy = y1 < y2 ? 1 : -1;
-        let err = dx - dy;
-        
-        let x = x1;
-        let y = y1;
-        
-        while (true) {
-            // Set pixel if within bounds
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                const index = (y * width + x) * 4;
-                data[index] = color.r;
-                data[index + 1] = color.g;
-                data[index + 2] = color.b;
-                data[index + 3] = 255;
-            }
-            
-            if (x === x2 && y === y2) break;
-            
-            const e2 = 2 * err;
-            if (e2 > -dy) {
-                err -= dy;
-                x += sx;
-            }
-            if (e2 < dx) {
-                err += dx;
-                y += sy;
+                Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
             }
         }
     }
@@ -261,18 +219,18 @@ class GERadiusDrawingIndividual extends withPaletteExtensions(Individual) {
     }
     
     mutate(rate = 0.1) {
-        this.grammaticalRep.mutate(this.genome, rate);
+        this.representation.mutate(this.genome, rate);
         this._compiledExpression = null; // Reset compiled expression for t
         this.invalidateImageCache();
     }
-    
+
     crossover(other) {
-        const [child1Genome, child2Genome] = this.grammaticalRep.crossover(this.genome, other.genome);
+        const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
         return [new GERadiusDrawingIndividual(child1Genome, this.genomeLength), new GERadiusDrawingIndividual(child2Genome, this.genomeLength)];
     }
-    
+
     clone() {
-        const clone = new GERadiusDrawingIndividual(this.grammaticalRep.clone(this.genome), this.genomeLength);
+        const clone = new GERadiusDrawingIndividual(this.representation.clone(this.genome), this.genomeLength);
         clone.fitness = this.fitness;
         return clone;
     }
