@@ -6,17 +6,6 @@ class PaletteControlUI {
     }
     
     loadPaletteOptions() {
-        if (!window.continuousPaletteSystem) {
-            // Fallback palettes if continuous system isn't available
-            return [
-                { id: 'viridis', name: 'Viridis' },
-                { id: 'plasma', name: 'Plasma' },
-                { id: 'inferno', name: 'Inferno' },
-                { id: 'blues', name: 'Blues' },
-                { id: 'reds', name: 'Reds' }
-            ];
-        }
-        
         const palettes = [];
         const paletteList = window.continuousPaletteSystem.getPaletteList();
         
@@ -25,7 +14,7 @@ class PaletteControlUI {
             palettes.push({
                 id: paletteName,
                 name: info.description,
-                type: info.type
+                type: info.type || 'other'
             });
         }
         
@@ -125,18 +114,9 @@ class PaletteControlUI {
         
         preview.innerHTML = '';
         
-        let colors = [];
-        
-        if (window.continuousPaletteSystem) {
-            // Get color swatch from continuous palette system
-            colors = window.continuousPaletteSystem.getColorSwatch(paletteId, 8);
-        } else {
-            // Fallback for when continuous system isn't available
-            const palette = this.paletteOptions.find(p => p.id === paletteId);
-            if (palette && palette.colors) {
-                colors = palette.colors.map(color => ({ hex: color }));
-            }
-        }
+        const colors = window.continuousPaletteSystem
+            ? window.continuousPaletteSystem.getColorSwatch(paletteId, 8)
+            : [];
         
         colors.forEach((color, index) => {
             const colorSwatch = document.createElement('div');

@@ -18,7 +18,6 @@ const ROOT = path.join(__dirname, '..');
 // Source files in dependency order (classes use `extends` at definition time,
 // so base classes must come first; representations/modalities before individuals).
 const SOURCES = [
-    'Palette.js',
     'Individual.js',
     'representations/BinaryRepresentation.js',
     'representations/IntegerRepresentation.js',
@@ -111,6 +110,14 @@ function load() {
                 b: 64,
             }),
         },
+        Palette: {
+            name() {
+                return (this.framework && this.framework.settings.colorPalette) || 'viridis';
+            },
+            color(t, name = this.name()) {
+                return this.continuousPaletteSystem.getColor(name, t);
+            }
+        }
     };
     sandbox.document = { addEventListener: () => {}, getElementById: () => null };
     sandbox.navigator = {};

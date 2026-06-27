@@ -160,3 +160,15 @@ class ContinuousPaletteSystem {
 
 // Create global instance
 window.continuousPaletteSystem = new ContinuousPaletteSystem();
+
+// App-level palette helper
+window.Palette = {
+    name() {
+        const fw = window.framework;
+        return (fw && fw.settings && fw.settings.colorPalette) || window.continuousPaletteSystem.defaultPalette;
+    },
+
+    color(t, name = this.name()) {
+        return window.continuousPaletteSystem.getColor(name, t);
+    }
+};

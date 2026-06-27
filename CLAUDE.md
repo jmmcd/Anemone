@@ -71,8 +71,8 @@ All individual types inherit from this:
 
 All sound-producing individuals **share one** `MIDIModality` instance, owned by the framework (`framework.sharedMIDI`) — mirroring the shared 3D scene/renderer, and avoiding one Web Audio `AudioContext` per individual. Individuals reference it (`window.framework.sharedMIDI`, with a local fallback for tests) rather than constructing their own. The framework wires the resolved MIDI output into it; if no MIDI output is available (or a send fails), `sendNote` falls back to Web Audio synthesis automatically. Because the modality is shared, only one individual plays at a time (the framework stops the current one when another is started).
 
-### Color Palette (`Palette.js`)
-`window.Palette` is an app-level, medium-agnostic color service consumed by both 2D and 3D individuals: `window.Palette.color(t)` returns an `{r,g,b}` for `t∈[0,1]` using the framework's current palette (`window.Palette.name()` reads `framework.settings.colorPalette`). It wraps `window.continuousPaletteSystem` with a small fallback. Individuals opt in by returning `true` from `usesColorPalette()`, which makes the framework attach `PaletteControlUI`. (This replaced the old `withPaletteExtensions` mixin, which is gone.)
+### Color Palette (`ContinuousPaletteSystem.js`)
+`window.Palette` is an app-level, medium-agnostic color service consumed by both 2D and 3D individuals: `window.Palette.color(t)` returns an `{r,g,b}` for `t∈[0,1]` using the framework's current palette (`window.Palette.name()` reads `framework.settings.colorPalette`). It wraps `window.continuousPaletteSystem` with the active palette. Individuals opt in by returning `true` from `usesColorPalette()`, which makes the framework attach `PaletteControlUI`. (This replaced the old `withPaletteExtensions` mixin, which is gone.)
 
 ## Composition Pattern
 
@@ -135,7 +135,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 
 ## Key Implementation Notes
 
-- **Palette system** (`ContinuousPaletteSystem.js` + `Palette.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.continuousPaletteSystem.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
+- **Palette system** (`ContinuousPaletteSystem.js`): d3-scale-chromatic palettes. Individuals call `window.Palette.color(t)` (medium-agnostic, used by 2D and 3D), which resolves the current palette and delegates to `window.continuousPaletteSystem.getColor(name, t)`. Opt into the palette UI via `usesColorPalette()`.
 - **Image cache**: `Canvas2DModality.renderCached(canvas, individual, renderFn)` skips the render when the individual's genome and canvas size are unchanged (cache state stored on the individual). Call `this.invalidateImageCache()` after mutation; the framework also invalidates all caches when a setting (e.g. palette) changes.
 - **Genome/phenotype display**: `Anemone.js` tracks `currentIndividual` (last-clicked); `displayCurrentGenome()` just sets the panel to `currentIndividual.describe()`. All formatting lives on the individual (base `describe()`/`_format*` helpers + per-type `describeExtra()`), not the framework.
 - **MIDI init**: Framework requests MIDI at startup, prefers "IAC Driver" or "Logic Pro Virtual" outputs, and wires the output into the single shared `framework.sharedMIDI`.
