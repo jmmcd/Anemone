@@ -179,7 +179,7 @@ visualize(canvas) {
 
 ## Default Individual Type
 
-Set in `main.js:1` as `SuperShape3DIndividual`. Change this line to switch the startup default.
+Set in `main.js:1` as `AnemoneIndividual`. Change this line to switch the startup default.
 
 ## Project Context
 
