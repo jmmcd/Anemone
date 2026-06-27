@@ -102,20 +102,35 @@ function load() {
     };
     sandbox.window = {
         framework: { settings: { colorPalette: 'viridis' } },
-        // Palette colour stub (stands in for ContinuousPaletteSystem + d3).
-        continuousPaletteSystem: {
-            getColor: (name, t) => ({
-                r: Math.round(255 * Math.max(0, Math.min(1, t))),
-                g: Math.round(128 * Math.max(0, Math.min(1, t))),
-                b: 64,
-            }),
-        },
         Palette: {
+            defaultPalette: 'viridis',
             name() {
-                return (this.framework && this.framework.settings.colorPalette) || 'viridis';
+                return (this.framework && this.framework.settings.colorPalette) || this.defaultPalette;
             },
             color(t, name = this.name()) {
-                return this.continuousPaletteSystem.getColor(name, t);
+                return {
+                    r: Math.round(255 * Math.max(0, Math.min(1, t))),
+                    g: Math.round(128 * Math.max(0, Math.min(1, t))),
+                    b: 64,
+                    hex: '#ff8040',
+                    css: `rgb(${Math.round(255 * Math.max(0, Math.min(1, t)))}, ${Math.round(128 * Math.max(0, Math.min(1, t)))}, 64)`
+                };
+            },
+            getColor(name, t) {
+                return this.color(t, name);
+            },
+            getColorSwatch(paletteName, numColors = 8) {
+                const colors = [];
+                for (let i = 0; i < numColors; i++) {
+                    colors.push(this.getColor(paletteName, i / (numColors - 1)));
+                }
+                return colors;
+            },
+            getPaletteList() {
+                return ['viridis', 'plasma', 'inferno', 'blues', 'reds'];
+            },
+            getPaletteInfo(name) {
+                return { description: name.charAt(0).toUpperCase() + name.slice(1), type: 'sequential' };
             }
         }
     };

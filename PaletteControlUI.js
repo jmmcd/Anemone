@@ -7,10 +7,10 @@ class PaletteControlUI {
     
     loadPaletteOptions() {
         const palettes = [];
-        const paletteList = window.continuousPaletteSystem.getPaletteList();
+        const paletteList = window.Palette.getPaletteList();
         
         for (const paletteName of paletteList) {
-            const info = window.continuousPaletteSystem.getPaletteInfo(paletteName);
+            const info = window.Palette.getPaletteInfo(paletteName);
             palettes.push({
                 id: paletteName,
                 name: info.description,
@@ -114,9 +114,7 @@ class PaletteControlUI {
         
         preview.innerHTML = '';
         
-        const colors = window.continuousPaletteSystem
-            ? window.continuousPaletteSystem.getColorSwatch(paletteId, 8)
-            : [];
+        const colors = window.Palette.getColorSwatch(paletteId, 8);
         
         colors.forEach((color, index) => {
             const colorSwatch = document.createElement('div');

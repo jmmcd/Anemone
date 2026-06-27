@@ -1,4 +1,4 @@
-class ContinuousPaletteSystem {
+class Palette {
     constructor() {
         // Define available color schemes from d3-scale-chromatic
         this.availablePalettes = {
@@ -93,7 +93,17 @@ class ContinuousPaletteSystem {
         return d3.interpolateRgb(color1, color2)(fraction);
     }
     
-    // Get a color from a palette given a value from 0-1
+    // Get the current palette name from the framework settings
+    name() {
+        const fw = window.framework;
+        return (fw && fw.settings && fw.settings.colorPalette) || this.defaultPalette;
+    }
+
+    // Get a color from the current or named palette given a value from 0-1
+    color(t, paletteName = this.name()) {
+        return this.getColor(paletteName, t);
+    }
+
     getColor(paletteName, value) {
         const palette = this.availablePalettes[paletteName];
         if (!palette) {
@@ -158,17 +168,5 @@ class ContinuousPaletteSystem {
     }
 }
 
-// Create global instance
-window.continuousPaletteSystem = new ContinuousPaletteSystem();
-
-// App-level palette helper
-window.Palette = {
-    name() {
-        const fw = window.framework;
-        return (fw && fw.settings && fw.settings.colorPalette) || window.continuousPaletteSystem.defaultPalette;
-    },
-
-    color(t, name = this.name()) {
-        return window.continuousPaletteSystem.getColor(name, t);
-    }
-};
+// Create app-level palette instance
+window.Palette = new Palette();
