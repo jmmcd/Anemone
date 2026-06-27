@@ -139,17 +139,26 @@ class GERadiusDrawingIndividual extends Individual {
             }
         }
         
-        // Connect last point to first for closed curves
+        // Close the curve only if its ends actually meet. Samples run over
+        // t ∈ [0, 10π], so the first (t=0) and last (t=10π) points both sit on
+        // the +x axis (angle ≡ 0). When r differs there — e.g. a spiral — a chord
+        // back to the start is a spurious radial line. So draw the closing segment
+        // only when the endpoints nearly coincide (a genuinely closed, periodic
+        // curve); otherwise leave the curve open. The small tolerance means a
+        // near-closure shows at most a couple-pixel gap rather than a long chord.
         if (polarPoints.length > 2) {
             const first = polarPoints[0];
             const last = polarPoints[polarPoints.length - 1];
-            
+
             const x1 = centerX + last.r * scale * Math.cos(last.t);
             const y1 = centerY + last.r * scale * Math.sin(last.t);
             const x2 = centerX + first.r * scale * Math.cos(first.t);
             const y2 = centerY + first.r * scale * Math.sin(first.t);
-            
-            if (isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
+
+            const gap = Math.hypot(x2 - x1, y2 - y1);
+            const closeTolerance = Math.max(2, 0.05 * maxDimension);
+
+            if (gap <= closeTolerance && isFinite(x1) && isFinite(y1) && isFinite(x2) && isFinite(y2)) {
                 Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
             }
         }
