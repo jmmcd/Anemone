@@ -98,7 +98,9 @@ body {
 
 /* A liked cell shows a filled heart in the corner. */
 .individual.selected::after {
-    content: "♥";
+    /* U+FE0E forces text presentation so mobile doesn't substitute the red
+       heart emoji (which ignores CSS color). */
+    content: "\2665\FE0E";
     position: absolute;
     top: 6px;
     left: 8px;
