@@ -4,7 +4,7 @@
  * Encapsulates the DAG genome representation: node classes and the logic
  * that builds a runnable DAG from an integer array genome.
  *
- * Configurable so the same class handles both DAGIndividual (3 mouse inputs,
+ * Configurable so the same class handles both MouseMusicIndividual (3 mouse inputs,
  * 3 outputs) and EEGSonificationIndividual (5 EEG inputs, 2 outputs).
  *
  * OutputNode uses MIDIModality.sendNote() rather than calling midiOutput.send()

@@ -1,12 +1,12 @@
 /**
- * GPPatternIndividual - Genetic Programming Pattern Generator
+ * PatternIndividual - Genetic Programming Pattern Generator
  *
  * REFACTORED: Uses composition pattern with separate representation and modality.
  * Genome: Expression tree (TreeRepresentation)
  * Output: 2D canvas rendering (Canvas2DModality)
  */
 
-class GPPatternIndividual extends Individual {
+class PatternIndividual extends Individual {
     constructor(genome = null) {
         // Skip automatic genome generation
         super('SKIP_GENOME_GENERATION');

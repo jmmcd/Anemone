@@ -1,12 +1,12 @@
 /**
- * SuperFormulaIndividual
+ * SuperShapeIndividual
  *
  * REFACTORED: Uses FloatRepresentation for basic genome operations.
  * Implements custom mutation/crossover due to mixed integer/float genome.
  * Renders Gielis superformula: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
  */
 
-class SuperFormulaIndividual extends Individual {
+class SuperShapeIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
@@ -356,11 +356,11 @@ class SuperFormulaIndividual extends Individual {
         child2Genome[0] = Math.round(child2Genome[0]);
         child2Genome[1] = Math.round(child2Genome[1]);
 
-        return [new SuperFormulaIndividual(child1Genome), new SuperFormulaIndividual(child2Genome)];
+        return [new SuperShapeIndividual(child1Genome), new SuperShapeIndividual(child2Genome)];
     }
     
     clone() {
-        const clone = new SuperFormulaIndividual(this.representation.clone(this.genome));
+        const clone = new SuperShapeIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

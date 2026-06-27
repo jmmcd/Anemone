@@ -75,13 +75,13 @@ for (const name of INDIVIDUAL_CLASSES) {
 // --- Capability flags ---
 console.log('\nCapability flags:');
 const expectedPalette = {
-    GPPatternIndividual: true, GrammaticalEvolutionIndividual: true,
-    GERadiusDrawingIndividual: true, DrawingCommandIndividual: true,
-    SuperFormulaIndividual: true, SuperFormula3DIndividual: true,
-    CreatureIndividual: true,
-    BinaryPatternIndividual: false, CharacterIndividual: false,
+    PatternIndividual: true, PatternGrammarIndividual: true,
+    PolarCurveIndividual: true, ShapesIndividual: true,
+    SuperShapeIndividual: true, SuperShape3DIndividual: true,
+    AnemoneIndividual: true,
+    GridIndividual: false, RobotIndividual: false,
     SheepIndividual: false, PenroseIndividual: false,
-    MusicIndividual: false, DAGIndividual: false, EEGSonificationIndividual: false,
+    MelodyIndividual: false, MouseMusicIndividual: false, EEGSonificationIndividual: false,
 };
 check('usesColorPalette() matches expectation', () => {
     for (const [name, expect] of Object.entries(expectedPalette)) {
@@ -89,10 +89,10 @@ check('usesColorPalette() matches expectation', () => {
         assert(ind.usesColorPalette() === expect, `${name}.usesColorPalette() should be ${expect}`);
     }
 });
-check('SuperFormula3DIndividual is the only 3D type', () => {
+check('SuperShape3DIndividual is the only 3D type', () => {
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
-        const expect = name === 'SuperFormula3DIndividual';
+        const expect = name === 'SuperShape3DIndividual';
         assert(ind.is3D() === expect, `${name}.is3D() should be ${expect}`);
     }
 });
@@ -114,12 +114,12 @@ for (const name of INDIVIDUAL_CLASSES) {
     });
 }
 check('SuperFormula describe() includes its formula', () => {
-    assert(new classes.SuperFormulaIndividual().describe().includes('Formula'), 'missing formula block');
-    assert(new classes.SuperFormula3DIndividual().describe().includes('r₁(θ)'), 'missing 3D formula block');
+    assert(new classes.SuperShapeIndividual().describe().includes('Formula'), 'missing formula block');
+    assert(new classes.SuperShape3DIndividual().describe().includes('r₁(θ)'), 'missing 3D formula block');
 });
 check('tree / array genomes pick the right section', () => {
-    assert(new classes.GPPatternIndividual().describe().includes('Expression Tree'), 'GP should show its tree');
-    assert(new classes.BinaryPatternIndividual().describe().includes('Genome (64 elements)'), 'binary genome dump');
+    assert(new classes.PatternIndividual().describe().includes('Expression Tree'), 'GP should show its tree');
+    assert(new classes.GridIndividual().describe().includes('Genome (64 elements)'), 'binary genome dump');
 });
 
 // --- Bloom post-filter ---
@@ -168,7 +168,7 @@ check('renderCached skips re-render until genome or size changes', () => {
 // r = 1.0 (the dotty fallback circle). Division expressions must now evaluate.
 console.log('\nGE Radius expression compilation:');
 check('division/modulo expressions compile and vary with t (not constant 1.0)', () => {
-    const ind = new classes.GERadiusDrawingIndividual();
+    const ind = new classes.PolarCurveIndividual();
     const f = ind.compileExpressionForT('5.0*(t/2)');
     assert(Math.abs(f(2) - 5.0) < 1e-9 && Math.abs(f(4) - 10.0) < 1e-9, 'division expr did not evaluate correctly');
 
@@ -208,7 +208,7 @@ check('bodySize and legLength are within range (so body/legs render)', () => {
 // (rather than each constructing their own AudioContext), and clones keep that
 // shared reference so no per-individual MIDI re-wiring is needed.
 console.log('\nShared MIDI modality:');
-const soundTypes = ['MusicIndividual', 'DAGIndividual', 'EEGSonificationIndividual'];
+const soundTypes = ['MelodyIndividual', 'MouseMusicIndividual', 'EEGSonificationIndividual'];
 check('all sound individuals reference the framework shared modality', () => {
     const env = load();
     const fwShared = env.sandbox.window.framework.sharedMIDI;

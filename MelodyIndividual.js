@@ -1,11 +1,11 @@
 /**
- * MusicIndividual
+ * MelodyIndividual
  *
  * REFACTORED: Uses BinaryRepresentation for genome operations.
  * Generates MIDI note sequences encoded as binary genome (8 bits per note).
  */
 
-class MusicIndividual extends Individual {
+class MelodyIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
@@ -25,12 +25,12 @@ class MusicIndividual extends Individual {
         this.isPlaying = false;
         this.playbackTimer = null;
 
-        console.log(`🎵 Creating MusicIndividual ${this.id}`);
+        console.log(`🎵 Creating MelodyIndividual ${this.id}`);
     }
 
     setMidiOutput(midiOutput) {
         this.midiModality.setMidiOutput(midiOutput);
-        console.log(`🔧 MusicIndividual ${this.id} MIDI set to: ${midiOutput?.name || 'none'}`);
+        console.log(`🔧 MelodyIndividual ${this.id} MIDI set to: ${midiOutput?.name || 'none'}`);
     }
     
     getPhenotype() {

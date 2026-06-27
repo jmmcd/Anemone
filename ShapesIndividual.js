@@ -1,11 +1,11 @@
 /**
- * DrawingCommandIndividual
+ * ShapesIndividual
  *
  * REFACTORED: Uses IntegerRepresentation for genome operations.
  * Encodes drawing commands (circles, lines, rectangles, ellipses) in integer genome.
  */
 
-class DrawingCommandIndividual extends Individual {
+class ShapesIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 

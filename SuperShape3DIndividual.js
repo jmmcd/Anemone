@@ -1,8 +1,8 @@
-class SuperFormula3DIndividual extends Individual {
+class SuperShape3DIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
-        // 14 params: 7 for r1(θ) + 7 for r2(φ), same structure as SuperFormulaIndividual × 2
+        // 14 params: 7 for r1(θ) + 7 for r2(φ), same structure as SuperShapeIndividual × 2
         this.representation = new FloatRepresentation({
             length: 14,
             bounds: [
@@ -346,11 +346,11 @@ class SuperFormula3DIndividual extends Individual {
         // Round integer params: m numerators (0,7) and denominators (1,8)
         for (const idx of [0, 7]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
         for (const idx of [1, 8]) { g1[idx] = Math.round(g1[idx]); g2[idx] = Math.round(g2[idx]); }
-        return [new SuperFormula3DIndividual(g1), new SuperFormula3DIndividual(g2)];
+        return [new SuperShape3DIndividual(g1), new SuperShape3DIndividual(g2)];
     }
 
     clone() {
-        const clone = new SuperFormula3DIndividual(this.representation.clone(this.genome));
+        const clone = new SuperShape3DIndividual(this.representation.clone(this.genome));
         clone.fitness = this.fitness;
         return clone;
     }

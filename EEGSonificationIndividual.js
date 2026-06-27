@@ -1,12 +1,12 @@
 /**
  * EEGSonificationIndividual
  *
- * REFACTORED: Extends DAGIndividual, overriding the DAGRepresentation config
+ * REFACTORED: Extends MouseMusicIndividual, overriding the DAGRepresentation config
  * to use 5 EEG feature inputs instead of 3 mouse/time inputs, and 2 output
  * nodes instead of 3.  MIDI output (with Web Audio fallback) is inherited
- * from DAGIndividual via MIDIModality.
+ * from MouseMusicIndividual via MIDIModality.
  */
-class EEGSonificationIndividual extends DAGIndividual {
+class EEGSonificationIndividual extends MouseMusicIndividual {
     constructor(genome = null) {
         super(genome);
 

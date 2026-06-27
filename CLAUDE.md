@@ -52,12 +52,12 @@ All individual types inherit from this:
 
 | File | Genome type | Used by |
 |---|---|---|
-| `TreeRepresentation.js` | GP expression tree | GPPatternIndividual |
-| `BinaryRepresentation.js` | `0/1` array | BinaryPatternIndividual, MusicIndividual |
-| `IntegerRepresentation.js` | integer array 0-255 | DrawingCommandIndividual, DAGIndividual, EEGSonificationIndividual |
+| `TreeRepresentation.js` | GP expression tree | PatternIndividual |
+| `BinaryRepresentation.js` | `0/1` array | GridIndividual, MelodyIndividual |
+| `IntegerRepresentation.js` | integer array 0-255 | ShapesIndividual, MouseMusicIndividual, EEGSonificationIndividual |
 | `FloatRepresentation.js` | float array with per-gene bounds, Gaussian mutation | SuperFormula{,3D}, Character, Sheep, Penrose |
-| `GrammaticalRepresentation.js` | integer array → BNF derivation → compiled JS function | GrammaticalEvolutionIndividual, GERadiusDrawingIndividual |
-| `DAGRepresentation.js` | integer array → DAG of InputNode/ProcessingNode/OutputNode | DAGIndividual, EEGSonificationIndividual |
+| `GrammaticalRepresentation.js` | integer array → BNF derivation → compiled JS function | PatternGrammarIndividual, PolarCurveIndividual |
+| `DAGRepresentation.js` | integer array → DAG of InputNode/ProcessingNode/OutputNode | MouseMusicIndividual, EEGSonificationIndividual |
 
 `DAGRepresentation` is configurable: pass `numInputs`, `numOutputs`, `numProcIndex`, `procOpsStartIndex`, `outputThresholdIndex`, `connectionStartIndex` to handle both the mouse-driven DAG (3 inputs, 3 outputs) and the EEG variant (5 inputs, 2 outputs).
 
@@ -98,25 +98,25 @@ Override `mutate`/`crossover`/`clone` only when the genome semantics are non-sta
 
 Examples of non-standard overrides: `SuperFormula{,3D}` keep custom `mutate`/`crossover` for their mixed integer/float genome but still use `this.representation` for helpers like `gaussianRandom`/`clone`; `Creature` manages a variable-length genome directly and so has no `this.representation` at all (it overrides every operator).
 
-**CreatureIndividual** is intentionally not refactored into a representation: its genome is variable-length (insert/delete/change mutation, two-point crossover with independent cut points), and its rendering is path-based rather than pixel-based, so neither IntegerRepresentation nor Canvas2DModality applies cleanly.
+**AnemoneIndividual** is intentionally not refactored into a representation: its genome is variable-length (insert/delete/change mutation, two-point crossover with independent cut points), and its rendering is path-based rather than pixel-based, so neither IntegerRepresentation nor Canvas2DModality applies cleanly.
 
 ## Individual Types
 
 | Individual | Representation | Modality | Notes |
 |---|---|---|---|
-| `GPPatternIndividual` | Tree | Canvas2D | GP over x,y,r,theta |
-| `GrammaticalEvolutionIndividual` | Grammatical | Canvas2D | BNF grammar → expression |
-| `GERadiusDrawingIndividual` | Grammatical | Canvas2D | Polar coordinate curves |
-| `DrawingCommandIndividual` | Integer | Canvas2D | Sequence of drawing ops |
-| `BinaryPatternIndividual` | Binary | Canvas2D | 8×8 grid |
-| `SuperFormulaIndividual` | Float | Canvas2D | Gielis polar curve |
-| `SuperFormula3DIndividual` | Float | ThreeD | 3D Gielis surface |
-| `CreatureIndividual` | custom | Canvas2D | Variable-length turtle graphics |
-| `CharacterIndividual` | Float | Canvas2D | Parametric cartoon character |
+| `PatternIndividual` | Tree | Canvas2D | GP over x,y,r,theta |
+| `PatternGrammarIndividual` | Grammatical | Canvas2D | BNF grammar → expression |
+| `PolarCurveIndividual` | Grammatical | Canvas2D | Polar coordinate curves |
+| `ShapesIndividual` | Integer | Canvas2D | Sequence of drawing ops |
+| `GridIndividual` | Binary | Canvas2D | 8×8 grid |
+| `SuperShapeIndividual` | Float | Canvas2D | Gielis polar curve |
+| `SuperShape3DIndividual` | Float | ThreeD | 3D Gielis surface |
+| `AnemoneIndividual` | custom | Canvas2D | Variable-length turtle graphics |
+| `RobotIndividual` | Float | Canvas2D | Parametric cartoon character |
 | `SheepIndividual` | Float | Canvas2D | Float genome fed into fixed-random neural network |
 | `PenroseIndividual` | Float | Canvas2D | Kite-and-dart tiling |
-| `MusicIndividual` | Binary | MIDI | 8-note sequences |
-| `DAGIndividual` | Integer + DAG | MIDI | Mouse-driven DAG → notes |
+| `MelodyIndividual` | Binary | MIDI | 8-note sequences |
+| `MouseMusicIndividual` | Integer + DAG | MIDI | Mouse-driven DAG → notes |
 | `EEGSonificationIndividual` | Integer + DAG | MIDI | EEG-stream-driven DAG → notes |
 
 ## Extension System
@@ -179,7 +179,7 @@ visualize(canvas) {
 
 ## Default Individual Type
 
-Set in `main.js:1` as `SuperFormula3DIndividual`. Change this line to switch the startup default.
+Set in `main.js:1` as `SuperShape3DIndividual`. Change this line to switch the startup default.
 
 ## Project Context
 

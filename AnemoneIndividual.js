@@ -52,7 +52,7 @@ class Turtle {
     }
 }
 
-class CreatureIndividual extends Individual {
+class AnemoneIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
         this.minGenomeLength = 12;
@@ -346,8 +346,8 @@ class CreatureIndividual extends Individual {
         const clampedChild1 = this.clampGenomeLength(child1Genome);
         const clampedChild2 = this.clampGenomeLength(child2Genome);
         
-        const child1 = new CreatureIndividual(clampedChild1);
-        const child2 = new CreatureIndividual(clampedChild2);
+        const child1 = new AnemoneIndividual(clampedChild1);
+        const child2 = new AnemoneIndividual(clampedChild2);
         
         return [child1, child2];
     }
@@ -367,7 +367,7 @@ class CreatureIndividual extends Individual {
     }
     
     clone() {
-        const clone = new CreatureIndividual([...this.genome]);
+        const clone = new AnemoneIndividual([...this.genome]);
         clone.fitness = this.fitness;
         // Copy length constraints in case they were modified
         clone.minGenomeLength = this.minGenomeLength;

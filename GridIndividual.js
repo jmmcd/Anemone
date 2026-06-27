@@ -1,11 +1,11 @@
 /**
- * BinaryPatternIndividual
+ * GridIndividual
  *
  * REFACTORED: Uses composition pattern with BinaryRepresentation.
  * Displays a grid pattern based on binary genome values.
  */
 
-class BinaryPatternIndividual extends Individual {
+class GridIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 

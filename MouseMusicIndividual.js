@@ -1,5 +1,5 @@
 /**
- * DAGIndividual
+ * MouseMusicIndividual
  *
  * REFACTORED: Uses IntegerRepresentation for genome operations,
  * DAGRepresentation for the DAG node structure, and MIDIModality
@@ -9,7 +9,7 @@
  * Output nodes accumulate energy and trigger notes at threshold.
  */
 
-class DAGIndividual extends Individual {
+class MouseMusicIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 

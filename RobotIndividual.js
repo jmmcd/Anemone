@@ -1,4 +1,4 @@
-class CharacterIndividual extends Individual {
+class RobotIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 

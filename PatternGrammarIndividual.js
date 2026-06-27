@@ -1,11 +1,11 @@
 /**
- * GrammaticalEvolutionIndividual
+ * PatternGrammarIndividual
  *
  * REFACTORED: Uses GrammaticalRepresentation + Canvas2DModality.
  * Evolves mathematical expressions using grammatical evolution.
  */
 
-class GrammaticalEvolutionIndividual extends Individual {
+class PatternGrammarIndividual extends Individual {
     constructor(genome = null, genomeLength = 100) {
         super('SKIP_GENOME_GENERATION');
 
@@ -75,11 +75,11 @@ class GrammaticalEvolutionIndividual extends Individual {
     crossover(other) {
         const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
         const length = this.genome.length;
-        return [new GrammaticalEvolutionIndividual(child1Genome, length), new GrammaticalEvolutionIndividual(child2Genome, length)];
+        return [new PatternGrammarIndividual(child1Genome, length), new PatternGrammarIndividual(child2Genome, length)];
     }
 
     clone() {
-        const clone = new GrammaticalEvolutionIndividual(this.representation.clone(this.genome), this.genome.length);
+        const clone = new PatternGrammarIndividual(this.representation.clone(this.genome), this.genome.length);
         clone.fitness = this.fitness;
         return clone;
     }

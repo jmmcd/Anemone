@@ -1,5 +1,5 @@
 class InteractiveEAFramework {
-    constructor(individualClass = BinaryPatternIndividual) {
+    constructor(individualClass = GridIndividual) {
         this.individualClass = individualClass;
         this.midiOutput = null;
         this.audioContext = null;
@@ -551,7 +551,7 @@ class InteractiveEAFramework {
     }
 
     getPlaybackStatusHTML(individual) {
-        // For DAGIndividual and EEGSonificationIndividual, show current notes
+        // For MouseMusicIndividual and EEGSonificationIndividual, show current notes
         if (individual.outputNodes && Array.isArray(individual.outputNodes)) {
             const now = Date.now();
             const noteInfo = individual.outputNodes.map((node, idx) => {
@@ -772,19 +772,19 @@ class InteractiveEAFramework {
 
         // Map of individual type names to their constructors
         const individualTypes = {
-            'GPPatternIndividual': GPPatternIndividual,
-            'GrammaticalEvolutionIndividual': GrammaticalEvolutionIndividual,
-            'GERadiusDrawingIndividual': GERadiusDrawingIndividual,
-            'DrawingCommandIndividual': DrawingCommandIndividual,
-            'BinaryPatternIndividual': BinaryPatternIndividual,
-            'CreatureIndividual': CreatureIndividual,
-            'SuperFormulaIndividual': SuperFormulaIndividual,
-            'SuperFormula3DIndividual': SuperFormula3DIndividual,
-            'CharacterIndividual': CharacterIndividual,
+            'PatternIndividual': PatternIndividual,
+            'PatternGrammarIndividual': PatternGrammarIndividual,
+            'PolarCurveIndividual': PolarCurveIndividual,
+            'ShapesIndividual': ShapesIndividual,
+            'GridIndividual': GridIndividual,
+            'AnemoneIndividual': AnemoneIndividual,
+            'SuperShapeIndividual': SuperShapeIndividual,
+            'SuperShape3DIndividual': SuperShape3DIndividual,
+            'RobotIndividual': RobotIndividual,
             'PenroseIndividual': PenroseIndividual,
             'SheepIndividual': SheepIndividual,
-            'MusicIndividual': MusicIndividual,
-            'DAGIndividual': DAGIndividual,
+            'MelodyIndividual': MelodyIndividual,
+            'MouseMusicIndividual': MouseMusicIndividual,
             'EEGSonificationIndividual': EEGSonificationIndividual
         };
 

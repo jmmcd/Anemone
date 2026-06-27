@@ -1,11 +1,11 @@
 /**
- * GERadiusDrawingIndividual
+ * PolarCurveIndividual
  *
  * REFACTORED: Uses GrammaticalRepresentation + Canvas2DModality (inherited from parent).
  * Generates polar coordinate curves (radius as function of angle).
  */
 
-class GERadiusDrawingIndividual extends Individual {
+class PolarCurveIndividual extends Individual {
     constructor(genome = null, genomeLength = 100) {
         super('SKIP_GENOME_GENERATION');
 
@@ -231,11 +231,11 @@ class GERadiusDrawingIndividual extends Individual {
 
     crossover(other) {
         const [child1Genome, child2Genome] = this.representation.crossover(this.genome, other.genome);
-        return [new GERadiusDrawingIndividual(child1Genome, this.genomeLength), new GERadiusDrawingIndividual(child2Genome, this.genomeLength)];
+        return [new PolarCurveIndividual(child1Genome, this.genomeLength), new PolarCurveIndividual(child2Genome, this.genomeLength)];
     }
 
     clone() {
-        const clone = new GERadiusDrawingIndividual(this.representation.clone(this.genome), this.genomeLength);
+        const clone = new PolarCurveIndividual(this.representation.clone(this.genome), this.genomeLength);
         clone.fitness = this.fitness;
         return clone;
     }
