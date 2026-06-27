@@ -115,6 +115,13 @@ class EvolutionaryAlgorithm {
         
         this.population = newPopulation;
         this.generation++;
+        // A freshly displayed generation starts with a clean slate: nothing is
+        // selected yet, so reset all fitness/selection (elite clones otherwise
+        // carry their parent's fitness through clone()).
+        this.population.forEach(ind => {
+            ind.fitness = 0;
+            ind.selected = false;
+        });
         this.selectedIndividuals = [];
         this.saveGeneration();
     }
