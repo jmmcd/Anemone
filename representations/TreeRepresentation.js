@@ -130,9 +130,10 @@ class FunctionNode extends TreeNode {
     }
 
     toString() {
-        if (this.children.length === 1) {
-            return `${this.func}(${this.children[0]})`;
-        } else if (this.children.length === 2) {
+        // Only the true arithmetic operators read naturally infix; named
+        // binary functions (min, max, mod) are clearer in function-call form.
+        const INFIX_OPS = ['+', '-', '*', '/'];
+        if (this.children.length === 2 && INFIX_OPS.includes(this.func)) {
             return `(${this.children[0]} ${this.func} ${this.children[1]})`;
         }
         return `${this.func}(${this.children.join(', ')})`;
