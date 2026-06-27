@@ -7,70 +7,95 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Anemone Interactive Evolutionary Algorithm</h1>
-        
-        <div class="controls">
-            <button id="evolve-btn">Evolve Next Generation</button>
-            <button id="reset-btn">Reset</button>
-            <span>Selected: <span id="selected-count">0</span></span>
-        </div>
-        
-        <div id="extensions-container" class="extensions-container"></div>
-        
-        <div class="info">
-            <span>Generation: <span id="generation">0</span></span>
-            <span>Population Size: <span id="population-size">16</span></span>
-            <span>Average Fitness: <span id="avg-fitness">0.00</span></span>
-        </div>
-        
+    <!-- Top app bar: persistent chrome. On wide pointer-fine screens it carries
+         an inline Evolve button; on touch/narrow that role moves to the FAB. -->
+    <header class="app-bar">
+        <button id="menu-btn" class="icon-btn" aria-label="Open controls">☰</button>
+        <h1 class="app-title">Anemone</h1>
+        <span class="gen-indicator">Gen <span id="generation">0</span></span>
+        <button id="evolve-btn" class="evolve-bar">
+            Evolve<span class="sel-badge" id="selected-count-bar">0</span>
+        </button>
+    </header>
+
+    <main class="container">
         <div class="grid" id="grid"></div>
+    </main>
 
-        <div class="genome-display">
-            <h2>Current Individual Genome</h2>
-            <div id="genome-content" class="genome-content">
-                <em>Click an individual to view its genome</em>
+    <!-- Floating Evolve button (touch / narrow): thumb-reachable. -->
+    <button id="evolve-fab" class="fab" aria-label="Evolve next generation">
+        <span class="fab-icon">⟳</span>
+        <span class="sel-badge" id="selected-count-fab">0</span>
+    </button>
+
+    <!-- Auxiliary controls drawer (everywhere). -->
+    <div id="drawer-scrim" class="scrim"></div>
+    <aside id="drawer" class="drawer" aria-label="Controls">
+        <div class="drawer-header">
+            <h2>Controls</h2>
+            <button id="drawer-close" class="icon-btn" aria-label="Close controls">✕</button>
+        </div>
+
+        <section class="drawer-section">
+            <h3>Population</h3>
+            <button id="reset-btn" class="secondary-btn">Reset</button>
+            <div class="info-line">
+                Selected <span id="selected-count">0</span> ·
+                Pop <span id="population-size">16</span> ·
+                Avg <span id="avg-fitness">0.00</span>
             </div>
-        </div>
+        </section>
 
-        <div class="history">
-            <h2>Generation History</h2>
-            <div id="history-list"></div>
-        </div>
-        
-        <div class="individual-type-selector">
+        <section class="drawer-section">
             <h3>Individual Type</h3>
-            <div class="selector-row">
-                <div class="selector-item">
-                    <select id="individual-type-select">
-                        <option value="PatternIndividual">Pattern</option>
-                        <option value="PatternGrammarIndividual">Pattern (Grammar)</option>
-                        <option value="PolarCurveIndividual">Polar Curve</option>
-                        <option value="ShapesIndividual">Shapes</option>
-                        <option value="GridIndividual">Grid</option>
-                        <option value="SuperShapeIndividual">Supershape</option>
-                        <option value="SuperShape3DIndividual">Supershape 3D</option>
-                        <option value="AnemoneIndividual" selected>Anemone</option>
-                        <option value="RobotIndividual">Robot</option>
-                        <option value="SheepIndividual">Sheep</option>
-                        <option value="PenroseIndividual">Penrose</option>
-                        <option value="MelodyIndividual">Melody</option>
-                        <option value="MouseMusicIndividual">Mouse Music</option>
-                        <option value="EEGSonificationIndividual">EEG Sonification</option>
-                    </select>
-                    <button id="switch-individual-type-btn">Switch</button>
-                </div>
-                <div class="selector-item eeg-item">
-                    <button id="eeg-load-btn">Load EEG CSV</button>
-                    <input type="file" id="eeg-csv-input" accept=".csv" style="display: none;">
-                    <span id="eeg-status"><em>No data</em></span>
-                </div>
-            </div>
-        </div>
-        
-        <footer style="text-align: center; margin-top: 2rem; padding: 1rem; border-top: 1px solid #ddd;">
-            <p><a href="https://github.com/jmmcd/anemone" target="_blank" rel="noopener noreferrer">View on GitHub</a></p>
+            <select id="individual-type-select">
+                <option value="PatternIndividual">Pattern</option>
+                <option value="PatternGrammarIndividual">Pattern (Grammar)</option>
+                <option value="PolarCurveIndividual">Polar Curve</option>
+                <option value="ShapesIndividual">Shapes</option>
+                <option value="GridIndividual">Grid</option>
+                <option value="SuperShapeIndividual">Supershape</option>
+                <option value="SuperShape3DIndividual">Supershape 3D</option>
+                <option value="AnemoneIndividual" selected>Anemone</option>
+                <option value="RobotIndividual">Robot</option>
+                <option value="SheepIndividual">Sheep</option>
+                <option value="PenroseIndividual">Penrose</option>
+                <option value="MelodyIndividual">Melody</option>
+                <option value="MouseMusicIndividual">Mouse Music</option>
+                <option value="EEGSonificationIndividual">EEG Sonification</option>
+            </select>
+            <button id="switch-individual-type-btn" class="secondary-btn">Switch</button>
+        </section>
+
+        <section class="drawer-section eeg-section">
+            <h3>EEG Data</h3>
+            <button id="eeg-load-btn" class="secondary-btn">Load EEG CSV</button>
+            <input type="file" id="eeg-csv-input" accept=".csv" style="display: none;">
+            <span id="eeg-status"><em>No data</em></span>
+        </section>
+
+        <section class="drawer-section" id="palette-section">
+            <h3>Palette</h3>
+            <div id="extensions-container" class="extensions-container"></div>
+        </section>
+
+        <section class="drawer-section">
+            <h3>Generation History</h3>
+            <div id="history-list" class="history-list"></div>
+        </section>
+
+        <footer class="drawer-footer">
+            <a href="https://github.com/jmmcd/anemone" target="_blank" rel="noopener noreferrer">View on GitHub</a>
         </footer>
+    </aside>
+
+    <!-- Zoom lightbox (long-press on touch, double-click / ⛶ on pointer-fine). -->
+    <div id="lightbox" class="lightbox">
+        <div class="lightbox-inner">
+            <button id="lightbox-close" class="icon-btn lightbox-close" aria-label="Close">✕</button>
+            <canvas id="lightbox-canvas" width="512" height="512"></canvas>
+            <div id="lightbox-info" class="genome-content"></div>
+        </div>
     </div>
 
     <script src="https://d3js.org/d3-color.v3.min.js"></script>

@@ -136,20 +136,20 @@ class EvolutionaryAlgorithm {
         );
     }
     
-    incrementFitness(individual) {
-        individual.fitness += 1;
-        if (individual.fitness > 0 && !individual.selected) {
+    // Binary "like": a single tap/click toggles whether an individual is liked.
+    // Fitness is 0 or 1; tournament selection then picks equal-weight among the
+    // liked individuals (standard for interactive EC). Returns the new state.
+    toggleLike(individual) {
+        if (individual.selected) {
+            individual.selected = false;
+            individual.fitness = 0;
+            this.selectedIndividuals = this.selectedIndividuals.filter(ind => ind.id !== individual.id);
+        } else {
             individual.selected = true;
+            individual.fitness = 1;
             this.selectedIndividuals.push(individual);
         }
-    }
-    
-    decrementFitness(individual) {
-        individual.fitness = Math.max(0, individual.fitness - 1);
-        if (individual.fitness === 0 && individual.selected) {
-            individual.selected = false;
-            this.selectedIndividuals = this.selectedIndividuals.filter(ind => ind.id !== individual.id);
-        }
+        return individual.selected;
     }
     
     saveGeneration() {

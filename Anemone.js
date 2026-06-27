@@ -341,18 +341,32 @@ class InteractiveEAFramework {
     setupUI() {
         this.grid = document.getElementById('grid');
         this.evolveBtn = document.getElementById('evolve-btn');
+        this.evolveFab = document.getElementById('evolve-fab');
         this.resetBtn = document.getElementById('reset-btn');
         this.selectedCount = document.getElementById('selected-count');
+        this.selectedCountBar = document.getElementById('selected-count-bar');
+        this.selectedCountFab = document.getElementById('selected-count-fab');
         this.generationSpan = document.getElementById('generation');
         this.populationSizeSpan = document.getElementById('population-size');
         this.avgFitnessSpan = document.getElementById('avg-fitness');
         this.historyList = document.getElementById('history-list');
-        this.genomeContent = document.getElementById('genome-content');
         this.eegCsvInput = document.getElementById('eeg-csv-input');
         this.eegLoadBtn = document.getElementById('eeg-load-btn');
         this.eegStatusSpan = document.getElementById('eeg-status');
-        
-        this.evolveBtn.addEventListener('click', () => {
+
+        // Drawer + lightbox chrome
+        this.drawer = document.getElementById('drawer');
+        this.drawerScrim = document.getElementById('drawer-scrim');
+        this.menuBtn = document.getElementById('menu-btn');
+        this.drawerClose = document.getElementById('drawer-close');
+        this.lightbox = document.getElementById('lightbox');
+        this.lightboxCanvas = document.getElementById('lightbox-canvas');
+        this.lightboxInfo = document.getElementById('lightbox-info');
+        this.lightboxClose = document.getElementById('lightbox-close');
+
+        // Evolve is triggered from either the FAB (touch/narrow) or the inline
+        // app-bar button (wide pointer-fine); both share one handler.
+        const doEvolve = () => {
             console.time('Full Evolution Process');
 
             console.time('Cleanup');
@@ -374,15 +388,33 @@ class InteractiveEAFramework {
             console.timeEnd('Render');
 
             console.timeEnd('Full Evolution Process');
-        });
-        
+        };
+        if (this.evolveBtn) this.evolveBtn.addEventListener('click', doEvolve);
+        if (this.evolveFab) this.evolveFab.addEventListener('click', doEvolve);
+
         this.resetBtn.addEventListener('click', () => {
             this.cleanupOldIndividuals();
             this.currentIndividual = null; // Clear current individual on reset
             this.ea.reset();
             this.render();
         });
-        
+
+        // Drawer open/close
+        const openDrawer = () => { this.drawer.classList.add('open'); this.drawerScrim.classList.add('open'); };
+        const closeDrawer = () => { this.drawer.classList.remove('open'); this.drawerScrim.classList.remove('open'); };
+        if (this.menuBtn) this.menuBtn.addEventListener('click', openDrawer);
+        if (this.drawerClose) this.drawerClose.addEventListener('click', closeDrawer);
+        if (this.drawerScrim) this.drawerScrim.addEventListener('click', closeDrawer);
+
+        // Lightbox close (button, backdrop click, Escape)
+        if (this.lightboxClose) this.lightboxClose.addEventListener('click', () => this.closeZoom());
+        if (this.lightbox) this.lightbox.addEventListener('click', (e) => {
+            if (e.target === this.lightbox) this.closeZoom();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); }
+        });
+
         // Individual type switching
         this.individualTypeSelect = document.getElementById('individual-type-select');
         this.switchIndividualTypeBtn = document.getElementById('switch-individual-type-btn');
@@ -493,17 +525,6 @@ class InteractiveEAFramework {
         });
     }
 
-    displayCurrentGenome() {
-        if (!this.genomeContent) return;
-
-        if (!this.currentIndividual) {
-            this.genomeContent.innerHTML = '<em>Click an individual to view its genome</em>';
-            return;
-        }
-
-        this.genomeContent.innerHTML = this.currentIndividual.describe();
-    }
-
     cleanupOldIndividuals() {
         console.log('🧹 Cleaning up old individuals...');
         if (this.ea && this.ea.population) {
@@ -534,7 +555,6 @@ class InteractiveEAFramework {
         this.renderGrid();
         this.renderInfo();
         this.renderHistory();
-        this.displayCurrentGenome(); // Update genome display
     }
     
     renderGrid() {
@@ -553,42 +573,30 @@ class InteractiveEAFramework {
             canvas.width = 128;
             canvas.height = 128;
             
-            const fitness = document.createElement('div');
-            fitness.className = 'fitness';
-            fitness.textContent = individual.fitness.toFixed(0);
-            
             div.appendChild(canvas);
-            div.appendChild(fitness);
-            
-            div.addEventListener('click', (e) => {
-                e.preventDefault();
-                console.log('Individual clicked:', individual.id);
-                console.log('Phenotype:', individual.getPhenotype());
 
-                // Set as current individual and display genome
-                this.currentIndividual = individual;
-                this.displayCurrentGenome();
+            // Zoom affordance (revealed on hover on pointer-fine; on touch the
+            // same view is reached by long-press, handled below).
+            const zoomBtn = document.createElement('button');
+            zoomBtn.className = 'zoom-btn';
+            zoomBtn.textContent = '⛶';
+            zoomBtn.setAttribute('aria-label', 'Zoom in');
+            zoomBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.openZoom(individual);
+            });
+            div.appendChild(zoomBtn);
 
-                this.ea.incrementFitness(individual);
-
-                // Update visual selection state
-                if (individual.selected) {
-                    div.classList.add('selected');
-                } else {
-                    div.classList.remove('selected');
-                }
-
-                // Update fitness display
-                fitness.textContent = individual.fitness.toFixed(0);
-
-                // Update info panel only
-                this.renderInfo();
-
-                // If this is a sound individual, toggle its playback. Because all
-                // sound individuals share one MIDIModality, only one can play at a
-                // time: clicking a different one switches to it; clicking the
-                // currently-playing one stops it.
-                if (individual.playMIDI) {
+            // Audio individuals get a play triangle to audition without liking.
+            // Because all sound individuals share one MIDIModality, only one
+            // plays at a time: starting one stops the current one.
+            if (typeof individual.playMIDI === 'function') {
+                const playBtn = document.createElement('button');
+                playBtn.className = 'play-btn';
+                playBtn.textContent = '▶';
+                playBtn.setAttribute('aria-label', 'Play');
+                playBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     if (this.currentlyPlaying === individual) {
                         individual.stopMIDI();
                         this.currentlyPlaying = null;
@@ -596,30 +604,44 @@ class InteractiveEAFramework {
                         if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
                             this.currentlyPlaying.stopMIDI();
                         }
-                        individual.playMIDI(); // starts, since it was not playing
+                        individual.playMIDI();
                         this.currentlyPlaying = individual;
                     }
-                }
-            });
-            
-            div.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                this.ea.decrementFitness(individual);
-                
-                // Update visual selection state
-                if (individual.selected) {
-                    div.classList.add('selected');
-                } else {
-                    div.classList.remove('selected');
-                }
-                
-                // Update fitness display
-                fitness.textContent = individual.fitness.toFixed(0);
-                
-                // Update info panel only
+                    this.refreshPlayButtons();
+                });
+                div.appendChild(playBtn);
+            }
+
+            // Single tap/click = toggle like (binary) + make current.
+            div.addEventListener('click', () => {
+                if (div._suppressClick) { div._suppressClick = false; return; }
+                this.currentIndividual = individual;
+                this.ea.toggleLike(individual);
+                div.classList.toggle('selected', individual.selected);
                 this.renderInfo();
             });
-            
+
+            // Double-click (pointer-fine) = zoom. The two clicks it also fires
+            // toggle like twice (net no change), so like state is preserved.
+            div.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                this.openZoom(individual);
+            });
+
+            // Long-press (touch) = zoom. Suppress the click that would follow.
+            let pressTimer = null;
+            const startPress = () => {
+                div._suppressClick = false;
+                pressTimer = setTimeout(() => {
+                    div._suppressClick = true;
+                    this.openZoom(individual);
+                }, 500);
+            };
+            const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+            div.addEventListener('touchstart', startPress, { passive: true });
+            div.addEventListener('touchend', cancelPress);
+            div.addEventListener('touchmove', cancelPress, { passive: true });
+
             this.grid.appendChild(div);
         });
         console.timeEnd('Create DOM elements');
@@ -637,15 +659,55 @@ class InteractiveEAFramework {
             }
         });
         console.timeEnd('Visualize all individuals');
-        
+
+        this.refreshPlayButtons();
+
         console.timeEnd('renderGrid');
     }
     
     renderInfo() {
-        this.selectedCount.textContent = this.ea.selectedIndividuals.length;
+        const count = this.ea.selectedIndividuals.length;
+        if (this.selectedCount) this.selectedCount.textContent = count;
         this.generationSpan.textContent = this.ea.generation;
         this.populationSizeSpan.textContent = this.ea.populationSize;
         this.avgFitnessSpan.textContent = this.ea.getAverageFitness().toFixed(2);
+
+        // Selected-count badges on the FAB and inline Evolve button.
+        [this.selectedCountBar, this.selectedCountFab].forEach(badge => {
+            if (!badge) return;
+            badge.textContent = count;
+            badge.classList.toggle('empty', count === 0);
+        });
+    }
+
+    // Reflect playback state on the per-cell play triangles.
+    refreshPlayButtons() {
+        if (!this.grid) return;
+        this.ea.population.forEach((individual, index) => {
+            const cell = this.grid.children[index];
+            const btn = cell && cell.querySelector('.play-btn');
+            if (!btn) return;
+            const playing = this.currentlyPlaying === individual;
+            btn.classList.toggle('playing', playing);
+            btn.textContent = playing ? '■' : '▶';
+        });
+    }
+
+    // Zoom lightbox: a larger render plus the genome/phenotype description.
+    openZoom(individual) {
+        if (!this.lightbox) return;
+        this.currentIndividual = individual;
+        try {
+            individual.visualize(this.lightboxCanvas);
+        } catch (err) {
+            console.warn('Zoom render failed:', err);
+        }
+        if (this.lightboxInfo) this.lightboxInfo.innerHTML = individual.describe();
+        this.lightbox.classList.add('open');
+    }
+
+    closeZoom() {
+        if (this.lightbox) this.lightbox.classList.remove('open');
     }
     
     renderHistory() {
