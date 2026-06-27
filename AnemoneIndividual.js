@@ -83,6 +83,10 @@ class AnemoneIndividual extends Individual {
     }
 
     usesColorPalette() { return true; }
+
+    validate() {
+        return this.executeGenome().length > 0;
+    }
     
     generateRandomGenome() {
         const length = Math.floor(Math.random() * (this.initialMaxLength - this.initialMinLength + 1)) + this.initialMinLength;

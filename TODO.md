@@ -1,35 +1,34 @@
 # TODO
 
+* I see a PatternIndividual (-0.24340721206907068 - ((-1.9020055317241122 min -1.9020055317241122) max abs(sin(ifpos(y, 1.8118892772293171, 1.3361246785813385)))))
 
-* Remove clone, if it is unused. Move clone MIDI stuff to framework, ie outside individual.
+- seems to be missing some brackets?
 
-* Replace our EC with Program Trace Optimisation (simple version) or PODI
+* Replace our EC with Program Trace Optimisation (PTO) or PODI
 
 * Provide GE as a built-in 
 
-* Allow user to paste in a grammar using standard drawing commands
+* Allow user to paste in a GE grammar using standard drawing commands
+
+* Allow user to paste in a JS generator for PTO, I guess using standard drawing commands
 
 * Hotkeys
-
-* Remove the test MIDI note that plays at startup and refactor the MIDI
 
 * Individual can state its preference for (width, height) in the grid
 
 * Pre-made visualisers for text, bitstrings, etc
 
-* Visualiser can be from genome, phenotype, or both, it's up to the individual
+* Visualiser can be from genome, phenotype, or both, it's up to the individual.
 
 * getPhenotype() should cache it
 
 * Just a hook to say which individual is active?
 
-* Controls for popsize, mutation rate..?
+* User controls for popsize, mutation rate..?
 
 * Another type of individual, GL shaders https://tympanus.net/codrops/2025/06/23/modeling-the-world-in-280-characters/
 
 * Another type of individual for use in brain-computer interface music-mapping
-
-* Another type of individual: Polyomino CFG
 
 * Another type of individual: graph grammar with 3d coordinates per node as in my old GPEM paper
 
@@ -38,6 +37,8 @@
 * Consider palettes in HSL or LCH or OKLCH (https://jakub.kr/components/oklch-colors)
 
 * For symbolic regression-like 3D, allow both axes to be GP giving a radius, and/or allow things like phase, frequency or amplitude of the second axis to be varied as a function of the meridian angle
+
+* Another type of individual: Polyomino CFG
 
 * Another L-system-like structure where commands draw pixel strokes, but are constrained by existing pixels. Variants are BFS and DFS.
 

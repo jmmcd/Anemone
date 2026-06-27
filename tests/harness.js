@@ -30,6 +30,7 @@ const SOURCES = [
     'modalities/MIDIModality.js',
     'modalities/ThreeDModality.js',
     'GridIndividual.js',
+    'EvolutionaryAlgorithm.js',
     'PatternIndividual.js',
     'PatternGrammarIndividual.js',
     'PolarCurveIndividual.js',
@@ -147,6 +148,8 @@ function load() {
     combined += `;globalThis.__classes = { ${INDIVIDUAL_CLASSES.join(', ')} };\n`;
     combined += `;globalThis.__MIDIModality = MIDIModality;\n`;
     combined += `;globalThis.__Canvas2DModality = Canvas2DModality;\n`;
+    combined += `;globalThis.__EvolutionaryAlgorithm = EvolutionaryAlgorithm;\n`;
+    combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
     // Mirror the app: a single shared MIDIModality on the framework, which sound
@@ -159,6 +162,8 @@ function load() {
         makeCanvas,
         MIDIModality: sandbox.__MIDIModality,
         Canvas2DModality: sandbox.__Canvas2DModality,
+        EvolutionaryAlgorithm: sandbox.__EvolutionaryAlgorithm,
+        TerminalNode: sandbox.__TerminalNode,
     };
 }
 

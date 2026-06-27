@@ -72,6 +72,40 @@ for (const name of INDIVIDUAL_CLASSES) {
     });
 }
 
+// --- Validation / evolutionary filtering ---
+console.log('\nValidation / evolutionary filtering:');
+check('PatternIndividual.validate() rejects constant expressions', () => {
+    const env = load();
+    const ind = new env.classes.PatternIndividual();
+    ind.genome = new env.TerminalNode(42);
+    assert(ind.validate() === false, 'constant terminal should be rejected');
+});
+check('PatternGrammarIndividual.validate() rejects constant expressions', () => {
+    const ind = new classes.PatternGrammarIndividual();
+    ind.getPhenotype = () => '1.0';
+    assert(ind.validate() === false, 'constant grammar expression should be rejected');
+});
+check('PolarCurveIndividual.validate() rejects expressions without t', () => {
+    const ind = new classes.PolarCurveIndividual();
+    ind.getPhenotype = () => '2.0';
+    assert(ind.validate() === false, 'polar expression without t should be rejected');
+});
+check('EvolutionaryAlgorithm fills the population with valid individuals', () => {
+    class FlakyPattern extends classes.PatternIndividual {
+        static validationAttempts = 0;
+
+        validate() {
+            FlakyPattern.validationAttempts += 1;
+            return FlakyPattern.validationAttempts > 1;
+        }
+    }
+
+    const env = load();
+    const algorithm = new env.EvolutionaryAlgorithm(FlakyPattern, 3);
+    assert(algorithm.population.length === 3, 'population should be filled to the requested size');
+    assert(algorithm.population.every(ind => ind.validate()), 'population should contain only valid individuals');
+});
+
 // --- Capability flags ---
 console.log('\nCapability flags:');
 const expectedPalette = {

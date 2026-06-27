@@ -27,6 +27,16 @@ class PatternGrammarIndividual extends Individual {
 
     usesColorPalette() { return true; }
 
+    validate() {
+        const phenotype = this.getPhenotype();
+        if (typeof phenotype !== 'string' || phenotype.trim() === '') {
+            return false;
+        }
+
+        const hasVariable = /(?:^|[^A-Za-z])(x|y|r|theta)(?:$|[^A-Za-z])/.test(phenotype);
+        return hasVariable;
+    }
+
     getPhenotype() {
         return this.representation.derivePhenotype(this.genome);
     }

@@ -36,6 +36,18 @@ class PatternIndividual extends Individual {
 
     usesColorPalette() { return true; }
 
+    validate() {
+        if (!this.genome || typeof this.genome.getAllNodes !== 'function') {
+            return false;
+        }
+
+        const nodes = this.genome.getAllNodes();
+        return nodes.some(node => {
+            const value = node && node.value;
+            return typeof value === 'string' && ['x', 'y', 'r', 'theta'].includes(value);
+        });
+    }
+
     /**
      * Visualize the GP expression as a 2D pattern
      */

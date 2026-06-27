@@ -36,6 +36,10 @@ class Individual {
         return this.genome;
     }
 
+    validate() {
+        return true;
+    }
+
     // --- Self-description for the UI ---
     // An individual knows how to present itself. toString() is a concise one-line
     // summary (safe for logs); describe() is the rich multi-section HTML shown in

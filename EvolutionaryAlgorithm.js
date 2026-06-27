@@ -13,15 +13,54 @@ class EvolutionaryAlgorithm {
     
     initializePopulation() {
         this.population = [];
-        for (let i = 0; i < this.populationSize; i++) {
-            const individual = new this.individualClass();
-            // Pass MIDI output to individual if it supports it
-            if (individual.setMidiOutput && this.midiOutput) {
-                individual.setMidiOutput(this.midiOutput);
-            }
+        while (this.population.length < this.populationSize) {
+            const individual = this.createValidIndividual();
             this.population.push(individual);
         }
         this.saveGeneration();
+    }
+
+    createValidIndividual() {
+        const maxAttempts = 100;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const individual = new this.individualClass();
+            if (individual.setMidiOutput && this.midiOutput) {
+                individual.setMidiOutput(this.midiOutput);
+            }
+            if (individual.validate()) {
+                return individual;
+            }
+        }
+
+        console.warn(`Unable to generate a valid ${this.individualClass.name} after ${maxAttempts} attempts; using a fallback instance.`);
+        const fallback = new this.individualClass();
+        if (fallback.setMidiOutput && this.midiOutput) {
+            fallback.setMidiOutput(this.midiOutput);
+        }
+        return fallback;
+    }
+
+    createValidChildren(parent1, parent2) {
+        const maxAttempts = 100;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const [child1, child2] = parent1.crossover(parent2);
+            child1.mutate(0.1);
+            child2.mutate(0.1);
+
+            if (child1.setMidiOutput && this.midiOutput) {
+                child1.setMidiOutput(this.midiOutput);
+            }
+            if (child2.setMidiOutput && this.midiOutput) {
+                child2.setMidiOutput(this.midiOutput);
+            }
+
+            if (child1.validate() && child2.validate()) {
+                return [child1, child2];
+            }
+        }
+
+        console.warn(`Unable to produce two valid children for ${this.individualClass.name} after ${maxAttempts} attempts; using fallback individuals.`);
+        return [this.createValidIndividual(), this.createValidIndividual()];
     }
     
     stopAllPlayback() {
@@ -49,8 +88,11 @@ class EvolutionaryAlgorithm {
         const elite = this.selectedIndividuals.slice(0, 2);
         const eliteClones = elite.map(ind => {
             const clone = ind.clone();
+            if (clone.setMidiOutput && this.midiOutput) {
+                clone.setMidiOutput(this.midiOutput);
+            }
             console.log(`Elite clone: ${ind.constructor.name} -> ${clone.constructor.name}`);
-            return clone;
+            return clone.validate() ? clone : this.createValidIndividual();
         });
         newPopulation.push(...eliteClones);
         
@@ -60,19 +102,8 @@ class EvolutionaryAlgorithm {
             
             console.log(`Parents: ${parent1.constructor.name}, ${parent2.constructor.name}`);
             
-            const [child1, child2] = parent1.crossover(parent2);
+            const [child1, child2] = this.createValidChildren(parent1, parent2);
             console.log(`Children: ${child1.constructor.name}, ${child2.constructor.name}`);
-            
-            child1.mutate(0.1);
-            child2.mutate(0.1);
-            
-            // Pass MIDI output to new individuals
-            if (child1.setMidiOutput && this.midiOutput) {
-                child1.setMidiOutput(this.midiOutput);
-            }
-            if (child2.setMidiOutput && this.midiOutput) {
-                child2.setMidiOutput(this.midiOutput);
-            }
             
             newPopulation.push(child1);
             if (newPopulation.length < this.populationSize) {

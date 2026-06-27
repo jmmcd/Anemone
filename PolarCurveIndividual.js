@@ -30,6 +30,15 @@ class PolarCurveIndividual extends Individual {
         return this.representation.derivePhenotype(this.genome);
     }
 
+    validate() {
+        const phenotype = this.getPhenotype();
+        if (typeof phenotype !== 'string' || phenotype.trim() === '') {
+            return false;
+        }
+
+        return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(phenotype);
+    }
+
     usesColorPalette() { return true; }
 
     // Override visualization for polar coordinate drawing
