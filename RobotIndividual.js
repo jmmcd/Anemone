@@ -1,7 +1,7 @@
 // PTO generator: builds the 43-gene parameter vector, each gene drawn from its
-// own range (same ranges as the old generateRandomGenome). Backed by
-// PTORepresentation with distType 'fine' so mutation is Gaussian creep within
-// each gene's range — the interactive feel the old FloatRepresentation had.
+// own range (same ranges as the old generateRandomGenome). PTORepresentation's
+// default 'fine' mutation is Gaussian creep within each gene's range — the
+// interactive feel the old FloatRepresentation had.
 const robotGenerator = (rnd) => [
     // Head (4)
     rnd.uniform(0.6, 0.9),   // 0: head size
@@ -48,7 +48,7 @@ const robotGenerator = (rnd) => [
     rnd.uniform(0, 1), rnd.uniform(0, 1), rnd.uniform(0, 1) // 40-42
 ];
 
-const robotRepresentation = new PTORepresentation(robotGenerator, { distType: 'fine' });
+const robotRepresentation = new PTORepresentation(robotGenerator);
 
 class RobotIndividual extends Individual {
     constructor(genome = null) {

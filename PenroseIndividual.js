@@ -1,7 +1,7 @@
 // PTO generator: 8 parameters, each from its own range (rotation, offsets,
-// scale, tile count, hues, brightness). distType 'fine' gives Gaussian-creep
-// mutation bounded to each gene's range — note this is more correct than the old
-// custom mutate, which clamped scale/brightness/offsets to [0,1].
+// scale, tile count, hues, brightness). The default 'fine' mutation gives
+// Gaussian creep bounded to each gene's range — note this is more correct than
+// the old custom mutate, which clamped scale/brightness/offsets to [0,1].
 const penroseGenerator = (rnd) => [
     rnd.uniform(0, 2 * Math.PI), // 0: rotation
     rnd.uniform(-1, 1),          // 1: x offset
@@ -12,7 +12,7 @@ const penroseGenerator = (rnd) => [
     rnd.uniform(0, 1),           // 6: dart hue
     rnd.uniform(0.6, 1.1)        // 7: brightness
 ];
-const penroseRepresentation = new PTORepresentation(penroseGenerator, { distType: 'fine' });
+const penroseRepresentation = new PTORepresentation(penroseGenerator);
 
 class PenroseIndividual extends Individual {
     constructor(genome = null) {

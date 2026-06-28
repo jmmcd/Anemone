@@ -1,14 +1,18 @@
 /**
- * DAG node classes + PTO generator
+ * DAG node classes + plain-data → DAG converter
  *
- * The DAG node classes (InputNode/ProcessingNode/OutputNode) and a `createDAGGenerator`
- * factory: a PTO generator that builds a runnable DAG *directly* from `rnd`
- * decisions (rather than decoding an integer array). The trace of those decisions
- * is the genotype; the built DAG is the phenotype.
+ * The DAG node classes (InputNode/ProcessingNode/OutputNode), the operation
+ * tables, and `buildDAG`, which turns the plain-data graph description a PTO
+ * generator produces into a runnable DAG of node instances.
  *
- * `createDAGGenerator({ numInputs, numOutputs })` is configurable so it serves both
- * MouseMusicIndividual (3 mouse inputs, 3 outputs) and EEGSonificationIndividual
- * (5 EEG inputs, 2 outputs).
+ * The generators themselves live in the individuals (mouseMusicGenerator in
+ * MouseMusicIndividual, eegSonificationGenerator in EEGSonificationIndividual),
+ * because PTORepresentation's structural naming requires each generator to be
+ * self-contained (no factory/closure) and free of `new` — so they emit plain
+ * data (connections as indices) and call buildDAG() here to instantiate nodes.
+ * The trace of the generator's decisions is the genotype; the plain-data graph
+ * is the phenotype; the built DAG is stateful runtime state held by the
+ * individual.
  *
  * OutputNode uses MIDIModality.sendNote() rather than calling midiOutput.send()
  * directly, so Web Audio fallback is available to all DAG individuals.
@@ -141,64 +145,49 @@ class OutputNode extends DAGNode {
 }
 
 // ---------------------------------------------------------------------------
-// createDAGGenerator — a PTO generator that builds a DAG directly from rnd
+// DAG operation tables + buildDAG (plain data → runnable node graph)
 // ---------------------------------------------------------------------------
 
+// Shared by the individuals' generators (a generator may reference these
+// top-level consts; structural naming still resolves them).
 const DAG_OPERATIONS = ['add', 'sub', 'mul', 'sin', 'min', 'max', 'abs', 'if_gt_zero'];
 const DAG_ARITIES = { add: 2, sub: 2, mul: 2, sin: 1, min: 2, max: 2, abs: 1, if_gt_zero: 3 };
 
 /**
- * Build a PTO generator for a DAG with the given input/output counts. The
- * generator constructs the node graph directly using `rnd`, so PTO's trace of
- * those decisions is the genotype and the built DAG is the phenotype. Use it
- * with PTORepresentation; the individual reads the DAG via `this.phenotype`.
+ * Instantiate a runnable DAG from the plain-data description produced by a
+ * generator. Shape of `plain`:
+ *   {
+ *     inputs:  [{ baseValue }],                       // → InputNode
+ *     procs:   [{ op, arity, inputs:[idx,…] }],       // → ProcessingNode
+ *     outputs: [{ threshold, inputs:[idx, idx] }],    // → OutputNode
+ *   }
+ * Connection indices reference earlier nodes: a proc at position i indexes into
+ * [inputNodes … processingNodes[0..i-1]] (keeping the graph acyclic); an output
+ * indexes into [inputNodes … all processingNodes]. Indices are clamped in case a
+ * mutation/repair left one referencing a node that no longer exists.
  *
- * @param {object} config
- * @param {number} config.numInputs
- * @param {number} config.numOutputs
- * @returns {(rnd) => {allNodes, inputNodes, outputNodes, processingNodes}}
+ * @returns {{allNodes, inputNodes, outputNodes, processingNodes}}
  */
-function createDAGGenerator({ numInputs, numOutputs }) {
-    return (rnd) => {
-        const allNodes = [], inputNodes = [], outputNodes = [], processingNodes = [];
+function buildDAG(plain) {
+    const inputNodes = plain.inputs.map((d, i) => new InputNode(`x${i + 1}`, d.baseValue));
+    const processingNodes = plain.procs.map((d, i) => new ProcessingNode(`p${i + 1}`, d.op, d.arity));
+    const outputNodes = plain.outputs.map((d, i) => new OutputNode(`y${i + 1}`, d.threshold));
+    const allNodes = [...inputNodes, ...processingNodes, ...outputNodes];
 
-        for (let i = 0; i < numInputs; i++) {
-            const node = new InputNode(`x${i + 1}`, rnd.uniform(-1, 1));
-            inputNodes.push(node);
-            allNodes.push(node);
-        }
+    const pick = (pool, idx) => pool[Math.max(0, Math.min(idx, pool.length - 1))];
 
-        const numProc = rnd.randint(2, 9); // 2..9 processing nodes
-        for (let i = 0; i < numProc; i++) {
-            const op = rnd.choice(DAG_OPERATIONS);
-            const node = new ProcessingNode(`p${i + 1}`, op, DAG_ARITIES[op]);
-            processingNodes.push(node);
-            allNodes.push(node);
-        }
+    // Processing nodes connect to earlier nodes only (inputs + already-created
+    // processing nodes), which keeps the graph acyclic.
+    plain.procs.forEach((d, i) => {
+        const available = [...inputNodes, ...processingNodes.slice(0, i)];
+        d.inputs.forEach(idx => processingNodes[i].addInput(pick(available, idx)));
+    });
 
-        for (let i = 0; i < numOutputs; i++) {
-            const node = new OutputNode(`y${i + 1}`, rnd.uniform(0.5, 2.5));
-            outputNodes.push(node);
-            allNodes.push(node);
-        }
+    // Each output reads two upstream nodes (pitch source, energy source).
+    const upstream = [...inputNodes, ...processingNodes];
+    plain.outputs.forEach((d, i) => {
+        d.inputs.forEach(idx => outputNodes[i].addInput(pick(upstream, idx)));
+    });
 
-        // Processing nodes connect to earlier nodes only (inputs + already-created
-        // processing nodes), which keeps the graph acyclic.
-        for (let i = 0; i < processingNodes.length; i++) {
-            const node = processingNodes[i];
-            const available = [...inputNodes, ...processingNodes.slice(0, i)];
-            for (let j = 0; j < node.arity; j++) {
-                node.addInput(rnd.choice(available));
-            }
-        }
-
-        // Each output reads two upstream nodes (pitch source, energy source).
-        const upstream = [...inputNodes, ...processingNodes];
-        for (const node of outputNodes) {
-            node.addInput(rnd.choice(upstream));
-            node.addInput(rnd.choice(upstream));
-        }
-
-        return { allNodes, inputNodes, outputNodes, processingNodes };
-    };
+    return { allNodes, inputNodes, outputNodes, processingNodes };
 }

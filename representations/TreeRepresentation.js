@@ -1,11 +1,18 @@
 /**
  * GP tree node classes + PTO generator
  *
- * The expression-tree node classes (TerminalNode/FunctionNode) and a
- * `createTreeGenerator` factory: a PTO generator that builds a random expression
- * tree directly from `rnd` (the same shape as the old createRandomTree). The
- * trace of those decisions is the genotype; the built tree is the phenotype, and
- * PTO's generic operators provide mutation/crossover/clone.
+ * The expression-tree node classes (TerminalNode/FunctionNode) plus a
+ * self-contained PTO generator (`treeGenerator`) that builds a random expression
+ * tree as *plain data* from `rnd`, and a converter (`buildTreeNode`) that turns
+ * that plain data into evaluable node instances. The trace of the generator's
+ * decisions is the genotype; the plain-data tree is the phenotype.
+ *
+ * Why plain data rather than building nodes in the generator: PTORepresentation
+ * uses structural naming, which compiles the generator in isolation and does not
+ * instrument `rnd`/recursive calls nested inside a `new ClassName(...)`. So the
+ * generator emits plain objects and the individual calls buildTreeNode() to get
+ * the evaluable tree. (Structural naming is what lets the variable-structure
+ * trace use 'fine' operators safely — see PTORepresentation.)
  */
 
 class TreeNode {
@@ -143,46 +150,53 @@ class FunctionNode extends TreeNode {
     }
 }
 
-/**
- * Build a PTO generator that creates random GP expression trees, mirroring the
- * old TreeRepresentation.createRandomTree ("grow" method). Constants are drawn
- * with rnd.uniform (so they can evolve), preserving the old terminal mix of
- * ~10 constants : 4 variables. Use with PTORepresentation; the individual reads
- * the built tree via this.phenotype.
- *
- * @param {object} config
- * @param {number} config.maxDepth
- * @returns {(rnd) => TreeNode}
- */
-function createTreeGenerator(config = {}) {
-    const maxDepth = config.maxDepth || 6;
-    const binaryFns = config.binaryOps || ['+', '-', '*', '/', 'max', 'min', 'mod'];
-    const unaryFns = config.unaryOps || ['sin', 'cos', 'exp', 'log', 'sqrt', 'abs'];
-    const ternaryFns = config.ternaryOps || ['ifpos'];
-    const variables = config.terminals || ['x', 'y', 'r', 'theta'];
-    // Old terminal list was 4 variables + 10 constants, picked uniformly.
-    const constProb = config.constProb !== undefined ? config.constProb : 10 / 14;
+// Tree-shape configuration. Top-level consts (not closure variables), so the
+// structural-naming compiler can still resolve them when it compiles
+// treeGenerator in isolation. The terminal mix is ~10 constants : 4 variables,
+// picked uniformly, mirroring the original "grow" method.
+const TREE_MAX_DEPTH = 6;
+const TREE_BINARY_OPS = ['+', '-', '*', '/', 'max', 'min', 'mod'];
+const TREE_UNARY_OPS = ['sin', 'cos', 'exp', 'log', 'sqrt', 'abs'];
+const TREE_TERNARY_OPS = ['ifpos'];
+const TREE_VARIABLES = ['x', 'y', 'r', 'theta'];
+const TREE_CONST_PROB = 10 / 14;
 
-    function build(rnd, depth) {
+/**
+ * Self-contained PTO generator: builds a random GP expression tree as plain
+ * data. Constants are drawn with rnd.uniform so they can evolve. The recursive
+ * helper is declared *inside* the generator (a closure-free, instrumentable
+ * form) and emits plain objects: { kind:'fn', func, children } for functions and
+ * { kind:'const'|'var', value } for terminals. Use with PTORepresentation; the
+ * individual calls buildTreeNode(this.phenotype) for the evaluable tree.
+ */
+function treeGenerator(rnd) {
+    const build = (depth) => {
         if (depth <= 1 || rnd.random() < 0.3) {
             // Terminal: a constant or a coordinate variable.
-            if (rnd.random() < constProb) {
-                return new TerminalNode(rnd.uniform(-2, 2));
+            if (rnd.random() < TREE_CONST_PROB) {
+                return { kind: 'const', value: rnd.uniform(-2, 2) };
             }
-            return new TerminalNode(rnd.choice(variables));
+            return { kind: 'var', value: rnd.choice(TREE_VARIABLES) };
         }
         const kind = rnd.random();
         if (kind < 0.6) {
-            const func = rnd.choice(binaryFns);
-            return new FunctionNode(func, [build(rnd, depth - 1), build(rnd, depth - 1)]);
+            return { kind: 'fn', func: rnd.choice(TREE_BINARY_OPS), children: [build(depth - 1), build(depth - 1)] };
         } else if (kind < 0.9) {
-            const func = rnd.choice(unaryFns);
-            return new FunctionNode(func, [build(rnd, depth - 1)]);
-        } else {
-            const func = rnd.choice(ternaryFns);
-            return new FunctionNode(func, [build(rnd, depth - 1), build(rnd, depth - 1), build(rnd, depth - 1)]);
+            return { kind: 'fn', func: rnd.choice(TREE_UNARY_OPS), children: [build(depth - 1)] };
         }
-    }
+        return { kind: 'fn', func: rnd.choice(TREE_TERNARY_OPS), children: [build(depth - 1), build(depth - 1), build(depth - 1)] };
+    };
+    return build(TREE_MAX_DEPTH);
+}
 
-    return (rnd) => build(rnd, maxDepth);
+/**
+ * Convert the plain-data tree (the PTO phenotype) into evaluable TreeNode
+ * instances. Done in the individual, not the generator, so the generator stays
+ * free of `new` (see file header).
+ */
+function buildTreeNode(plain) {
+    if (plain.kind === 'fn') {
+        return new FunctionNode(plain.func, plain.children.map(buildTreeNode));
+    }
+    return new TerminalNode(plain.value);
 }

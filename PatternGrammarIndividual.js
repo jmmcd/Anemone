@@ -19,9 +19,10 @@ const patternGrammarMapper = new GrammaticalRepresentation({
     maxDerivations: 1000
 });
 
-// PTO operators over a fixed-length codon array (0-255).
+// PTO operators over a fixed-length codon array (0-255). Explicit for-loop (not
+// Array.from) so structural naming names each codon gene; see PTORepresentation.
 const patternGrammarRepresentation = new PTORepresentation(
-    (rnd) => Array.from({ length: PATTERN_GRAMMAR_LENGTH }, () => rnd.randint(0, 255))
+    (rnd) => { const codons = []; for (let i = 0; i < PATTERN_GRAMMAR_LENGTH; i++) codons.push(rnd.randint(0, 255)); return codons; }
 );
 
 class PatternGrammarIndividual extends Individual {

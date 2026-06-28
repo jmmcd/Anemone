@@ -3,13 +3,38 @@
  *
  * Extends MouseMusicIndividual, overriding makeRepresentation() to use a DAG
  * generator with 5 EEG feature inputs and 2 output nodes (vs the mouse variant's
- * 3 inputs / 3 outputs). MIDI output (with Web Audio fallback) and the PTO
- * operators are inherited.
+ * 3 inputs / 3 outputs). MIDI output (with Web Audio fallback), buildDAG/this.dag
+ * and the PTO operators are inherited.
+ *
+ * Same self-contained, plain-data form as mouseMusicGenerator (see that file and
+ * DAGRepresentation.js), differing only in the input/output counts.
  */
+const eegSonificationGenerator = (rnd) => {
+    const numInputs = 5, numOutputs = 2;
+    const inputs = [];
+    for (let i = 0; i < numInputs; i++) inputs.push({ baseValue: rnd.uniform(-1, 1) });
 
-const eegRepresentation = new PTORepresentation(
-    createDAGGenerator({ numInputs: 5, numOutputs: 2 })
-);
+    const numProc = rnd.randint(2, 9); // 2..9 processing nodes
+    const procs = [];
+    for (let i = 0; i < numProc; i++) {
+        const op = rnd.choice(DAG_OPERATIONS);
+        const arity = DAG_ARITIES[op];
+        const available = numInputs + i; // inputs + earlier procs
+        const ins = [];
+        for (let j = 0; j < arity; j++) ins.push(rnd.randint(0, available - 1));
+        procs.push({ op, arity, inputs: ins });
+    }
+
+    const outputs = [];
+    const upstream = numInputs + numProc;
+    for (let i = 0; i < numOutputs; i++) {
+        outputs.push({ threshold: rnd.uniform(0.5, 2.5), inputs: [rnd.randint(0, upstream - 1), rnd.randint(0, upstream - 1)] });
+    }
+
+    return { inputs, procs, outputs };
+};
+
+const eegRepresentation = new PTORepresentation(eegSonificationGenerator);
 
 class EEGSonificationIndividual extends MouseMusicIndividual {
     constructor(genome = null) {
@@ -32,7 +57,7 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
 
     evaluateEEGDAG() {
         try {
-            const dag = this.phenotype;
+            const dag = this.dag;
             if (!dag.allNodes.length) return;
             dag.allNodes.forEach(node => node.reset());
 

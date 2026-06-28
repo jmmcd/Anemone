@@ -10,7 +10,9 @@
  * model, so it was dropped; mutation is now PTO position-wise only.
  */
 
-const shapesGenerator = (rnd) => Array.from({ length: 60 }, () => rnd.randint(0, 255));
+// Explicit for-loop (not Array.from) so structural naming gives each byte its own
+// counter-indexed gene name; see PTORepresentation.
+const shapesGenerator = (rnd) => { const bytes = []; for (let i = 0; i < 60; i++) bytes.push(rnd.randint(0, 255)); return bytes; };
 const shapesRepresentation = new PTORepresentation(shapesGenerator);
 
 class ShapesIndividual extends Individual {

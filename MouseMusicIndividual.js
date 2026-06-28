@@ -1,18 +1,45 @@
 /**
  * MouseMusicIndividual
  *
- * Backed by PTORepresentation: a generator builds the DAG node graph directly
- * (see createDAGGenerator in DAGRepresentation.js). The genome is the PTO trace;
- * the built DAG is this.phenotype. MIDIModality provides note output (with Web
- * Audio fallback).
+ * Backed by PTORepresentation: mouseMusicGenerator emits a plain-data DAG
+ * description (3 mouse inputs, 3 outputs); buildDAG (DAGRepresentation.js) turns
+ * it into the runnable node graph (this.dag). The genome is the PTO trace, the
+ * plain-data graph is this.phenotype. MIDIModality provides note output (with
+ * Web Audio fallback).
  *
  * Mouse position feeds x1/x2; time variation feeds x3.
  * Output nodes accumulate energy and trigger notes at threshold.
+ *
+ * The generator is self-contained (no closure, no `new`) so PTORepresentation's
+ * structural naming can compile it; connections are emitted as indices into the
+ * earlier nodes. Processing nodes connect only to earlier nodes (acyclic).
  */
+const mouseMusicGenerator = (rnd) => {
+    const numInputs = 3, numOutputs = 3;
+    const inputs = [];
+    for (let i = 0; i < numInputs; i++) inputs.push({ baseValue: rnd.uniform(-1, 1) });
 
-const mouseMusicRepresentation = new PTORepresentation(
-    createDAGGenerator({ numInputs: 3, numOutputs: 3 })
-);
+    const numProc = rnd.randint(2, 9); // 2..9 processing nodes
+    const procs = [];
+    for (let i = 0; i < numProc; i++) {
+        const op = rnd.choice(DAG_OPERATIONS);
+        const arity = DAG_ARITIES[op];
+        const available = numInputs + i; // inputs + earlier procs
+        const ins = [];
+        for (let j = 0; j < arity; j++) ins.push(rnd.randint(0, available - 1));
+        procs.push({ op, arity, inputs: ins });
+    }
+
+    const outputs = [];
+    const upstream = numInputs + numProc;
+    for (let i = 0; i < numOutputs; i++) {
+        outputs.push({ threshold: rnd.uniform(0.5, 2.5), inputs: [rnd.randint(0, upstream - 1), rnd.randint(0, upstream - 1)] });
+    }
+
+    return { inputs, procs, outputs };
+};
+
+const mouseMusicRepresentation = new PTORepresentation(mouseMusicGenerator);
 
 class MouseMusicIndividual extends Individual {
     constructor(genome = null) {
@@ -43,10 +70,21 @@ class MouseMusicIndividual extends Individual {
         return mouseMusicRepresentation;
     }
 
-    // The built DAG (this.phenotype) with this individual's MIDI modality wired
-    // into its output nodes (idempotent; the modality is the shared one).
+    // The runnable DAG, built once per trace from the plain-data phenotype and
+    // cached (it carries runtime state: energy, mouse/EEG/time-driven values).
+    // this.phenotype stays the plain-data description PTO produced.
+    get dag() {
+        if (this._dagKey !== this.phenotype) {
+            this._dag = buildDAG(this.phenotype);
+            this._dagKey = this.phenotype;
+        }
+        return this._dag;
+    }
+
+    // The built DAG with this individual's MIDI modality wired into its output
+    // nodes (idempotent; the modality is the shared one).
     wiredDAG() {
-        const dag = this.phenotype;
+        const dag = this.dag;
         dag.outputNodes.forEach(node => node.setMidiModality(this.midiModality));
         return dag;
     }
@@ -56,7 +94,7 @@ class MouseMusicIndividual extends Individual {
     }
 
     setupMouseTracking(canvas) {
-        const dag = this.phenotype;
+        const dag = this.dag;
         this.mouseListener = (event) => {
             const rect = canvas.getBoundingClientRect();
             this.mouseX = (event.clientX - rect.left) / rect.width * 2 - 1;
@@ -80,7 +118,7 @@ class MouseMusicIndividual extends Individual {
     }
 
     evaluateDAG() {
-        const dag = this.phenotype;
+        const dag = this.dag;
         dag.allNodes.forEach(node => node.reset());
 
         if (dag.inputNodes.length >= 3) {
@@ -100,10 +138,10 @@ class MouseMusicIndividual extends Individual {
         dag.outputNodes.forEach(node => node.evaluate());
     }
 
-    // Interpreted phenotype: a plain description of the DAG (this.phenotype is the
-    // live DAG of stateful nodes).
+    // Interpreted phenotype: a plain description of the DAG read off the live,
+    // stateful node graph (this.dag); this.phenotype is the raw plain-data graph.
     getPhenotype() {
-        const dag = this.phenotype;
+        const dag = this.dag;
         return {
             inputNodes: dag.inputNodes.map(node => ({
                 id: node.id, value: node.value, type: 'input'

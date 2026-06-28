@@ -23,10 +23,31 @@
 class PTORepresentation {
     /**
      * @param {Function} generator  generator(rnd) → phenotype
-     * @param {Object}   [opts]     options forwarded to PTO.run. Notably
-     *   distType: 'coarse' (mutation re-samples a gene — a jump; good for
-     *   ints/categoricals) or 'fine' (Gaussian creep for reals — good for
-     *   float genomes in interactive use).
+     * @param {Object}   [opts]     options forwarded to PTO.run, overriding the
+     *   defaults below. We default to PTO's best operators:
+     *     - distType: 'fine'   — Gaussian creep for reals, and a like-for-like
+     *       resample for ints/categoricals. 'fine' handles discrete and
+     *       variable-structure genomes too; there is normally no reason to pick
+     *       'coarse'. ('coarse' re-samples a gene from scratch on every mutation.)
+     *     - naming: 'structural' — trace entries are named by their call-site
+     *       path in the generator, so mutation/crossover align like-typed genes
+     *       even for variable-structure traces (trees, variable-length arrays).
+     *       This is what makes 'fine' safe everywhere: under the alternative
+     *       'linear' naming, a realigned variable-structure trace can pair a
+     *       choice gene with a differently-typed one and crash fine repair.
+     *
+     * Caveats (structural naming): the generator is compiled in isolation, so it
+     * must be self-contained — it may reference top-level consts/classes but NOT
+     * closure variables (factory args, factory-local helpers). Define any
+     * recursive helper *inside* the generator. Also:
+     *   - Avoid `new ClassName(...)` inside the generator (the bundled
+     *     NameCompiler does not instrument calls nested in a NewExpression):
+     *     emit plain data and build class instances in the individual instead.
+     *   - Build repeated genes with an explicit `for` loop, NOT
+     *     `Array.from({length}, () => rnd...)`. Only real loops get a per-element
+     *     counter in the gene name; Array.from's element callbacks collide to a
+     *     positional fallback, which is silently linear for fixed-length genomes
+     *     and misaligns badly when a length gene varies a variable-length one.
      */
     constructor(generator, opts = {}) {
         this.generator = generator;
@@ -42,7 +63,12 @@ class PTORepresentation {
             }
             // Interactive EC has no fitness function — the user selects — so the
             // fitness passed to PTO is a dummy. We only use the search operators.
-            this._op = PTO.run(this.generator, () => 0, { solver: 'searchOperators', ...this.opts });
+            this._op = PTO.run(this.generator, () => 0, {
+                solver: 'searchOperators',
+                distType: 'fine',
+                naming: 'structural',
+                ...this.opts
+            });
         }
         return this._op;
     }

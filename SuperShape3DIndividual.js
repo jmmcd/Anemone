@@ -1,19 +1,24 @@
 // Genome: two SuperShape blocks (14 genes) — 7 for r1(θ) + 7 for r2(φ).
 // Each block: [m_numerator (int), m_denominator (preset), n1, n2, n3, a, b].
-// Backed by PTORepresentation; distType 'fine' gives Gaussian creep for reals
-// and small steps for the integer genes, replacing the old custom operators.
+// Backed by PTORepresentation, whose default 'fine' mutation gives Gaussian
+// creep for reals and small steps for the integer/categorical genes.
+// The block helper is declared *inside* the generator so structural naming can
+// instrument its rnd calls (a top-level helper's calls would not be); the two
+// call-sites give the two blocks distinct gene names.
 const supershape3dDenominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
-const supershape3dBlock = (rnd) => [
-    rnd.randint(1, 20),                  // m_numerator (integer)
-    rnd.choice(supershape3dDenominators), // m_denominator (from preset list)
-    rnd.uniform(0.1, 10),                // n1
-    rnd.uniform(0.1, 10),                // n2
-    rnd.uniform(0.1, 10),                // n3
-    rnd.uniform(0.1, 3),                 // a
-    rnd.uniform(0.1, 3)                  // b
-];
-const supershape3dGenerator = (rnd) => [...supershape3dBlock(rnd), ...supershape3dBlock(rnd)];
-const supershape3dRepresentation = new PTORepresentation(supershape3dGenerator, { distType: 'fine' });
+const supershape3dGenerator = (rnd) => {
+    const block = () => [
+        rnd.randint(1, 20),                   // m_numerator (integer)
+        rnd.choice(supershape3dDenominators), // m_denominator (from preset list)
+        rnd.uniform(0.1, 10),                 // n1
+        rnd.uniform(0.1, 10),                 // n2
+        rnd.uniform(0.1, 10),                 // n3
+        rnd.uniform(0.1, 3),                  // a
+        rnd.uniform(0.1, 3)                   // b
+    ];
+    return [...block(), ...block()];
+};
+const supershape3dRepresentation = new PTORepresentation(supershape3dGenerator);
 
 class SuperShape3DIndividual extends Individual {
     constructor(genome = null) {

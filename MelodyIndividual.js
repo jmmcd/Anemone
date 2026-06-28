@@ -5,7 +5,9 @@
  * PTO's generic operators handle mutation/crossover.
  */
 
-const melodyGenerator = (rnd) => Array.from({ length: 64 }, () => rnd.randint(0, 1)); // 8 notes × 8 bits
+// Explicit for-loop (not Array.from) so structural naming gives each bit its own
+// counter-indexed gene name; see PTORepresentation.
+const melodyGenerator = (rnd) => { const bits = []; for (let i = 0; i < 64; i++) bits.push(rnd.randint(0, 1)); return bits; }; // 8 notes × 8 bits
 const melodyRepresentation = new PTORepresentation(melodyGenerator);
 
 class MelodyIndividual extends Individual {

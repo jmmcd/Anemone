@@ -5,7 +5,9 @@
  * generic operators handle mutation/crossover.
  */
 
-const gridGenerator = (rnd) => Array.from({ length: 64 }, () => rnd.randint(0, 1)); // 8x8 grid
+// Explicit for-loop (not Array.from) so structural naming gives each cell its own
+// counter-indexed gene name; see PTORepresentation.
+const gridGenerator = (rnd) => { const cells = []; for (let i = 0; i < 64; i++) cells.push(rnd.randint(0, 1)); return cells; }; // 8x8 grid
 const gridRepresentation = new PTORepresentation(gridGenerator);
 
 class GridIndividual extends Individual {

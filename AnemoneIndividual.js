@@ -66,9 +66,15 @@ class Turtle {
 const ANEMONE_INIT_MIN_LEN = 12;
 const ANEMONE_INIT_MAX_LEN = 22;
 
+// Explicit for-loop (not Array.from): structural naming only instruments real
+// loops, so each byte gets a counter-indexed gene name. With Array.from the
+// element callbacks collide to a positional fallback, which misaligns badly when
+// the length gene changes a variable-length genome. See PTORepresentation.
 const anemoneGenerator = (rnd) => {
     const length = rnd.randint(ANEMONE_INIT_MIN_LEN, ANEMONE_INIT_MAX_LEN);
-    return Array.from({ length }, () => rnd.randint(0, 255));
+    const bytes = [];
+    for (let i = 0; i < length; i++) bytes.push(rnd.randint(0, 255));
+    return bytes;
 };
 
 // One shared, stateless representation for all AnemoneIndividuals (it lazily

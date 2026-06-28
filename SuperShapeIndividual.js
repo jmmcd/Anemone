@@ -3,8 +3,8 @@
  *
  * Backed by PTORepresentation. The mixed integer/float genome is expressed by
  * the generator below; PTO's generic operators handle mutation/crossover, so no
- * custom operators are needed. distType 'fine' gives Gaussian creep for the
- * real-valued genes and small steps for the integer gene.
+ * custom operators are needed. The default 'fine' mutation gives Gaussian creep
+ * for the real-valued genes and small steps for the integer/categorical genes.
  * Renders Gielis superformula: r(φ) = [|cos(mφ/4)/a|^n2 + |sin(mφ/4)/b|^n3]^(-1/n1)
  */
 
@@ -18,7 +18,7 @@ const supershapeGenerator = (rnd) => [
     rnd.uniform(0.1, 3),                         // a
     rnd.uniform(0.1, 3)                          // b
 ];
-const supershapeRepresentation = new PTORepresentation(supershapeGenerator, { distType: 'fine' });
+const supershapeRepresentation = new PTORepresentation(supershapeGenerator);
 
 class SuperShapeIndividual extends Individual {
     constructor(genome = null) {

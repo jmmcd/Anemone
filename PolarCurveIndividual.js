@@ -18,8 +18,10 @@ const polarCurveMapper = new GrammaticalRepresentation({
     maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
 });
 
+// Explicit for-loop (not Array.from) so structural naming names each codon gene;
+// see PTORepresentation.
 const polarCurveRepresentation = new PTORepresentation(
-    (rnd) => Array.from({ length: POLAR_CURVE_LENGTH }, () => rnd.randint(0, 255))
+    (rnd) => { const codons = []; for (let i = 0; i < POLAR_CURVE_LENGTH; i++) codons.push(rnd.randint(0, 255)); return codons; }
 );
 
 class PolarCurveIndividual extends Individual {

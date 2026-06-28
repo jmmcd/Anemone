@@ -6,13 +6,46 @@
 
 * Grammar should be specified in the Individual, not in Grammar.js
 
-* Does GrammarRepresentation actually use PTO?
+* Does GrammarRepresentation actually use PTO? — yes: PTO evolves the codon
+  array; GrammaticalRepresentation is only a derive/compile mapper (this.grammar),
+  not this.representation. (Its own generate/mutate are unused.)
 
-* Claude misunderstanding about fine/coarse. Ensure we are using dist="fine" and naming="structured".
+* fine/coarse + structural naming — DONE. PTORepresentation now defaults to
+  { distType: 'fine', naming: 'structural' } for every individual; the per-type
+  'fine' overrides and the tree's old 'coarse' workaround are gone.
+
+* Claude bug report in PTO js:
 
 "PTO's fine-mode RandomCat._fineRepair crashes when a variable-structure trace realigns a choice gene against a different-typed gene (it assumes the other gene is also a choice). Fixed-length heterogeneous genomes (SuperShape) never hit this; the variable-structure tree does. The DAG individuals use coarse (default) with heterogeneous variable traces and repair fine. So the fix is to drop fine for the tree:"
+  → RESOLVED differently: switching to naming="structural" aligns genes by
+    call-site (so a choice gene always meets a choice gene), which lets the tree
+    keep fine. No need to drop fine.
+
+* Claude bug report in PTO js:
+
+"NameCompiler._visitExpr has no NewExpression case, so any rnd.* call or recursive helper call inside a new SomeClass(...) argument is left un-instrumented. For the recursive tree that means build(depth-1) inside new FunctionNode(...) loses its threaded __prefix__, so depth becomes undefined→NaN and recursion never terminates → stack overflow. The DAG generators (new InputNode(...) etc.) hit the same gap."
+
+Claude wrote a patch for pto-bundle.js, but it would be better to apply it upstream.
+  → For now the bundle is left pristine: instead of `new` in generators, the Tree
+    and DAG generators emit plain data and the individual builds the class
+    instances (buildTreeNode / buildDAG). Still worth fixing upstream.
+
+* Claude bug report in PTO js (third one):
+
+"Array.from({length}, () => rnd...) element callbacks are not instrumented by the
+NameCompiler — they get no per-element counter, so they collide to a positional
+(linear) fallback rather than structural names. This is silently OK for
+fixed-length genomes but misaligns variable-length ones badly (Anemone validity
+collapsed from ~94% to ~8% until we switched to explicit for-loops)."
+  → Worked around: all generators now use explicit `for` loops, not Array.from.
+
+"The vendor patch works cleanly: with a NewExpression case added to NameCompiler._visitExpr, the recursive class-building tree generator runs under fine+structural with healthy size variety (15–45 nodes). This is a real bug in the vendored PTO (and exactly the kind of "Claude bug report in PTO js" your TODO is collecting)."
 
 
+
+* Bug in MouseMusic: no valid individuals? Only elites? — likely fixed by the
+  DAG rewrite: connections are now indices into earlier nodes, not object
+  references that couldn't align across PTO traces. Re-check in the running app.
 
 
 
@@ -21,7 +54,7 @@
 
 * Allow user to paste in a GE grammar using standard drawing commands
 
-* Allow user to paste in a JS generator for PTO, I guess using standard drawing commands
+* Allow user to paste in a JS generator for PTO, I guess using standard drawing commands. Call it "UserGeneratorDrawingIndividual.js" or something like that. It creates a text editor, and pre-populates with a full illustrative example that uses the same drawing commands already used in
 
 * Hotkeys
 

@@ -1,7 +1,8 @@
-// PTO generator: 8 floats in [0,1] (the neural-network inputs). distType 'fine'
-// gives Gaussian-creep mutation, matching the old FloatRepresentation feel.
-const sheepGenerator = (rnd) => Array.from({ length: 8 }, () => rnd.uniform(0, 1));
-const sheepRepresentation = new PTORepresentation(sheepGenerator, { distType: 'fine' });
+// PTO generator: 8 floats in [0,1] (the neural-network inputs). The default
+// 'fine' mutation gives Gaussian creep, matching the old FloatRepresentation feel.
+// Explicit for-loop (not Array.from) so structural naming names each gene; see PTORepresentation.
+const sheepGenerator = (rnd) => { const g = []; for (let i = 0; i < 8; i++) g.push(rnd.uniform(0, 1)); return g; };
+const sheepRepresentation = new PTORepresentation(sheepGenerator);
 
 class SheepIndividual extends Individual {
     constructor(genome = null) {
