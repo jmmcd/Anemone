@@ -297,27 +297,10 @@ class AnemoneIndividual extends Individual {
         });
     }
 
-    // The decoded turtle program (the meaningful phenotype). Distinct from
-    // this.phenotype, which is the raw byte array the generator produced.
+    // The decoded turtle program: the meaningful phenotype, shown by the base
+    // describe() as "Phenotype:". (this.phenotype is the raw byte array — the same
+    // values as the genotype trace — so it isn't shown separately.)
     getPhenotype() {
         return this.phenotype.map(val => this.integerToCharacter(val)).join('');
-    }
-
-    // Show both sides: the decoded turtle program + raw bytes (phenotype) and the
-    // PTO trace (genotype).
-    describe() {
-        let out = '';
-        out += `<span class="genome-label">Type:</span> ${this.constructor.name}\n`;
-        out += `<span class="genome-label">ID:</span> ${this.id}\n`;
-        out += `<span class="genome-label">Fitness:</span> ${this.fitness}\n\n`;
-
-        out += `<span class="genome-label">Phenotype (turtle program):</span>\n${this.getPhenotype()}\n\n`;
-
-        const bytes = this.phenotype;
-        out += `<span class="genome-label">Phenotype bytes (${bytes.length}):</span>\n`;
-        out += this._formatIntegerGenome(bytes) + '\n\n';
-
-        out += this._formatGenomeSection();
-        return out;
     }
 }
