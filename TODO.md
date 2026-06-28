@@ -4,19 +4,11 @@
 
 * PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
 
-* Grammar should be specified in the Individual, not in Grammar.js — partly done:
-  the derivation logic now lives in each individual's generator; the grammar
-  *rules* are still static factories in Grammar.js (createImagePatternGrammar /
-  createPolarDrawingGrammar). Moving the rule definitions into the individuals (or
-  letting the user paste a grammar) is the remaining step.
-
-* Anemone genotype and phenotype:
-
-Phenotype bytes (15):
- 132  140   75  210   45  101   97  106   79  105  190  193  183   35  208
-
-Genome (PTO trace, 16 decisions):
-  15  132  140   75  210   45  101   97  106   79  105  190  193  183   35  208
+* Grammar should be specified in the Individual, not in Grammar.js — DONE. The
+  derivation logic and the grammar definition (a plain rules object) now both live
+  in each individual; Grammar.js is just the generic BNF engine. Next step toward
+  the goal: let the user paste/edit a grammar in a text window (the rules object is
+  already in the editable shape).
 
 * Claude bug report in PTO js:
 

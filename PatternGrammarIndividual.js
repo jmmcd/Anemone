@@ -9,7 +9,24 @@
  * generic operators handle mutation/crossover/clone.
  */
 
-const imagePatternGrammar = Grammar.createImagePatternGrammar();
+// The BNF grammar this individual evolves over. Kept here (not in Grammar.js) so
+// the individual is self-contained; it's a plain rules object, the form a future
+// "edit the grammar" text window would produce. A symbol is a non-terminal if it
+// looks like <name>; everything else is a terminal emitted into the expression.
+const imagePatternGrammar = new Grammar({
+    '<pattern>': [['<expr>']],
+    '<expr>': [
+        ['<expr>', '<op>', '<expr>'],
+        ['<func>', '(', '<expr>', ')'],
+        ['ifpos', '(', '<expr>', ',', '<expr>', ',', '<expr>', ')'],
+        ['<var>'],
+        ['<const>']
+    ],
+    '<op>': [['+'], ['-'], ['*'], ['/'], ['%']],
+    '<func>': [['sin'], ['cos'], ['tan'], ['exp'], ['log'], ['sqrt'], ['abs'], ['floor'], ['ceil']],
+    '<var>': [['x'], ['y'], ['r'], ['theta'], ['(x+y)'], ['(x-y)'], ['(x*y)']],
+    '<const>': [['0.1'], ['0.5'], ['1.0'], ['2.0'], ['3.0'], ['-1.0'], ['-0.5'], ['3.14159'], ['6.28318']]
+});
 const IMAGE_PATTERN_START = '<pattern>';
 const IMAGE_PATTERN_MAX_DEPTH = 6; // derivation-tree depth bound (keeps expressions tractable)
 

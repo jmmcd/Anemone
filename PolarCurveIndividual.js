@@ -10,7 +10,22 @@
  * own single-parameter r(t) function below.
  */
 
-const polarDrawingGrammar = Grammar.createPolarDrawingGrammar();
+// The BNF grammar this individual evolves over (a plain rules object; see
+// PatternGrammarIndividual / Grammar.js). r(t) expressions in t, kept here so the
+// individual is self-contained.
+const polarDrawingGrammar = new Grammar({
+    '<polar>': [['<expr>']],
+    '<expr>': [
+        ['<expr>', '<op>', '<expr>'],
+        ['<func>', '(', '<expr>', ')'],
+        ['<var>'],
+        ['<const>']
+    ],
+    '<op>': [['+'], ['-'], ['*'], ['/']],
+    '<func>': [['sin'], ['cos'], ['tan'], ['exp'], ['log'], ['sqrt'], ['abs']],
+    '<var>': [['t'], ['(t*2)'], ['(t/2)'], ['(t*3)'], ['(t/3)']],
+    '<const>': [['1.0'], ['2.0'], ['3.0'], ['0.5'], ['0.1'], ['5.0'], ['10.0'], ['3.14159'], ['6.28318']]
+});
 const POLAR_START = '<polar>';
 const POLAR_MAX_DEPTH = 6; // derivation-tree depth bound (keeps expressions tractable)
 

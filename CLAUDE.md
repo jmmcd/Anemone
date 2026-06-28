@@ -51,13 +51,13 @@ All individual types inherit from this:
 
 ## Representations
 
-Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files below are no longer *representations* in the operator sense — they supply the **classes, converters, and grammar** that a PTO generator's output is built from or expands. (`Grammar.js` lives at the repo root, not in `representations/`.)
+Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files below are no longer *representations* in the operator sense — they supply the **classes and converters** a PTO generator's output is built from. (`Grammar.js` lives at the repo root, not in `representations/`.)
 
 | File | Role | Used by |
 |---|---|---|
 | `PTORepresentation.js` | **Program Trace Optimisation**: genome = trace of random decisions; phenotype = generator output. The operator backbone for every individual. | all individuals |
 | `TreeRepresentation.js` | GP node classes (`TerminalNode`/`FunctionNode`), the self-contained `treeGenerator` (→ plain-data tree), and `buildTreeNode` (plain data → evaluable tree) | PatternIndividual |
-| `Grammar.js` | BNF grammar (rules + `getProductions`/`isNonTerminal`/`shortestProductions`); the grammar individuals' generators expand it directly | PatternGrammarIndividual, PolarCurveIndividual |
+| `Grammar.js` | generic BNF engine (`getProductions`/`isNonTerminal`/`shortestProductions`). The **grammar definitions live in the individuals** (a plain rules object each); their generators expand it directly | PatternGrammarIndividual, PolarCurveIndividual |
 | `DAGRepresentation.js` | DAG node classes (`InputNode`/`ProcessingNode`/`OutputNode`), operation tables, and `buildDAG` (plain-data graph → runnable node graph). The generators live in the individuals. | MouseMusicIndividual, EEGSonificationIndividual |
 
 The two DAG individuals each define their own self-contained, plain-data generator (mouse: 3 inputs / 3 outputs; EEG: 5 inputs / 2 outputs) emitting connections as indices, and share `buildDAG` to instantiate the node graph. (The old configurable `createDAGGenerator` factory is gone — structural naming can't compile a factory closure.)
@@ -124,7 +124,7 @@ class SomeIndividual extends Individual {
 
 The default `{ distType: 'fine', naming: 'structural' }` is right for essentially all genomes; keep the generator self-contained, free of `new`, and use `for` loops not `Array.from` for repeated genes (see PTORepresentation for why). Override `mutate`/`crossover`/`clone` only when the genome semantics genuinely fall outside this model.
 
-Every individual is PTO-backed, but a few produce a structure the individual then interprets: `PatternIndividual` (`treeGenerator` → plain tree, `buildTreeNode` → evaluable `TreeNode`s in `this.tree`); `MouseMusicIndividual`/`EEGSonificationIndividual` (plain-data DAG generator → `buildDAG` → runnable node graph in `this.dag`). The grammar individuals (`PatternGrammarIndividual`/`PolarCurveIndividual`) do GE the proper PTO way: the generator **is** the derivation — it recursively expands a BNF grammar from the start symbol, picking a production with `rnd.choice` at each non-terminal and emitting the expression string directly, so `this.phenotype` is the expression and the trace records the derivation tree (no codon array, no `% productions.length`). The tree/DAG node classes live in `representations/` (`TreeRepresentation.js`, `DAGRepresentation.js`); the grammar lives in `Grammar.js`; only the operators are PTO's.
+Every individual is PTO-backed, but a few produce a structure the individual then interprets: `PatternIndividual` (`treeGenerator` → plain tree, `buildTreeNode` → evaluable `TreeNode`s in `this.tree`); `MouseMusicIndividual`/`EEGSonificationIndividual` (plain-data DAG generator → `buildDAG` → runnable node graph in `this.dag`). The grammar individuals (`PatternGrammarIndividual`/`PolarCurveIndividual`) do GE the proper PTO way: the generator **is** the derivation — it recursively expands a BNF grammar from the start symbol, picking a production with `rnd.choice` at each non-terminal and emitting the expression string directly, so `this.phenotype` is the expression and the trace records the derivation tree (no codon array, no `% productions.length`). The tree/DAG node classes live in `representations/` (`TreeRepresentation.js`, `DAGRepresentation.js`); the BNF *engine* is `Grammar.js` but each grammar *definition* lives in its individual; only the operators are PTO's.
 
 ## Individual Types
 

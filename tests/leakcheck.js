@@ -72,7 +72,21 @@ globalThis.__choices = 0;
 globalThis.__violations = 0;
 globalThis.__examples = [];
 
-const grammar = Grammar.createImagePatternGrammar();
+// Same grammar PatternGrammarIndividual uses (kept in sync by hand; it's a probe).
+const grammar = new Grammar({
+    '<pattern>': [['<expr>']],
+    '<expr>': [
+        ['<expr>', '<op>', '<expr>'],
+        ['<func>', '(', '<expr>', ')'],
+        ['ifpos', '(', '<expr>', ',', '<expr>', ',', '<expr>', ')'],
+        ['<var>'],
+        ['<const>']
+    ],
+    '<op>': [['+'], ['-'], ['*'], ['/'], ['%']],
+    '<func>': [['sin'], ['cos'], ['tan'], ['exp'], ['log'], ['sqrt'], ['abs'], ['floor'], ['ceil']],
+    '<var>': [['x'], ['y'], ['r'], ['theta'], ['(x+y)'], ['(x-y)'], ['(x*y)']],
+    '<const>': [['0.1'], ['0.5'], ['1.0'], ['2.0'], ['3.0'], ['-1.0'], ['-0.5'], ['3.14159'], ['6.28318']]
+});
 
 const probeGenerator = (rnd) => {
     const expand = (symbol, depth) => {

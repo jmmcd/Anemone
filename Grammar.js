@@ -1,3 +1,16 @@
+/**
+ * Grammar — a generic BNF engine (shared infrastructure, like PTORepresentation).
+ *
+ * It only holds rules and answers questions about them (getProductions,
+ * isNonTerminal, shortestProductions). The actual grammars live in the
+ * individuals that use them (e.g. PatternGrammarIndividual, PolarCurveIndividual),
+ * so each individual type is self-contained in one file — and a grammar is just a
+ * plain rules object, which is what a future "edit the grammar in a text window"
+ * feature would produce.
+ *
+ * Rules shape: { '<nonterminal>': [ [symbol, …], … ], … }. A symbol is a
+ * non-terminal if it looks like <name>; anything else is a terminal.
+ */
 class Grammar {
     constructor(rules = {}) {
         this.rules = rules;
@@ -37,106 +50,6 @@ class Grammar {
         return out;
     }
 
-    static createImagePatternGrammar() {
-        return new Grammar({
-            '<pattern>': [
-                ['<expr>']
-            ],
-            '<expr>': [
-                ['<expr>', '<op>', '<expr>'],
-                ['<func>', '(', '<expr>', ')'],
-                ['ifpos', '(', '<expr>', ',', '<expr>', ',', '<expr>', ')'],
-                ['<var>'],
-                ['<const>']
-            ],
-            '<op>': [
-                ['+'],
-                ['-'],
-                ['*'],
-                ['/'],
-                ['%']
-            ],
-            '<func>': [
-                ['sin'],
-                ['cos'],
-                ['tan'],
-                ['exp'],
-                ['log'],
-                ['sqrt'],
-                ['abs'],
-                ['floor'],
-                ['ceil']
-            ],
-            '<var>': [
-                ['x'],
-                ['y'],
-                ['r'],
-                ['theta'],
-                ['(x+y)'],
-                ['(x-y)'],
-                ['(x*y)']
-            ],
-            '<const>': [
-                ['0.1'],
-                ['0.5'],
-                ['1.0'],
-                ['2.0'],
-                ['3.0'],
-                ['-1.0'],
-                ['-0.5'],
-                ['3.14159'],
-                ['6.28318']
-            ]
-        });
-    }
-    
-    static createPolarDrawingGrammar() {
-        return new Grammar({
-            '<polar>': [
-                ['<expr>']
-            ],
-            '<expr>': [
-                ['<expr>', '<op>', '<expr>'],
-                ['<func>', '(', '<expr>', ')'],
-                ['<var>'],
-                ['<const>']
-            ],
-            '<op>': [
-                ['+'],
-                ['-'],
-                ['*'],
-                ['/']
-            ],
-            '<func>': [
-                ['sin'],
-                ['cos'],
-                ['tan'],
-                ['exp'],
-                ['log'],
-                ['sqrt'],
-                ['abs']
-            ],
-            '<var>': [
-                ['t'],
-                ['(t*2)'],
-                ['(t/2)'],
-                ['(t*3)'],
-                ['(t/3)']
-            ],
-            '<const>': [
-                ['1.0'],
-                ['2.0'],
-                ['3.0'],
-                ['0.5'],
-                ['0.1'],
-                ['5.0'],
-                ['10.0'],
-                ['3.14159'],
-                ['6.28318']
-            ]
-        });
-    }
-    
     toString() {
         let result = 'Grammar Rules:\n';
         for (const [nonTerminal, productions] of Object.entries(this.rules)) {
