@@ -4,12 +4,6 @@
 
 * PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
 
-* Grammar should be specified in the Individual, not in Grammar.js — DONE. The
-  derivation logic and the grammar definition (a plain rules object) now both live
-  in each individual; Grammar.js is just the generic BNF engine. Next step toward
-  the goal: let the user paste/edit a grammar in a text window (the rules object is
-  already in the editable shape).
-
 * Claude bug report in PTO js:
 
 "PTO's fine-mode RandomCat._fineRepair crashes when a variable-structure trace realigns a choice gene against a different-typed gene (it assumes the other gene is also a choice). Fixed-length heterogeneous genomes (SuperShape) never hit this; the variable-structure tree does. The DAG individuals use coarse (default) with heterogeneous variable traces and repair fine. So the fix is to drop fine for the tree:"
