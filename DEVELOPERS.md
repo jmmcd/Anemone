@@ -15,3 +15,7 @@ Each individual holds a representation object and delegates `mutate`, `crossover
 I deploy this to Surge just by running this in the current directory:
 
 ```surge . anemone.surge.sh``` 
+
+# Adding a new problem
+
+The goal is to design Anemone so that adding a new problems is easy. With PTO we don't need to define a new representation (encoding and search operators) for every problem. Instead the user only has to supply a **generator function** which samples from the solution space. It should go into a new XYZIndividual.js class where XYZ is your application name. There are several audio, MIDI and graphics rendering examples already provided, so many new applications won't need much code. 
