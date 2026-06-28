@@ -1,35 +1,41 @@
 /**
  * PolarCurveIndividual
  *
- * Grammatical evolution under PTO. The genome (PTO trace) expresses to a codon
- * array (this.phenotype); a shared GrammaticalRepresentation maps it through the
- * polar grammar to an r(t) expression string. PTO's generic operators handle
- * mutation/crossover/clone.
+ * Grammatical evolution under PTO, the "real" way: the generator IS the
+ * derivation. polarCurveGenerator recursively expands the polar grammar from the
+ * start symbol, choosing a production by index at each non-terminal, and returns
+ * the r(t) expression string directly — so the genome (PTO trace) records the
+ * derivation choices and this.phenotype is the expression. No codon array. PTO's
+ * generic operators handle mutation/crossover/clone; this individual compiles its
+ * own single-parameter r(t) function below.
  */
 
-const POLAR_CURVE_LENGTH = 100;
+const polarDrawingGrammar = Grammar.createPolarDrawingGrammar();
+const POLAR_START = '<polar>';
+const POLAR_MAX_DEPTH = 6; // derivation-tree depth bound (keeps expressions tractable)
 
-// Grammar mapper (codon array → expression). Reused for derivePhenotype only;
-// this individual compiles its own single-parameter r(t) function below.
-const polarCurveMapper = new GrammaticalRepresentation({
-    length: POLAR_CURVE_LENGTH,
-    grammar: Grammar.createPolarDrawingGrammar(),
-    startSymbol: '<polar>',
-    maxDerivations: 100 // Reduced from 1000 to prevent runaway derivations
-});
+// Self-contained derivation generator — see patternGrammarGenerator and
+// PTORepresentation for why it's shaped this way (inline recursion + for-loop,
+// top-level consts only, rnd.choice over productions, depth-bounded).
+const polarCurveGenerator = (rnd) => {
+    const expand = (symbol, depth) => {
+        if (!polarDrawingGrammar.isNonTerminal(symbol)) return symbol;
+        const choices = depth > 0 ? polarDrawingGrammar.getProductions(symbol) : polarDrawingGrammar.shortestProductions(symbol);
+        const prod = rnd.choice(choices);
+        let out = '';
+        for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
+        return out;
+    };
+    return expand(POLAR_START, POLAR_MAX_DEPTH);
+};
 
-// Explicit for-loop (not Array.from) so structural naming names each codon gene;
-// see PTORepresentation.
-const polarCurveRepresentation = new PTORepresentation(
-    (rnd) => { const codons = []; for (let i = 0; i < POLAR_CURVE_LENGTH; i++) codons.push(rnd.randint(0, 255)); return codons; }
-);
+const polarCurveRepresentation = new PTORepresentation(polarCurveGenerator);
 
 class PolarCurveIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
 
         this.representation = polarCurveRepresentation;
-        this.grammar = polarCurveMapper;
         this.genome = genome || this.representation.generateRandom();
 
         // Polar coordinate parameters
@@ -38,10 +44,9 @@ class PolarCurveIndividual extends Individual {
         this.numPoints = 500; // Number of points to sample
     }
 
-    // The interpreted phenotype: the derived r(t) expression string (this.phenotype
-    // is the raw codon array PTO produced).
+    // this.phenotype is already the derived r(t) expression string.
     getPhenotype() {
-        return this.grammar.derivePhenotype(this.phenotype);
+        return this.phenotype;
     }
 
     validate() {

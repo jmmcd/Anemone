@@ -51,13 +51,13 @@ All individual types inherit from this:
 
 ## Representations
 
-Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files in `representations/` are no longer *representations* in the operator sense — they supply the **classes and converters** that a PTO generator's plain-data output is turned into.
+Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files below are no longer *representations* in the operator sense — they supply the **classes, converters, and grammar** that a PTO generator's output is built from or expands. (`Grammar.js` lives at the repo root, not in `representations/`.)
 
 | File | Role | Used by |
 |---|---|---|
 | `PTORepresentation.js` | **Program Trace Optimisation**: genome = trace of random decisions; phenotype = generator output. The operator backbone for every individual. | all individuals |
 | `TreeRepresentation.js` | GP node classes (`TerminalNode`/`FunctionNode`), the self-contained `treeGenerator` (→ plain-data tree), and `buildTreeNode` (plain data → evaluable tree) | PatternIndividual |
-| `GrammaticalRepresentation.js` | codon-array → BNF derivation → compiled JS function; used as a **mapper** (`this.grammar`), not as `this.representation` (its own `generate`/`mutate` are unused — PTO produces the codon array) | PatternGrammarIndividual, PolarCurveIndividual |
+| `Grammar.js` | BNF grammar (rules + `getProductions`/`isNonTerminal`/`shortestProductions`); the grammar individuals' generators expand it directly | PatternGrammarIndividual, PolarCurveIndividual |
 | `DAGRepresentation.js` | DAG node classes (`InputNode`/`ProcessingNode`/`OutputNode`), operation tables, and `buildDAG` (plain-data graph → runnable node graph). The generators live in the individuals. | MouseMusicIndividual, EEGSonificationIndividual |
 
 The two DAG individuals each define their own self-contained, plain-data generator (mouse: 3 inputs / 3 outputs; EEG: 5 inputs / 2 outputs) emitting connections as indices, and share `buildDAG` to instantiate the node graph. (The old configurable `createDAGGenerator` factory is gone — structural naming can't compile a factory closure.)
@@ -124,7 +124,7 @@ class SomeIndividual extends Individual {
 
 The default `{ distType: 'fine', naming: 'structural' }` is right for essentially all genomes; keep the generator self-contained, free of `new`, and use `for` loops not `Array.from` for repeated genes (see PTORepresentation for why). Override `mutate`/`crossover`/`clone` only when the genome semantics genuinely fall outside this model.
 
-Every individual is PTO-backed, but a few produce plain data that an individual then turns into a richer working structure: `PatternIndividual` (`treeGenerator` → plain tree, `buildTreeNode` → evaluable `TreeNode`s in `this.tree`); `MouseMusicIndividual`/`EEGSonificationIndividual` (plain-data DAG generator → `buildDAG` → runnable node graph in `this.dag`); and `PatternGrammarIndividual`/`PolarCurveIndividual` (PTO produces a codon array, then a shared `GrammaticalRepresentation` mapper derives/compiles the expression). For those, `this.phenotype` is the plain-data PTO output and the individual exposes the interpreted structure separately. The node/tree/grammar **classes** still live in `representations/` (`TreeRepresentation.js`, `DAGRepresentation.js`, `GrammaticalRepresentation.js`); only the operators are PTO's.
+Every individual is PTO-backed, but a few produce a structure the individual then interprets: `PatternIndividual` (`treeGenerator` → plain tree, `buildTreeNode` → evaluable `TreeNode`s in `this.tree`); `MouseMusicIndividual`/`EEGSonificationIndividual` (plain-data DAG generator → `buildDAG` → runnable node graph in `this.dag`). The grammar individuals (`PatternGrammarIndividual`/`PolarCurveIndividual`) do GE the proper PTO way: the generator **is** the derivation — it recursively expands a BNF grammar from the start symbol, picking a production with `rnd.choice` at each non-terminal and emitting the expression string directly, so `this.phenotype` is the expression and the trace records the derivation tree (no codon array, no `% productions.length`). The tree/DAG node classes live in `representations/` (`TreeRepresentation.js`, `DAGRepresentation.js`); the grammar lives in `Grammar.js`; only the operators are PTO's.
 
 ## Individual Types
 
@@ -133,8 +133,8 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | Individual | PTO output | Modality | Notes |
 |---|---|---|---|
 | `PatternIndividual` | plain-data GP tree | Canvas2D | GP over x,y,r,theta; `buildTreeNode` → evaluable tree |
-| `PatternGrammarIndividual` | 100 codons | Canvas2D | codons → BNF grammar → expression |
-| `PolarCurveIndividual` | 100 codons | Canvas2D | codons → polar-coordinate r(t) curve |
+| `PatternGrammarIndividual` | expression string | Canvas2D | derivation generator expands a BNF grammar directly |
+| `PolarCurveIndividual` | r(t) expression string | Canvas2D | derivation generator → polar-coordinate r(t) curve |
 | `ShapesIndividual` | 60 bytes | Canvas2D | Sequence of drawing ops |
 | `GridIndividual` | 64 bits | Canvas2D | 8×8 grid |
 | `SuperShapeIndividual` | mixed int/float | Canvas2D | Gielis polar curve |
@@ -173,7 +173,7 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 
 **Adding a new individual type:**
 1. Extend `Individual`
-2. Write a self-contained `generator(rnd)` (no closure vars, no `new`, `for` loops not `Array.from`) and a shared `new PTORepresentation(generator)` (defaults fine/structural), assign it to `this.representation`, and set `this.genome = genome || this.representation.generateRandom()`. If the structure is a tree/grammar/DAG, have the generator emit plain data and convert it to the working classes in the individual (as `buildTreeNode`/`buildDAG`/the grammar mapper do).
+2. Write a self-contained `generator(rnd)` (no closure vars, no `new`, `for` loops not `Array.from`) and a shared `new PTORepresentation(generator)` (defaults fine/structural), assign it to `this.representation`, and set `this.genome = genome || this.representation.generateRandom()`. If the structure is a tree/DAG, have the generator emit plain data and convert it to the working classes in the individual (as `buildTreeNode`/`buildDAG` do); for a grammar, expand it directly in the generator (as the grammar individuals do).
 3. Implement `visualize(canvas)` reading `this.phenotype` (and pick a `Modality` if it helps); return `true` from `usesColorPalette()` and/or `is3D()` as appropriate
 4. Inherited `mutate`/`crossover`/`clone` delegate to `this.representation` — only override for non-standard genome semantics
 5. Register in `Anemone.js` individual type selector and add `<script>` tags to `index.html` (PTO-backed types need `vendor/pto-bundle.js` and `representations/PTORepresentation.js`, which are already loaded)

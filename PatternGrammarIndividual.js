@@ -1,42 +1,49 @@
 /**
  * PatternGrammarIndividual
  *
- * Grammatical evolution under PTO. The genome (PTO trace) expresses to a codon
- * array (this.phenotype); a shared GrammaticalRepresentation maps that codon
- * array through the BNF grammar to an expression string and compiles it. PTO's
- * generic operators handle mutation/crossover/clone (standard GE codon mutation
- * is exactly PTO coarse mutation on the integer genes).
+ * Grammatical evolution under PTO, the "real" way: the generator IS the
+ * derivation. patternGrammarGenerator recursively expands the BNF grammar from
+ * the start symbol, choosing a production by index at each non-terminal, and
+ * returns the expression string directly — so the genome (PTO trace) records the
+ * derivation choices and this.phenotype is the expression. No codon array. PTO's
+ * generic operators handle mutation/crossover/clone.
  */
 
-const PATTERN_GRAMMAR_LENGTH = 100;
+const imagePatternGrammar = Grammar.createImagePatternGrammar();
+const IMAGE_PATTERN_START = '<pattern>';
+const IMAGE_PATTERN_MAX_DEPTH = 6; // derivation-tree depth bound (keeps expressions tractable)
 
-// Grammar mapper (codon array → expression → compiled fn). Reused for its
-// derive/compile/evaluate helpers; its own generate/mutate/etc. are unused.
-const patternGrammarMapper = new GrammaticalRepresentation({
-    length: PATTERN_GRAMMAR_LENGTH,
-    grammar: Grammar.createImagePatternGrammar(),
-    startSymbol: '<pattern>',
-    maxDerivations: 1000
-});
+// Self-contained derivation generator (inline recursion + for-loop so structural
+// naming names each rule choice by its place in the derivation tree; references
+// only top-level consts; see PTORepresentation). At the depth limit it restricts
+// to the shortest (fewest-non-terminal) productions, so derivation terminates.
+// rnd.choice over the productions is the idiomatic form: PTO's repair keeps the
+// chosen value within the current symbol's productions across mutation/crossover.
+const patternGrammarGenerator = (rnd) => {
+    const expand = (symbol, depth) => {
+        if (!imagePatternGrammar.isNonTerminal(symbol)) return symbol;
+        const choices = depth > 0 ? imagePatternGrammar.getProductions(symbol) : imagePatternGrammar.shortestProductions(symbol);
+        const prod = rnd.choice(choices);
+        let out = '';
+        for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
+        return out;
+    };
+    return expand(IMAGE_PATTERN_START, IMAGE_PATTERN_MAX_DEPTH);
+};
 
-// PTO operators over a fixed-length codon array (0-255). Explicit for-loop (not
-// Array.from) so structural naming names each codon gene; see PTORepresentation.
-const patternGrammarRepresentation = new PTORepresentation(
-    (rnd) => { const codons = []; for (let i = 0; i < PATTERN_GRAMMAR_LENGTH; i++) codons.push(rnd.randint(0, 255)); return codons; }
-);
+const patternGrammarRepresentation = new PTORepresentation(patternGrammarGenerator);
 
 class PatternGrammarIndividual extends Individual {
     constructor(genome = null) {
         super('SKIP_GENOME_GENERATION');
         this.representation = patternGrammarRepresentation;
-        this.grammar = patternGrammarMapper;
         this.genome = genome || this.representation.generateRandom();
     }
 
     usesColorPalette() { return true; }
 
     validate() {
-        const phenotype = this.getPhenotype();
+        const phenotype = this.getPhenotype(); // the derived expression string
         if (typeof phenotype !== 'string' || phenotype.trim() === '') {
             return false;
         }
@@ -45,14 +52,60 @@ class PatternGrammarIndividual extends Individual {
         return hasVariable;
     }
 
-    // The interpreted phenotype: the derived expression string (this.phenotype is
-    // the raw codon array PTO produced).
+    // this.phenotype is already the expression string the generator produced.
     getPhenotype() {
-        return this.grammar.derivePhenotype(this.phenotype);
+        return this.phenotype;
     }
 
     evaluateExpression(x, y) {
-        return this.grammar.evaluate(this.phenotype, x, y);
+        const expression = this.phenotype;
+        // Compile lazily; cache keyed by the expression so it auto-invalidates
+        // when the genome changes (mutation/crossover → new expression).
+        if (this._compiledExpression == null || this._compiledKey !== expression) {
+            this._compiledExpression = this.compileExpression(expression);
+            this._compiledKey = expression;
+        }
+        return this._compiledExpression(x, y);
+    }
+
+    // Compile a grammar-derived expression string into a JS function of (x, y),
+    // with protected division/modulo. (Moved here from the former
+    // GrammaticalRepresentation, which the derivation generator made redundant.)
+    compileExpression(expression) {
+        try {
+            let jsExpression = expression
+                .replace(/sin/g, 'Math.sin')
+                .replace(/cos/g, 'Math.cos')
+                .replace(/tan/g, 'Math.tan')
+                .replace(/exp/g, 'Math.exp')
+                .replace(/log/g, 'Math.log')
+                .replace(/sqrt/g, 'Math.sqrt')
+                .replace(/abs/g, 'Math.abs')
+                .replace(/floor/g, 'Math.floor')
+                .replace(/ceil/g, 'Math.ceil')
+                .replace(/ifpos\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)/g, '(($1) > 0 ? ($2) : ($3))')
+                .replace(/\br\b/g, 'Math.sqrt(x*x + y*y)')
+                .replace(/\btheta\b/g, 'Math.atan2(y, x)')
+                .replace(/3\.14159/g, 'Math.PI')
+                .replace(/6\.28318/g, '(2*Math.PI)');
+
+            // Protected division and modulo
+            jsExpression = jsExpression.replace(/\/([^\/]+)/g, (match, divisor) =>
+                `/(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`);
+            jsExpression = jsExpression.replace(/%([^%]+)/g, (match, divisor) =>
+                `%(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`);
+
+            return new Function('x', 'y', `
+                try {
+                    const result = ${jsExpression};
+                    return isFinite(result) ? result : 0.0;
+                } catch (e) {
+                    return 0.0;
+                }
+            `);
+        } catch (error) {
+            return () => 0.0;
+        }
     }
 
     visualize(canvas) {

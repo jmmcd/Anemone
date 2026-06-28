@@ -125,7 +125,21 @@ class Individual {
             const vals = Object.values(genome).map(d => (d && d.val !== undefined) ? d.val : d);
             let s = `<span class="genome-label">Genome (PTO trace, ${vals.length} decisions):</span>\n`;
             if (vals.length > 0) {
-                s += vals.every(Number.isInteger) ? this._formatIntegerGenome(vals) : this._formatFloatGenome(vals);
+                if (vals.every(v => typeof v === 'number')) {
+                    s += vals.every(Number.isInteger) ? this._formatIntegerGenome(vals) : this._formatFloatGenome(vals);
+                } else {
+                    // Structured decisions (e.g. grammar productions = token arrays,
+                    // DAG traces mixing op-choice strings with numbers). The numeric
+                    // column formatter mangles these, and tokens like <expr> would be
+                    // eaten as HTML tags by the genome panel (innerHTML), so render one
+                    // per line, HTML-escaped, with floats rounded for readability.
+                    const fmt = (v) => {
+                        if (Array.isArray(v)) return v.join(' ');
+                        if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(4);
+                        return String(v);
+                    };
+                    s += vals.map(v => '  ' + this._escapeHtml(fmt(v))).join('\n');
+                }
             }
             return s;
         }
@@ -201,6 +215,12 @@ class Individual {
         }
 
         return String(phenotype);
+    }
+
+    // Escape text that goes into the genome panel (rendered via innerHTML), so
+    // grammar tokens like <expr> aren't silently dropped as unknown HTML tags.
+    _escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     _formatBinaryGenome(genome) {

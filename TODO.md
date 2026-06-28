@@ -4,15 +4,19 @@
 
 * PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
 
-* Grammar should be specified in the Individual, not in Grammar.js
+* Grammar should be specified in the Individual, not in Grammar.js — partly done:
+  the derivation logic now lives in each individual's generator; the grammar
+  *rules* are still static factories in Grammar.js (createImagePatternGrammar /
+  createPolarDrawingGrammar). Moving the rule definitions into the individuals (or
+  letting the user paste a grammar) is the remaining step.
 
-* Does GrammarRepresentation actually use PTO? — yes: PTO evolves the codon
-  array; GrammaticalRepresentation is only a derive/compile mapper (this.grammar),
-  not this.representation. (Its own generate/mutate are unused.)
+* Anemone genotype and phenotype:
 
-* fine/coarse + structural naming — DONE. PTORepresentation now defaults to
-  { distType: 'fine', naming: 'structural' } for every individual; the per-type
-  'fine' overrides and the tree's old 'coarse' workaround are gone.
+Phenotype bytes (15):
+ 132  140   75  210   45  101   97  106   79  105  190  193  183   35  208
+
+Genome (PTO trace, 16 decisions):
+  15  132  140   75  210   45  101   97  106   79  105  190  193  183   35  208
 
 * Claude bug report in PTO js:
 
@@ -41,11 +45,33 @@ collapsed from ~94% to ~8% until we switched to explicit for-loops)."
 
 "The vendor patch works cleanly: with a NewExpression case added to NameCompiler._visitExpr, the recursive class-building tree generator runs under fine+structural with healthy size variety (15–45 nodes). This is a real bug in the vendored PTO (and exactly the kind of "Claude bug report in PTO js" your TODO is collecting)."
 
+* Claude bug report in PTO js (fourth one) — fine-mode categorical crossover
+  produces out-of-support values:
 
+"RandomCat._fineCrossover does `const child = this.clone(); child.val =
+Math.random()<0.5 ? this.val : other.val;` — it can take the OTHER parent's value
+without checking it belongs to `this.seq`. When uniform crossover aligns two genes
+by structural name but the two parents have different non-terminals at that name
+(their derivations diverged upstream), `child` ends up with seq from one symbol
+and val from the other, so val ∉ seq. On the next fixInd, Dist.matches() compares
+only seq (not val ∈ seq), accepts the inconsistent gene, and the foreign value
+flows into the phenotype. Faithful repro (driving only PTORepresentation.mutate /
+crossover under fine+structural): ~2% of rnd.choice calls return a value outside
+the current choices, e.g. `<const> -> [floor]`, `<const> -> [<expr> <op> <expr>]`."
+  → NOT worked around in app code (deliberately): rnd.choice is the idiomatic,
+    PTO-insulated form, and the leak is benign here — a foreign token compiles to a
+    constant, so the individual just renders flat and is rejected by validate() /
+    not selected. The fix belongs in PTO: _fineCrossover should constrain child.val
+    to this.seq (only take other.val when this.seq includes it; else keep this.val),
+    and/or matches() should require val ∈ seq.
 
-* Bug in MouseMusic: no valid individuals? Only elites? — likely fixed by the
-  DAG rewrite: connections are now indices into earlier nodes, not object
-  references that couldn't align across PTO traces. Re-check in the running app.
+* META (the above four): we drifted deep into PTO internals. Of the four, the
+  _fineRepair crash and this _fineCrossover leak are genuine operator bugs PTO
+  should own; the NewExpression and Array.from gaps are NameCompiler limitations.
+  Once they're fixed upstream, the app generators can shed their workarounds
+  (`new`/plain-data, `for`-loops/Array.from) and just be written naturally. PTO is
+  meant to insulate callers from all this — keep app code idiomatic and push fixes
+  upstream rather than accreting more workarounds.
 
 
 
@@ -58,9 +84,7 @@ collapsed from ~94% to ~8% until we switched to explicit for-loops)."
 
 * Hotkeys
 
-* Individual can state its preference for (width, height) in the grid
-
-* Just a hook to say which individual is active?
+* Individual can state its preference for (width, height) in the grid - might be needed for music individuals.
 
 * User controls for popsize, mutation rate..?
 
@@ -70,7 +94,12 @@ collapsed from ~94% to ~8% until we switched to explicit for-loops)."
 
 * In the xy pattern, allow use of individual points as centres with r and theta. Also mod. And somehow, special points defined by intersections of other curves, eg (theta mod 12 intersected with r % 10 == 0) can become useful as reference points for others. Reference points define new x and y frames. So maybe we have functions like r() and theta(). If called with no arguments they give radius wrt the image centre. If called with some arguments, calculate wrt the point defined by those arguments. 
 
-* Allow user to zoom in on a particular individual (higher resolution / magnification)
+* When we zoom in, allow user to right-click to save an image. Actually this works already in Desktop but not mobile. Allow this save to be extremely convenient, save to a good directory with an informative filename, or else a separate text file. 
+
+* Allow a user to assemble a "hall of fame" easily - the best individuals from the run.
+
+
+
 
 
 

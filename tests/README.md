@@ -24,6 +24,23 @@ Plus targeted regression tests:
   undefined `genomeLength` left the weights empty, producing `NaN` so only the
   sheep's head rendered).
 
+## Diagnostics (run separately)
+
+```bash
+node tests/leakcheck.js
+```
+
+`leakcheck.js` is a **probe**, not part of `run.js`. It drives evolution through
+only `PTORepresentation`'s operators (the app path) and measures a known *PTO*
+bug: fine-mode categorical crossover (`RandomCat._fineCrossover`) can produce a
+gene whose value is outside its own `seq`, so `rnd.choice` returns an
+out-of-vocabulary production ~2% of the time. The leak is benign for us (a foreign
+token compiles to a constant and the individual is rejected by `validate()`), so
+it's deliberately **not** worked around in app code — `rnd.choice` stays the
+idiomatic form and the fix belongs upstream. The probe exits non-zero if the leak
+disappears (PTO fixed it — retire the workaround note in `TODO.md`) or blows past
+its benign bound (a regression). See `TODO.md` for the full bug report.
+
 ## How it works
 
 `harness.js` loads the source `<script>` files into a Node [`vm`](https://nodejs.org/api/vm.html)

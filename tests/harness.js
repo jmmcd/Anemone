@@ -21,7 +21,6 @@ const SOURCES = [
     'vendor/pto-bundle.js',
     'Individual.js',
     'representations/TreeRepresentation.js',
-    'representations/GrammaticalRepresentation.js',
     'representations/DAGRepresentation.js',
     'representations/PTORepresentation.js',
     'Grammar.js',
