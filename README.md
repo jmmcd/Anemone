@@ -18,6 +18,15 @@ If you select zero, it throws them all away to make totally new ones. If you sel
 
 You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Best ones: Anemone, SuperShape3D, Pattern, Robot.
 
+# Program Trace Optimisation
+
+The evolutionary algorithm in the background is [Program Trace Optimisation](https://github.com/Program-Trace-Optimisation/PTO). PTO is a highly general and easy-to-use evolutionary algorithm that -- uniquely -- defines a univeral representation, the **program trace**, suitable for all evolutionary algorithm problems. Instead of providing and encoding and search operators (initialisation, mutation, crossover), they just define a **generator function** which samples from the desired search space. In an interactive setting we don't need any fitness. 
+
+# Adding new problems
+
+Thanks to the PTO representation, it is extremely easy to add a new problem. It just requires one new file which defines a generator function. 
+
+
 # MIDI?
 
 It might ask you to enable MIDI. That's for music. You can say no if you just want to try the graphical settings.
