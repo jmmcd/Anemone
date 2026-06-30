@@ -85,6 +85,19 @@ class PTORepresentation {
         return this._remember(this.op().createInd());
     }
 
+    /**
+     * Revive a "dead" trace into a live one. A trace that has been serialised
+     * (e.g. JSON round-tripped when loading a saved PNG) is a dict of *plain
+     * objects* — they replay into a phenotype (express only reads properties)
+     * but have lost their Dist prototype, so the operators (.mutation(),
+     * .crossover()) are gone and evolving the individual would crash. Replaying
+     * through fixInd rebuilds the trace from freshly-constructed Dist instances,
+     * yielding an equivalent *live* trace (same phenotype) that can evolve.
+     */
+    revive(geno) {
+        return this._remember(this.op().fixInd(geno));
+    }
+
     /** Express a genome (trace) into its phenotype by replaying the generator. */
     express(geno) {
         if (this._pheno.has(geno)) return this._pheno.get(geno);

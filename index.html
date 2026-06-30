@@ -39,6 +39,8 @@
         <section class="drawer-section">
             <h3>Population</h3>
             <button id="reset-btn" class="secondary-btn">Reset</button>
+            <button id="load-png-btn" class="secondary-btn">Load PNG…</button>
+            <input type="file" id="load-png-input" accept="image/png" style="display: none;">
             <div class="info-line">
                 Selected <span id="selected-count">0</span> ·
                 Pop <span id="population-size">16</span> ·
@@ -88,10 +90,19 @@
         </footer>
     </aside>
 
+    <!-- Placement banner: shown after loading a PNG, while the user picks the
+         grid tile to replace with the loaded individual. -->
+    <div id="place-banner" class="place-banner">
+        <canvas id="place-preview" width="64" height="64"></canvas>
+        <span class="place-text">Click a tile to replace it with this loaded individual.</span>
+        <button id="place-cancel" class="secondary-btn">Cancel</button>
+    </div>
+
     <!-- Zoom lightbox (long-press on touch, double-click / ⛶ on pointer-fine). -->
     <div id="lightbox" class="lightbox">
         <div class="lightbox-inner">
             <button id="lightbox-close" class="icon-btn lightbox-close" aria-label="Close">✕</button>
+            <button id="lightbox-save" class="lightbox-save" aria-label="Save image">⤓ Save</button>
             <canvas id="lightbox-canvas" width="768" height="768"></canvas>
             <div id="lightbox-info" class="genome-content"></div>
         </div>
@@ -104,6 +115,7 @@
     <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
     <script src="vendor/pto-bundle.js"></script>
     <script src="Palette.js"></script>
+    <script src="ImageSave.js"></script>
     <script src="Individual.js"></script>
     <script src="PaletteControlUI.js"></script>
 

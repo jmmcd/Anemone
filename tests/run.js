@@ -279,6 +279,100 @@ check('two individuals of the same type share one modality instance', () => {
     }
 });
 
+// --- Image save: PNG metadata round-trip ---
+// Saved PNGs embed {type, genome, ...} in an uncompressed iTXt chunk so an
+// individual can be reproduced later. The chunk must read back byte-identically
+// (incl. UTF-8 and nested genome data) and must be spliced in without breaking
+// the PNG signature or the trailing IEND chunk.
+console.log('\nImage save (PNG metadata round-trip):');
+const ImageSave = (() => {
+    const prev = global.window;
+    global.window = {};
+    delete require.cache[require.resolve('../ImageSave.js')];
+    require('../ImageSave.js');
+    const api = global.window.ImageSave;
+    global.window = prev;
+    return api;
+})();
+check('embedded metadata reads back identically (UTF-8 + nested genome)', () => {
+    const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };
+    const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const iendType = new Uint8Array([73, 69, 78, 68]); // "IEND"
+    const png = new Uint8Array([...sig, ...u32(0), ...iendType, ...u32(ImageSave.crc32(iendType))]);
+
+    const meta = { app: 'Anemone', type: 'AnemoneIndividual', genome: [1, 2, 'x', { a: 3 }], note: 'café→π' };
+    const out = ImageSave.insertChunk(png, ImageSave.buildITxtChunk('anemone', JSON.stringify(meta)));
+
+    assert(JSON.stringify(ImageSave.readMetadata(out)) === JSON.stringify(meta), 'metadata did not round-trip');
+    assert(sig.every((b, i) => out[i] === b), 'PNG signature corrupted');
+    assert(String.fromCharCode(...out.slice(-8, -4)) === 'IEND', 'IEND must remain last chunk');
+});
+check('filename increments and strips the Individual suffix', () => {
+    let store = '7';
+    const prev = global.localStorage;
+    global.localStorage = { getItem: () => store, setItem: (k, v) => { store = v; } };
+    const name = ImageSave.nextFilename('SuperShape3DIndividual');
+    global.localStorage = prev;
+    assert(name === 'anemone-supershape3d-0008.png', `unexpected filename: ${name}`);
+});
+check('phenotype signature is stable and discriminates', () => {
+    const a = new classes.PatternIndividual();
+    assert(ImageSave.phenotypeSignature(a) === ImageSave.phenotypeSignature(a), 'signature must be stable');
+    let differ = 0;
+    for (let i = 0; i < 5; i++) {
+        const b = new classes.PatternIndividual();
+        if (ImageSave.phenotypeSignature(a) !== ImageSave.phenotypeSignature(b)) differ++;
+    }
+    assert(differ > 0, 'distinct individuals should usually get distinct signatures');
+});
+// Load = reconstruct from the saved genome + verify via signature. Fixed-structure
+// types round-trip through serialisation; grammar individuals do NOT (the known
+// upstream PTO trace bug, see pto-trace-roundtrip-bug.js), so the loader's
+// self-check is what keeps load honest.
+check('fixed-structure individuals reproduce after a genome round-trip (load works)', () => {
+    let ok = 0;
+    for (let i = 0; i < 30; i++) {
+        const orig = new classes.PatternIndividual();
+        const sig = ImageSave.phenotypeSignature(orig);
+        const recon = new classes.PatternIndividual(JSON.parse(JSON.stringify(orig.genome)));
+        if (ImageSave.phenotypeSignature(recon) === sig) ok++;
+    }
+    assert(ok === 30, `expected all 30 to round-trip, got ${ok}`);
+});
+// A loaded individual carries a serialised "dead" trace; the loader revives it
+// so the next evolve doesn't crash on the missing Dist operators. Mirror that
+// revive step and confirm mutate/crossover work (and the phenotype is intact).
+check('revived genome reproduces and can still evolve (no dead-trace crash)', () => {
+    const orig = new classes.PatternIndividual();
+    const sig = ImageSave.phenotypeSignature(orig);
+    const recon = new classes.PatternIndividual(JSON.parse(JSON.stringify(orig.genome)));
+
+    // Dead trace must throw on crossover (the bug we're guarding against).
+    let deadThrew = false;
+    try { recon.crossover(new classes.PatternIndividual()); } catch (e) { deadThrew = true; }
+    assert(deadThrew, 'expected the un-revived (dead) trace to throw on crossover');
+
+    // Revive exactly as the loader does, then it must evolve without throwing.
+    recon.genome = recon.representation.revive(recon.genome);
+    assert(ImageSave.phenotypeSignature(recon) === sig, 'revive must preserve the phenotype');
+    recon.mutate(0.3);
+    const [a, b] = recon.crossover(new classes.PatternIndividual());
+    assert(a instanceof classes.PatternIndividual && b instanceof classes.PatternIndividual,
+        'revived individual should crossover into valid children');
+});
+check('self-check detects grammar individuals that cannot round-trip (load refuses)', () => {
+    let reproduced = 0;
+    for (let i = 0; i < 30; i++) {
+        const orig = new classes.PatternGrammarIndividual();
+        const sig = ImageSave.phenotypeSignature(orig);
+        const recon = new classes.PatternGrammarIndividual(JSON.parse(JSON.stringify(orig.genome)));
+        if (ImageSave.phenotypeSignature(recon) === sig) reproduced++;
+    }
+    // Most (effectively all) must fail to reproduce; the signature mismatch is
+    // exactly what the loader uses to refuse them.
+    assert(reproduced < 30, `grammar individuals unexpectedly all round-tripped (${reproduced}/30)`);
+});
+
 // --- Summary ---
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

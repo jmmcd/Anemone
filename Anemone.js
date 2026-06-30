@@ -363,6 +363,14 @@ class InteractiveEAFramework {
         this.lightboxCanvas = document.getElementById('lightbox-canvas');
         this.lightboxInfo = document.getElementById('lightbox-info');
         this.lightboxClose = document.getElementById('lightbox-close');
+        this.lightboxSave = document.getElementById('lightbox-save');
+
+        // Load-PNG-to-individual chrome
+        this.loadPngBtn = document.getElementById('load-png-btn');
+        this.loadPngInput = document.getElementById('load-png-input');
+        this.placeBanner = document.getElementById('place-banner');
+        this.placePreview = document.getElementById('place-preview');
+        this.placeCancel = document.getElementById('place-cancel');
 
         // Evolve is triggered from either the FAB (touch/narrow) or the inline
         // app-bar button (wide pointer-fine); both share one handler.
@@ -411,8 +419,26 @@ class InteractiveEAFramework {
         if (this.lightbox) this.lightbox.addEventListener('click', (e) => {
             if (e.target === this.lightbox) this.closeZoom();
         });
+
+        // Lightbox save: explicit button (works on mobile + desktop), plus
+        // right-click / long-press on the zoomed canvas as a bonus affordance.
+        if (this.lightboxSave) this.lightboxSave.addEventListener('click', () => this.saveCurrentImage());
+        if (this.lightboxCanvas) {
+            this.lightboxCanvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.saveCurrentImage();
+            });
+            let lpTimer = null;
+            const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+            this.lightboxCanvas.addEventListener('touchstart', () => {
+                cancelLp();
+                lpTimer = setTimeout(() => { lpTimer = null; this.saveCurrentImage(); }, 550);
+            }, { passive: true });
+            this.lightboxCanvas.addEventListener('touchend', cancelLp);
+            this.lightboxCanvas.addEventListener('touchmove', cancelLp, { passive: true });
+        }
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); }
+            if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); this.exitPlacementMode(); }
         });
 
         // Individual type switching: changing the selection switches immediately.
@@ -438,6 +464,21 @@ class InteractiveEAFramework {
                 }
             });
         }
+
+        // Load a saved PNG back into an individual (mirrors the EEG-CSV pattern).
+        if (this.loadPngBtn && this.loadPngInput) {
+            this.loadPngBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.loadPngInput.click();
+            });
+            this.loadPngInput.addEventListener('change', (e) => {
+                if (e.target && e.target.files && e.target.files.length > 0) {
+                    this.loadIndividualFromPNG(e.target.files[0]);
+                }
+                this.loadPngInput.value = ''; // allow re-loading the same file
+            });
+        }
+        if (this.placeCancel) this.placeCancel.addEventListener('click', () => this.exitPlacementMode());
 
         // Mount UI extensions
         this.mountUIExtensions();
@@ -612,7 +653,10 @@ class InteractiveEAFramework {
             }
 
             // Single tap/click = toggle like (binary) + make current.
+            // …unless we're placing a loaded individual: then a click drops it
+            // onto this tile.
             div.addEventListener('click', () => {
+                if (this.pendingLoad) { this.placeLoadedIndividual(index); return; }
                 if (div._suppressClick) { div._suppressClick = false; return; }
                 this.currentIndividual = individual;
                 this.ea.toggleLike(individual);
@@ -708,6 +752,136 @@ class InteractiveEAFramework {
     closeZoom() {
         if (this.lightbox) this.lightbox.classList.remove('open');
     }
+
+    // Save the currently-zoomed individual as a PNG with its genome embedded
+    // as reproducible metadata (see ImageSave.js). One-tap, no dialog.
+    saveCurrentImage() {
+        const individual = this.currentIndividual;
+        if (!individual || !this.lightboxCanvas || !window.ImageSave) return;
+        window.ImageSave.saveCanvas(this.lightboxCanvas, individual)
+            .then((filename) => this.showToast(`Saved ${filename}`))
+            .catch((err) => {
+                console.warn('Image save failed:', err);
+                this.showToast('Could not save image');
+            });
+    }
+
+    // Brief, self-dismissing confirmation message.
+    showToast(message) {
+        let toast = this._toastEl;
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast';
+            document.body.appendChild(toast);
+            this._toastEl = toast;
+        }
+        toast.textContent = message;
+        // Force reflow so re-triggering restarts the transition.
+        void toast.offsetWidth;
+        toast.classList.add('show');
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    // ---- Load a saved PNG back into an individual --------------------------
+    // Reads the embedded genome (see ImageSave.js), reconstructs the individual,
+    // verifies it actually reproduces, then lets the user place it on the grid.
+    async loadIndividualFromPNG(file) {
+        if (!file || !window.ImageSave) return;
+        let meta;
+        try {
+            meta = await window.ImageSave.readMetadataFromFile(file);
+        } catch (err) {
+            console.warn('PNG read failed:', err);
+            this.showToast('Could not read that PNG');
+            return;
+        }
+        if (!meta || meta.app !== 'Anemone' || !meta.type || meta.genome == null) {
+            this.showToast('No Anemone individual found in that PNG');
+            return;
+        }
+        // Cross-type load is refused: a mixed-type population would break the
+        // EA's crossover (different types have incompatible PTO traces).
+        if (meta.type !== this.individualClass.name) {
+            this.showToast(`That PNG is a ${meta.type}; current run is ${this.individualClass.name}`);
+            return;
+        }
+        const C = this.individualTypeMap()[meta.type];
+        if (!C) { this.showToast(`Unknown individual type: ${meta.type}`); return; }
+
+        // Reconstruct from the saved genome (the PTO trace). The deserialised
+        // trace is "dead" (plain objects, no Dist operators), so revive it into
+        // a live trace — otherwise it renders but crashes on the next evolve.
+        let individual;
+        try {
+            individual = new C(meta.genome);
+            if (individual.representation && individual.representation.revive) {
+                individual.genome = individual.representation.revive(individual.genome);
+                individual.invalidateImageCache();
+            }
+            if (individual.setMidiOutput && this.midiOutput) individual.setMidiOutput(this.midiOutput);
+        } catch (err) {
+            console.warn('Reconstruction failed:', err);
+            this.showToast('Could not reconstruct that individual');
+            return;
+        }
+
+        // Self-check. A known upstream PTO limitation (see
+        // pto-trace-roundtrip-bug.js) stops some types — grammar individuals,
+        // and Sheep with its per-instance random network — from faithfully
+        // round-tripping through a serialised trace. Compare the reconstructed
+        // phenotype's signature with the one saved in the image; refuse rather
+        // than silently load a different-looking individual.
+        if (meta.phenoSig != null) {
+            const sig = window.ImageSave.phenotypeSignature(individual);
+            if (sig !== meta.phenoSig) {
+                this.showToast(`This ${meta.type} can't be faithfully reproduced yet (known limitation)`);
+                return;
+            }
+        }
+
+        this.enterPlacementMode(individual);
+    }
+
+    enterPlacementMode(individual) {
+        this.pendingLoad = individual;
+        if (this.placePreview) {
+            try { individual.visualize(this.placePreview); } catch (e) { /* preview is best-effort */ }
+        }
+        if (this.placeBanner) this.placeBanner.classList.add('open');
+        if (this.grid) this.grid.classList.add('placing');
+        // Close the drawer so the grid is visible/clickable.
+        if (this.drawer) this.drawer.classList.remove('open');
+        if (this.drawerScrim) this.drawerScrim.classList.remove('open');
+    }
+
+    exitPlacementMode() {
+        if (!this.pendingLoad) return;
+        this.pendingLoad = null;
+        if (this.placeBanner) this.placeBanner.classList.remove('open');
+        if (this.grid) this.grid.classList.remove('placing');
+    }
+
+    // Replace the chosen grid tile with the loaded individual, then zoom it so
+    // the user can confirm it matches the file.
+    placeLoadedIndividual(index) {
+        const individual = this.pendingLoad;
+        if (!individual) return;
+        const old = this.ea.population[index];
+        if (old) {
+            if (old.stopMIDI) old.stopMIDI();
+            if (old.stopDAG) old.stopDAG();
+            if (old.is3D && old.is3D()) this.removeMeshFromScene(old.id);
+            if (old.selected) this.ea.toggleLike(old); // drop it from the liked set
+        }
+        if (this.currentlyPlaying === old) this.currentlyPlaying = null;
+        this.ea.population[index] = individual;
+        this.currentIndividual = individual;
+        this.exitPlacementMode();
+        this.render();
+        this.openZoom(individual);
+        this.showToast('Loaded individual placed');
+    }
     
     renderHistory() {
         this.historyList.innerHTML = '';
@@ -741,11 +915,10 @@ class InteractiveEAFramework {
         }
     }
     
-    switchIndividualType() {
-        const selectedType = this.individualTypeSelect.value;
-
-        // Map of individual type names to their constructors
-        const individualTypes = {
+    // Map of individual type names → constructors. Shared by the type selector
+    // and the load-PNG path (which needs to look a type up by its saved name).
+    individualTypeMap() {
+        return {
             'PatternIndividual': PatternIndividual,
             'PatternGrammarIndividual': PatternGrammarIndividual,
             'PolarCurveIndividual': PolarCurveIndividual,
@@ -761,8 +934,12 @@ class InteractiveEAFramework {
             'MouseMusicIndividual': MouseMusicIndividual,
             'EEGSonificationIndividual': EEGSonificationIndividual
         };
+    }
 
-        const NewIndividualClass = individualTypes[selectedType];
+    switchIndividualType() {
+        const selectedType = this.individualTypeSelect.value;
+
+        const NewIndividualClass = this.individualTypeMap()[selectedType];
 
         if (NewIndividualClass && NewIndividualClass !== this.individualClass) {
             console.log(`Switching to individual type: ${selectedType}`);

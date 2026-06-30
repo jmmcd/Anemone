@@ -342,6 +342,71 @@ select:focus { outline: none; border-color: var(--accent); }
     padding: 16px;
 }
 .lightbox-close { position: absolute; top: 8px; right: 8px; z-index: 1; }
+.lightbox-save {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+}
+.lightbox-save:hover { background: #00cc6a; }
+.lightbox-save:active { transform: translateY(1px); }
+
+/* Placement banner: pick a grid tile to replace with a loaded individual. */
+.place-banner {
+    position: fixed;
+    left: 50%;
+    top: 16px;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 10px 14px;
+    z-index: 900;
+    max-width: calc(100% - 24px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.place-banner.open { display: flex; }
+.place-banner #place-preview {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+    background: var(--bg);
+    flex: none;
+}
+.place-banner .place-text { font-size: 14px; line-height: 1.3; }
+/* While placing, make grid tiles read as click targets to replace. */
+.grid.placing .individual { cursor: copy; }
+.grid.placing .individual:hover { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Transient confirmation toast (image saved, etc.) */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%) translateY(12px);
+    background: rgba(20, 20, 20, 0.95);
+    color: var(--text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #lightbox-canvas {
     width: min(100%, 80vh);
     height: auto;
