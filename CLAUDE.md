@@ -140,6 +140,7 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `SuperShapeIndividual` | mixed int/float | Canvas2D | Gielis polar curve |
 | `SuperShape3DIndividual` | mixed int/float | ThreeD | 3D Gielis surface |
 | `AnemoneIndividual` | variable-length bytes | Canvas2D | Variable-length turtle graphics |
+| `BranchIndividual` | array of drawing commands | Canvas2D | Free-form branching turtle; generator returns `{op,...}` commands. (Like every type, its generator is editable via CodeEditorUI.) |
 | `RobotIndividual` | 43 floats | Canvas2D | Parametric cartoon character |
 | `SheepIndividual` | 8 floats | Canvas2D | Float genome fed into fixed-random neural network |
 | `PenroseIndividual` | 8 params | Canvas2D | Kite-and-dart tiling |
@@ -149,7 +150,13 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 
 ## Extension System
 
-UI panels are attached by the framework based on individual capability flags rather than per-individual registration. Currently the only panel is `PaletteControlUI`, attached when an individual returns `true` from `usesColorPalette()` (see `loadExtensions()` in `Anemone.js`). A panel class needs a `mount(container)` method and accesses framework settings via `this.framework.updateSetting(key, value)`, which triggers cache invalidation and re-rendering.
+UI panels are attached by the framework based on capability flags / structural checks rather than per-individual registration (see `loadExtensions()` in `Anemone.js`). A panel class needs a `mount(container)` method and accesses framework settings via `this.framework.updateSetting(key, value)`, which triggers cache invalidation and re-rendering. Current panels:
+- `PaletteControlUI` — attached when an individual returns `true` from `usesColorPalette()`.
+- `CodeEditorUI` — attached for **every PTO-backed individual** (the check is `sample.representation.setGenerator` existing, which is all of them). It lets the user view and rewrite the **generator of whatever type is selected**.
+
+The code editor is fully generic because every individual already holds its generator in `this.representation` (a shared per-type `PTORepresentation` singleton), and `generator.toString()` recovers the exact source. The editor opens a full-screen modal showing `representation.sourceText()`; on "Apply" it compiles the edited text back into a function (`(0,eval)('(' + src + ')')` for the usual single-expression generator, falling back to a `generator`-defining body) and calls `representation.setGenerator(fn)`, which swaps the generator **in place** (clearing the lazy PTO `Op` and phenotype cache). Because the representation is shared by reference, the swap reaches every individual of that type; the framework's `reinitializePopulation()` then rebuilds the grid. Before committing, "Apply" probe-renders one fresh individual offscreen and **reverts** `setGenerator` if the new generator (or its now-differently-shaped phenotype) throws, so a bad edit can't break the app. "Reset to default" restores `representation.originalSourceText()`. Edited generators persist per type for the session (they live on the shared singleton) and reset on reload.
+
+User-edited generators are subject to the same structural-naming constraints as the built-ins (self-contained, no closure vars, no `new` around rnd calls, `for` loops not `Array.from`) and must keep returning a phenotype of the shape that type's `visualize()` expects (e.g. `BranchIndividual` expects an array of `{op:'forward'|'turn'|'color'|'penWidth'|'step'|'push'|'pop', ...}` drawing commands).
 
 ## 3D Rendering Strategy
 

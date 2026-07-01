@@ -318,6 +318,75 @@ select:focus { outline: none; border-color: var(--accent); }
 .color-swatch:hover { transform: scale(1.1); }
 .hotkey-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
+/* Code-editor extension (UserGeneratorDrawingIndividual). The sidebar holds just
+   a button + status; editing happens in the full-screen .code-modal below. */
+.code-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.code-modal.open { display: flex; }
+.code-modal-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 900px;
+    max-height: 100%;
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 16px;
+    box-sizing: border-box;
+}
+.code-modal-header { display: flex; align-items: center; margin-bottom: 10px; }
+.code-modal-header h3 { margin: 0; color: var(--muted); font-size: 14px; }
+.code-modal-close { position: absolute; top: 10px; right: 10px; }
+.code-modal-textarea {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 60vh;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel-2);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 4;
+    white-space: pre;
+    resize: none;
+    box-sizing: border-box;
+}
+.code-modal-footer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.code-modal-footer .code-editor-status { margin-top: 0; }
+.code-editor-apply {
+    margin-top: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+}
+.code-editor-apply:hover { background: var(--panel); }
+.code-editor-reset {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+.code-editor-reset:hover { background: var(--panel-2); color: var(--text); }
+.code-editor-status { font-size: 12px; color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+.code-editor-status.error { color: #ff6b6b; }
+
 /* ---------------------------------------------------------------- Lightbox */
 .lightbox {
     position: fixed;

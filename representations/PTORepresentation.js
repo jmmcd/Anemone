@@ -51,9 +51,30 @@ class PTORepresentation {
      */
     constructor(generator, opts = {}) {
         this.generator = generator;
+        this._originalGenerator = generator; // kept for the editor's "reset to default"
         this.opts = opts;
         this._op = null;           // built lazily so PTO need not be loaded at parse time (tests)
         this._pheno = new WeakMap(); // geno (trace) → phenotype, to avoid re-replaying
+    }
+
+    /** The current generator's source text (round-trips through the code editor). */
+    sourceText() { return this.generator.toString(); }
+
+    /** The original, as-shipped generator source (for "reset to default"). */
+    originalSourceText() { return this._originalGenerator.toString(); }
+
+    /**
+     * Replace the generator (e.g. with user-edited code) and discard the lazily
+     * built PTO Op and the phenotype cache, so subsequent generate/express/mutate
+     * use the new generator. Because each individual type assigns its shared
+     * representation by reference, swapping here propagates to every individual of
+     * that type — existing and future. The trace shapes change, so callers must
+     * rebuild the population (the framework's reinitializePopulation) afterwards.
+     */
+    setGenerator(generator) {
+        this.generator = generator;
+        this._op = null;
+        this._pheno = new WeakMap();
     }
 
     op() {

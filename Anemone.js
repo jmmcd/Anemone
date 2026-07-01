@@ -287,6 +287,24 @@ class InteractiveEAFramework {
         if (sample && typeof sample.usesColorPalette === 'function' && sample.usesColorPalette()) {
             this.uiExtensions.push(new PaletteControlUI(this));
         }
+
+        // Attach the code-editor panel for every PTO-backed individual: each one
+        // holds an editable generator in this.representation, so the user can view
+        // and rewrite the generator of whatever type is selected.
+        if (sample && sample.representation && typeof sample.representation.setGenerator === 'function') {
+            this.uiExtensions.push(new CodeEditorUI(this));
+        }
+    }
+
+    // Rebuild the population from scratch with the current individual class,
+    // keeping the same population size and MIDI wiring. Used when a runtime
+    // change (e.g. an edited user generator) invalidates the existing genomes.
+    reinitializePopulation() {
+        this.cleanupOldIndividuals();
+        this.currentIndividual = null;
+        this.ea = new EvolutionaryAlgorithm(this.individualClass, this.ea.populationSize, this.midiOutput);
+        this.distributeEEGStream();
+        this.render();
     }
     
     // Method for extensions to update settings
@@ -925,6 +943,7 @@ class InteractiveEAFramework {
             'ShapesIndividual': ShapesIndividual,
             'GridIndividual': GridIndividual,
             'AnemoneIndividual': AnemoneIndividual,
+            'BranchIndividual': BranchIndividual,
             'SuperShapeIndividual': SuperShapeIndividual,
             'SuperShape3DIndividual': SuperShape3DIndividual,
             'RobotIndividual': RobotIndividual,

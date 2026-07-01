@@ -11,8 +11,6 @@
 
 * Allow user to paste in a GE grammar using standard drawing commands
 
-* Allow user to paste in a JS generator for PTO, I guess using standard drawing commands. Call it "UserGeneratorDrawingIndividual.js" or something like that. It creates a text editor, and pre-populates with a full illustrative example that uses the same drawing commands already used in
-
 * Hotkeys
 
 * Individual can state its preference for (width, height) in the grid - might be needed for music individuals.
