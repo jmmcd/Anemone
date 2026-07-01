@@ -14,10 +14,28 @@
 class Grammar {
     constructor(rules = {}) {
         this.rules = rules;
+        // Kept for the code editor's "reset to default" (see Individual.grammarSection).
+        this._originalRules = JSON.parse(JSON.stringify(rules));
     }
-    
+
     addRule(nonTerminal, productions) {
         this.rules[nonTerminal] = productions;
+    }
+
+    // --- Editable-section support (the grammar is a search-space stage the user
+    // can rewrite live). Rules are edited as JSON: { '<nt>': [[sym, …], …], … }.
+    // Replaced in place so the derivation generator, which references this Grammar
+    // by name, picks up the new productions on the next expansion.
+    setRules(rules) {
+        this.rules = rules;
+    }
+
+    sourceText() {
+        return JSON.stringify(this.rules, null, 2);
+    }
+
+    originalSourceText() {
+        return JSON.stringify(this._originalRules, null, 2);
     }
     
     getProductions(nonTerminal) {

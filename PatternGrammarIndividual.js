@@ -59,6 +59,15 @@ class PatternGrammarIndividual extends Individual {
 
     usesColorPalette() { return true; }
 
+    // The interesting knob here is the grammar (the generator is boilerplate
+    // derivation); expose both, grammar first.
+    editableSections() {
+        return [
+            Individual.grammarSection(imagePatternGrammar),
+            Individual.generatorSection(this.representation),
+        ];
+    }
+
     validate() {
         const phenotype = this.getPhenotype(); // the derived expression string
         if (typeof phenotype !== 'string' || phenotype.trim() === '') {

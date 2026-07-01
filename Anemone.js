@@ -288,22 +288,34 @@ class InteractiveEAFramework {
             this.uiExtensions.push(new PaletteControlUI(this));
         }
 
-        // Attach the code-editor panel for every PTO-backed individual: each one
-        // holds an editable generator in this.representation, so the user can view
-        // and rewrite the generator of whatever type is selected.
-        if (sample && sample.representation && typeof sample.representation.setGenerator === 'function') {
+        // Attach the code-editor panel for individuals that expose editable code
+        // sections (all PTO-backed types do — at minimum their generator).
+        if (sample && typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
             this.uiExtensions.push(new CodeEditorUI(this));
         }
     }
 
     // Rebuild the population from scratch with the current individual class,
     // keeping the same population size and MIDI wiring. Used when a runtime
-    // change (e.g. an edited user generator) invalidates the existing genomes.
+    // change to the search space (an edited generator or grammar) invalidates the
+    // existing genomes.
     reinitializePopulation() {
         this.cleanupOldIndividuals();
         this.currentIndividual = null;
         this.ea = new EvolutionaryAlgorithm(this.individualClass, this.ea.populationSize, this.midiOutput);
         this.distributeEEGStream();
+        this.render();
+    }
+
+    // Keep the current population but discard cached renders and redraw. Used when
+    // a runtime change affects only how genomes are drawn (an edited draw
+    // function), so the user's evolved individuals must be preserved.
+    invalidateAndRender() {
+        if (this.ea && this.ea.population) {
+            this.ea.population.forEach(individual => {
+                if (individual.invalidateImageCache) individual.invalidateImageCache();
+            });
+        }
         this.render();
     }
     

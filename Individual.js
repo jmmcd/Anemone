@@ -1,4 +1,18 @@
 /**
+ * Editable — a tiny holder for a live value (a function or a data object) that
+ * the code editor can swap at runtime. It remembers the original so the editor's
+ * "Reset to default" works even after edits. An individual keeps its swappable
+ * draw function (or any other editable stage) in one of these and reads
+ * `slot.value` at run time; see Individual.functionSection and RobotIndividual.
+ */
+class Editable {
+    constructor(value) {
+        this.value = value;
+        this.original = value;
+    }
+}
+
+/**
  * Individual — base class for all individual types.
  *
  * Holds a representation strategy object (this.representation) and delegates the
@@ -30,6 +44,78 @@ class Individual {
     // --- Required / overridable behaviour ---
     visualize(canvas) {
         throw new Error("visualize() must be implemented by subclass");
+    }
+
+    // --- Editable code sections (for the live code editor, CodeEditorUI) ---
+    //
+    // Every individual is a pipeline: generator → phenotype → visualize → pixels.
+    // An "editable section" is a named, swappable stage of that pipeline the type
+    // chooses to expose. The editor is stage-agnostic: it lists whatever sections
+    // the type declares and edits them all the same way. Each section is
+    //   { label, read() → text, reset() → text, apply(text), rebuild }
+    // where `rebuild` says whether applying it changes the *search space* (a
+    // generator/grammar → rebuild the population) or only how genomes are drawn
+    // (a draw function → keep the population, just re-render).
+    //
+    // By default a type exposes just its generator (all PTO-backed types). Types
+    // where the generator is boilerplate (Robot's flat vector, the grammar
+    // individuals' derivation) override this to surface the interesting stage too.
+    editableSections() {
+        const rep = this.representation;
+        if (rep && typeof rep.setGenerator === 'function') {
+            return [Individual.generatorSection(rep)];
+        }
+        return [];
+    }
+
+    /** Compile editor text into a function (a bare `(x) => …`/`function` expression). */
+    static compileFunction(text) {
+        const trimmed = text.trim();
+        try {
+            const fn = (0, eval)(`(${trimmed})`);
+            if (typeof fn === 'function') return fn;
+        } catch (_) { /* not a bare expression — fall through */ }
+
+        const fn = new Function(
+            `"use strict";\n${text}\n; return typeof generator !== 'undefined' ? generator : undefined;`
+        )();
+        if (typeof fn !== 'function') {
+            throw new Error('Code must be a function expression, e.g. (rnd) => { … }.');
+        }
+        return fn;
+    }
+
+    /** Section editing a PTORepresentation's generator (defines the search space). */
+    static generatorSection(representation, label = 'Generator') {
+        return {
+            label,
+            read: () => representation.sourceText(),
+            reset: () => representation.originalSourceText(),
+            apply: (text) => representation.setGenerator(Individual.compileFunction(text)),
+            rebuild: true,
+        };
+    }
+
+    /** Section editing a swappable function held in an Editable slot (e.g. a draw fn). */
+    static functionSection(label, slot) {
+        return {
+            label,
+            read: () => slot.value.toString(),
+            reset: () => slot.original.toString(),
+            apply: (text) => { slot.value = Individual.compileFunction(text); },
+            rebuild: false, // genomes unchanged; just re-render
+        };
+    }
+
+    /** Section editing a Grammar's rules in place (also part of the search space). */
+    static grammarSection(grammar, label = 'Grammar') {
+        return {
+            label,
+            read: () => grammar.sourceText(),
+            reset: () => grammar.originalSourceText(),
+            apply: (text) => grammar.setRules(JSON.parse(text)),
+            rebuild: true,
+        };
     }
 
     // The phenotype is the genome expressed. For most representations the genome

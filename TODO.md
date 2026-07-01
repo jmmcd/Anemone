@@ -1,13 +1,8 @@
-# SHORT-TERM NOTES
+# TODO
 
 * We are now using PTO (pilot) by vendoring in pto-bundle.js. Need to update that occasionally if PTO js changes. Or revisit how we build etc.
 
 * PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
-
-
-
-# TODO
-
 
 * Allow user to paste in a GE grammar using standard drawing commands
 
@@ -25,8 +20,9 @@
 
 * Fix several upstream PTO-js bugs. The one about serialising the trace is important for our load/save feature. Currently, the grammar individuals are not reconstructing correctly because of that.
 
-* Allow a user to assemble a "hall of fame" easily - the best individuals from the run.
+* Allow a user to assemble a "hall of fame" easily - all liked individuals from the run. Or point to a directory containing many saves, and automatically assemble a grid.
 
+* We have editable generators, but some individuals will need to have editable draw() instead/as well. The hook for this is working.
 
 
 

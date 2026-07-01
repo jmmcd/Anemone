@@ -75,6 +75,15 @@ class PolarCurveIndividual extends Individual {
 
     usesColorPalette() { return true; }
 
+    // The interesting knob here is the grammar (the generator is boilerplate
+    // derivation); expose both, grammar first.
+    editableSections() {
+        return [
+            Individual.grammarSection(polarDrawingGrammar),
+            Individual.generatorSection(this.representation),
+        ];
+    }
+
     // Override visualization for polar coordinate drawing
     visualize(canvas) {
         console.time(`visualize-${this.id}`);
