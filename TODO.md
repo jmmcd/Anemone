@@ -4,8 +4,6 @@
 
 * PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
 
-* Allow user to paste in a GE grammar using standard drawing commands
-
 * Hotkeys
 
 * Individual can state its preference for (width, height) in the grid - might be needed for music individuals.
