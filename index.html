@@ -58,6 +58,9 @@
                 <option value="GridIndividual">Grid</option>
                 <option value="SuperShapeIndividual">Supershape</option>
                 <option value="SuperShape3DIndividual">Supershape 3D</option>
+                <option value="PetalSphere3DIndividual">Petal Sphere 3D</option>
+                <option value="FreeSurface3DIndividual">Free Surface 3D</option>
+                <option value="WarpedSurface3DIndividual">Warped Surface 3D</option>
                 <option value="AnemoneIndividual" selected>Anemone</option>
                 <option value="BranchIndividual">Branch</option>
                 <option value="RobotIndividual">Robot</option>
@@ -104,6 +107,7 @@
         <div class="lightbox-inner">
             <button id="lightbox-close" class="icon-btn lightbox-close" aria-label="Close">✕</button>
             <button id="lightbox-save" class="lightbox-save" aria-label="Save image">⤓ Save</button>
+            <button id="lightbox-export-stl" class="lightbox-save lightbox-export-stl" aria-label="Export STL for 3D printing">⤓ STL</button>
             <canvas id="lightbox-canvas" width="768" height="768"></canvas>
             <div id="lightbox-info" class="genome-content"></div>
         </div>
@@ -117,6 +121,7 @@
     <script src="vendor/pto-bundle.js"></script>
     <script src="Palette.js"></script>
     <script src="ImageSave.js"></script>
+    <script src="MeshExport.js"></script>
     <script src="Individual.js"></script>
     <script src="PaletteControlUI.js"></script>
     <script src="CodeEditorUI.js"></script>
@@ -143,7 +148,11 @@
     <script src="AnemoneIndividual.js"></script>
     <script src="BranchIndividual.js"></script>
     <script src="SuperShapeIndividual.js"></script>
+    <script src="RadialSurface3DIndividual.js"></script>
     <script src="SuperShape3DIndividual.js"></script>
+    <script src="PetalSphere3DIndividual.js"></script>
+    <script src="FreeSurface3DIndividual.js"></script>
+    <script src="WarpedSurface3DIndividual.js"></script>
     <script src="RobotIndividual.js"></script>
     <script src="SheepIndividual.js"></script>
     <script src="PenroseIndividual.js"></script>

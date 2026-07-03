@@ -138,7 +138,10 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `ShapesIndividual` | 60 bytes | Canvas2D | Sequence of drawing ops |
 | `GridIndividual` | 64 bits | Canvas2D | 8×8 grid |
 | `SuperShapeIndividual` | mixed int/float | Canvas2D | Gielis polar curve |
-| `SuperShape3DIndividual` | mixed int/float | ThreeD | 3D Gielis surface |
+| `SuperShape3DIndividual` | superformula expr strings + params | ThreeD | `RadialSurface3D` subclass: Gielis superformula as a fixed-form "grammar" (continuous params baked into the expr as literals) + extended φ range |
+| `PetalSphere3DIndividual` | separable expr pair | ThreeD | `RadialSurface3D` subclass: r₁(θ)·r₂(φ), sin/cos-of-integer-angle grammar ⇒ 2π-periodic ⇒ seamless (petals/succulents) |
+| `FreeSurface3DIndividual` | separable expr pair | ThreeD | `RadialSurface3D` subclass: free grammar in raw angle `a`; more variety, but non-periodic (possible φ seam) |
+| `WarpedSurface3DIndividual` | bivariate expr | ThreeD | `RadialSurface3D` subclass: one free expr in `theta`,`phi` (non-separable); most warped, non-periodic |
 | `AnemoneIndividual` | variable-length bytes | Canvas2D | Variable-length turtle graphics |
 | `BranchIndividual` | array of drawing commands | Canvas2D | Free-form branching turtle; generator returns `{op,...}` commands. (Like every type, its generator is editable via CodeEditorUI.) |
 | `RobotIndividual` | 43 floats | Canvas2D | Parametric cartoon character |
@@ -147,6 +150,12 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `MelodyIndividual` | 64 bits | MIDI | 8-note sequences |
 | `MouseMusicIndividual` | plain-data DAG | MIDI | `buildDAG` → mouse-driven DAG → notes |
 | `EEGSonificationIndividual` | plain-data DAG | MIDI | `buildDAG` → EEG-stream-driven DAG → notes |
+
+### RadialSurface3D family (`RadialSurface3DIndividual.js`)
+
+The four ThreeD rows above (`SuperShape3D`, `PetalSphere3D`, `FreeSurface3D`, `WarpedSurface3D`) share the base class `RadialSurface3DIndividual`. A **radial surface** meshes a sphere by computing a radius `r` at each `(θ,φ)` and mapping to Cartesian; the base owns everything downstream (compiling the expression(s) to a numeric function, `generate3DPoints` meshing, the shared-3D render + 2D fallback, and the genome panel). A subclass supplies only its own **top-level grammar + derivation generator** (the generator must be top-level, not a closure, for PTO structural naming — so the boilerplate generator is repeated per subclass rather than shared) and, via `editableSections()`, exposes that grammar. The generator's phenotype is either **separable** `{ meridianExpr, crossExpr }` → `r = r₁(θ)·r₂(φ)`, or **bivariate** `{ biExpr }` → `r = f(θ,φ)`; it may also carry optional `{ thetaRange, phiRange }` (defaults π, 2π). `SuperShape3D` is "just a grammar" with one fixed production: it emits the Gielis superformula with continuous params baked in as literals (so PTO's fine mutation still creeps them) and supplies the extended φ range — reproducing the old fixed-genome type with **no base override**. Radius safety is `|f| + radiusEps` (clamped; `radiusEps` defaults 0.05, `SuperShape3D` sets 0).
+
+Any 3D individual exposing `generate3DPoints()` can be exported to a binary STL for 3D printing via `window.MeshExport.downloadSTL(individual)` (`MeshExport.js`), surfaced as the **⤓ STL** button in the zoom lightbox — so the whole family gets export for free. The mesh is exported raw (self-intersecting / non-periodic shapes aren't watertight and want a slicer/Blender repair pass).
 
 ## Extension System
 

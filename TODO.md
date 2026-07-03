@@ -22,6 +22,8 @@
 
 * We have editable generators, but some individuals will need to have editable draw() instead/as well. The hook for this is working.
 
+* We have genotypes saved as metadata inside the pngs. But this is not really enough. 
+
 
 
 
@@ -29,13 +31,12 @@
 
 # NEW APPLICATIONS
 
-* Another type of individual, GL shaders https://tympanus.net/codrops/2025/06/23/modeling-the-world-in-280-characters/
+* GL shaders https://tympanus.net/codrops/2025/06/23/modeling-the-world-in-280-characters/
 
-* Another type of individual for use in brain-computer interface music-mapping
+* A music DAG individual for use in brain-computer interface music-mapping
 
-* Another type of individual: graph grammar with 3d coordinates per node as in my old GPEM paper
+* A graph grammar with 3d coordinates per node as in my old GPEM paper, but better. Rotating images
 
-* For symbolic regression-like 3D, allow both axes to be GP giving a radius, and/or allow things like phase, frequency or amplitude of the second axis to be varied as a function of the meridian angle
 
 * Another type of individual: Polyomino CFG
 
@@ -43,4 +44,10 @@
 
 * 3d L-system, again with space-occupying and non-space occupying 
 
+* Moving pictures using either t in [0, 1], or sin theta and cos theta
 
+* A series of lines, each a curve with x, y start and end and control points and colour and style and glow (like in visuals at a good concert I was at recently)
+
+* Load photo and evolve filter. Allow to replace photo and continue.
+
+* Same for eg a drum loop (any audio loop) and filter

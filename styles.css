@@ -434,6 +434,8 @@ select:focus { outline: none; border-color: var(--accent); }
 }
 .lightbox-save:hover { background: #00cc6a; }
 .lightbox-save:active { transform: translateY(1px); }
+/* Second action button, offset to sit just right of Save (same top row). */
+.lightbox-export-stl { left: 104px; }
 
 /* Placement banner: pick a grid tile to replace with a loaded individual. */
 .place-banner {

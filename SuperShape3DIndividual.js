@@ -1,318 +1,92 @@
-// Genome: two SuperShape blocks (14 genes) — 7 for r1(θ) + 7 for r2(φ).
-// Each block: [m_numerator (int), m_denominator (preset), n1, n2, n3, a, b].
-// Backed by PTORepresentation, whose default 'fine' mutation gives Gaussian
-// creep for reals and small steps for the integer/categorical genes.
-// The block helper is declared *inside* the generator so structural naming can
-// instrument its rnd calls (a top-level helper's calls would not be); the two
-// call-sites give the two blocks distinct gene names.
-const supershape3dDenominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
-const supershape3dGenerator = (rnd) => {
+/**
+ * SuperShape3DIndividual — the Gielis superformula as a special case of
+ * RadialSurface3DIndividual.
+ *
+ * Conceptually it's a "grammar" with a single fixed production: the generator
+ * always emits the superformula expression for each direction, with its
+ * parameters (m, n1, n2, n3, a, b) baked in as numeric literals drawn by rnd. So
+ * PTO's fine mutation gives the familiar smooth parameter creep — the search is
+ * over the continuous parameters, not over structure. Two blocks are drawn (7
+ * genes each, mirroring the original), one for the meridian r₁(θ) and one for
+ * the cross-section r₂(φ).
+ *
+ * The cross-section carries the extended angle range 8πq/gcd(p,4q) in the
+ * phenotype (that's what produces the rose/star cross-sections); the meridian
+ * sweeps a plain half-turn [0,π]. The base reads phenotype.thetaRange/phiRange,
+ * so no method override is needed for the meshing. radiusEps is set to 0 because
+ * the Gielis formula is already positive and bounded.
+ *
+ * The class keeps its name (SuperShape3DIndividual) so PNGs saved before this
+ * refactor still identify their type.
+ */
+const superShape3DDenominators = [1, 2, 3, 4, 5, 6, 8, 10, 12];
+
+const superShape3DGenerator = (rnd) => {
+    // A block draws the 7 superformula genes. Returned as an array (the proven
+    // structural-naming shape — the two call sites give the blocks distinct gene
+    // names); toParams just labels them.
     const block = () => [
-        rnd.randint(1, 20),                   // m_numerator (integer)
-        rnd.choice(supershape3dDenominators), // m_denominator (from preset list)
+        rnd.randint(1, 20),                   // m numerator (integer)
+        rnd.choice(superShape3DDenominators), // m denominator (preset)
         rnd.uniform(0.1, 10),                 // n1
         rnd.uniform(0.1, 10),                 // n2
         rnd.uniform(0.1, 10),                 // n3
         rnd.uniform(0.1, 3),                  // a
         rnd.uniform(0.1, 3)                   // b
     ];
-    return [...block(), ...block()];
+    const toParams = (v) => ({ mNum: v[0], mDen: v[1], n1: v[2], n2: v[3], n3: v[4], A: v[5], B: v[6] });
+
+    // Gielis superformula r(a) as an expression string with parameters as
+    // literals: [ |cos(m·a/4)/A|^n2 + |sin(m·a/4)/B|^n3 ] ^ (-1/n1). Built with
+    // string concatenation (kept simple for the PTO name-compiler).
+    const f = (x) => x.toFixed(6);
+    const expr = (b) =>
+        'pow(pow(abs(cos((' + b.mNum + '/' + b.mDen + '/4)*a)/' + f(b.A) + '),' + f(b.n2) + ')' +
+        '+pow(abs(sin((' + b.mNum + '/' + b.mDen + '/4)*a)/' + f(b.B) + '),' + f(b.n3) + '),' +
+        f(-1 / b.n1) + ')';
+
+    // Extended cross-section range (same formula as the original 2D/3D shapes).
+    const gcd = (x, y) => { x = Math.abs(x); y = Math.abs(y); while (y) { const t = y; y = x % y; x = t; } return x; };
+    const angleRange = (p, q) => (8 * Math.PI * q) / gcd(p, 4 * q);
+
+    const meridian = toParams(block());
+    const cross = toParams(block());
+    return {
+        meridianExpr: expr(meridian),
+        crossExpr: expr(cross),
+        thetaRange: Math.PI,                            // meridian is a half-turn
+        phiRange: angleRange(cross.mNum, cross.mDen),   // extended cross-section
+        meridianParams: meridian,                       // kept for a readable panel
+        crossParams: cross
+    };
 };
-const supershape3dRepresentation = new PTORepresentation(supershape3dGenerator);
+const superShape3DRepresentation = new PTORepresentation(superShape3DGenerator);
 
-class SuperShape3DIndividual extends Individual {
+class SuperShape3DIndividual extends RadialSurface3DIndividual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-
-        this.representation = supershape3dRepresentation;
-        this.threeDModality = new ThreeDModality();
-
+        super();
+        this.representation = superShape3DRepresentation;
+        this.radiusEps = 0; // Gielis formula is already positive/bounded
         this.genome = genome || this.representation.generateRandom();
-        this.thetaPoints = 50;
-        this.phiPoints = 100;
     }
 
-    usesColorPalette() { return true; }
-
-    getParameters() {
-        // Extract parameters from genome: [m1_num, m1_den, n1_1, n2_1, n3_1, a1, b1, m2_num, m2_den, n1_2, n2_2, n3_2, a2, b2]
-        
-        // r1 parameters (for polar angle θ)
-        const m1_numerator = Math.max(1, Math.min(50, Math.round(this.phenotype[0])));
-        const m1_denominator = Math.max(1, Math.min(12, Math.round(this.phenotype[1])));
-        
-        const r1Params = {
-            m_numerator: m1_numerator,
-            m_denominator: m1_denominator,
-            m: m1_numerator / m1_denominator,
-            n1: Math.max(0.01, Math.min(20, this.phenotype[2])),
-            n2: Math.max(0.01, Math.min(20, this.phenotype[3])),
-            n3: Math.max(0.01, Math.min(20, this.phenotype[4])),
-            a: Math.max(0.01, Math.min(5, this.phenotype[5])),
-            b: Math.max(0.01, Math.min(5, this.phenotype[6]))
-        };
-        
-        // r2 parameters (for azimuthal angle φ)
-        const m2_numerator = Math.max(1, Math.min(50, Math.round(this.phenotype[7])));
-        const m2_denominator = Math.max(1, Math.min(12, Math.round(this.phenotype[8])));
-        
-        const r2Params = {
-            m_numerator: m2_numerator,
-            m_denominator: m2_denominator,
-            m: m2_numerator / m2_denominator,
-            n1: Math.max(0.01, Math.min(20, this.phenotype[9])),
-            n2: Math.max(0.01, Math.min(20, this.phenotype[10])),
-            n3: Math.max(0.01, Math.min(20, this.phenotype[11])),
-            a: Math.max(0.01, Math.min(5, this.phenotype[12])),
-            b: Math.max(0.01, Math.min(5, this.phenotype[13]))
-        };
-        
-        return { r1: r1Params, r2: r2Params };
-    }
-    
-    // Gielis superformula calculation
-    calculateRadius(angle, params) {
-        const { m, n1, n2, n3, a, b } = params;
-        
-        try {
-            // Calculate the angle component
-            const angleComponent = (m * angle) / 4.0;
-            
-            // Calculate the trigonometric components
-            const cosValue = Math.cos(angleComponent);
-            const sinValue = Math.sin(angleComponent);
-            
-            // Apply absolute value and scaling
-            const cosComponent = Math.abs(cosValue / a);
-            const sinComponent = Math.abs(sinValue / b);
-            
-            // Prevent zero values
-            const minComponent = 1e-10;
-            const safeCosComponent = Math.max(cosComponent, minComponent);
-            const safeSinComponent = Math.max(sinComponent, minComponent);
-            
-            // Calculate the powers
-            const cosPower = Math.pow(safeCosComponent, n2);
-            const sinPower = Math.pow(safeSinComponent, n3);
-            
-            // Calculate the sum
-            const sum = cosPower + sinPower;
-            
-            // Prevent zero or negative values
-            if (sum <= 0 || !isFinite(sum)) {
-                return 0.1;
-            }
-            
-            // Calculate the final radius
-            const radius = Math.pow(sum, -1.0 / n1);
-            
-            // Final safety checks
-            if (!isFinite(radius) || radius <= 0) {
-                return 0.1;
-            }
-            
-            return radius; // Remove maxRadius clamp
-            
-        } catch (error) {
-            return 0.1;
-        }
-    }
-    
-    calculateAngleRange(m_numerator, m_denominator) {
-        // Same formula as 2D: φRange = 8πq/gcd(p,4q)
-        const p = Math.round(m_numerator);
-        const q = Math.round(m_denominator);
-        const gcd_p_4q = this.gcd(p, 4 * q);
-        return (8 * Math.PI * q) / gcd_p_4q;
-    }
-    
-    gcd(a, b) {
-        while (b !== 0) {
-            const temp = b;
-            b = a % b;
-            a = temp;
-        }
-        return Math.abs(a);
-    }
-
-    generate3DPoints() {
-        const params = this.getParameters();
-        const vertices = [];
-        const indices = [];
-        const colors = [];
-        
-        // Calculate proper angle ranges for both angles
-        const thetaRange = this.calculateAngleRange(params.r1.m_numerator, params.r1.m_denominator);
-        const phiRange = this.calculateAngleRange(params.r2.m_numerator, params.r2.m_denominator);
-        
-        // Generate vertices using spherical coordinates with proper ranges
-        for (let i = 0; i <= this.thetaPoints; i++) {
-            const theta = (i / this.thetaPoints) * Math.min(thetaRange, Math.PI); // Clamp theta to π for proper sphere
-            const r1 = this.calculateRadius(theta, params.r1);
-            
-            for (let j = 0; j <= this.phiPoints; j++) {
-                const phi = (j / this.phiPoints) * phiRange; // Use full calculated range
-                const r2 = this.calculateRadius(phi, params.r2);
-                
-                // Combined radius using 3D superformula: r(θ,φ) = r1(θ) × r2(φ)
-                const r = r1 * r2;
-                
-                // Convert spherical to Cartesian coordinates with Y as vertical axis
-                const x = r * Math.sin(theta) * Math.cos(phi);
-                const y = r * Math.cos(theta);  // Y-axis is now the radial symmetry axis (up)
-                const z = r * Math.sin(theta) * Math.sin(phi);
-                
-                vertices.push(x, y, z);
-                
-                // Color based on position for variety
-                const colorT = (i / this.thetaPoints + j / this.phiPoints) / 2;
-                const color = window.Palette.color(colorT);
-                colors.push(color.r / 255, color.g / 255, color.b / 255);
-            }
-        }
-        
-        // Generate indices for triangular faces
-        for (let i = 0; i < this.thetaPoints; i++) {
-            for (let j = 0; j < this.phiPoints; j++) {
-                const current = i * (this.phiPoints + 1) + j;
-                const next = current + this.phiPoints + 1;
-                
-                // Create two triangles per quad
-                indices.push(current, next, current + 1);
-                indices.push(next, next + 1, current + 1);
-            }
-        }
-        
-        return { vertices, indices, colors };
-    }
-    
-    visualize(canvas) {
-        // Check if framework has shared 3D resources
-        const framework = window.framework; // Assuming global framework reference
-        
-        if (framework && framework.shared3D) {
-            this.visualizeWithShared3D(canvas, framework);
-        } else {
-            // Fallback to 2D canvas projection if shared 3D not available
-            this.render2DProjection(canvas);
-        }
-    }
-    
-    visualizeWithShared3D(canvas, framework) {
-        const { vertices, indices, colors } = this.generate3DPoints();
-        this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-    }
-    
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-        
-        ctx.clearRect(0, 0, width, height);
-
-        // Fill background
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, width, height);
-        
-        // Generate 3D points
-        const { vertices, colors } = this.generate3DPoints();
-        
-        // Simple 3D to 2D projection
-        const time = Date.now() * 0.001; // For rotation
-        const projectedPoints = [];
-        
-        for (let i = 0; i < vertices.length; i += 3) {
-            const x = vertices[i];
-            const y = vertices[i + 1];
-            const z = vertices[i + 2];
-            
-            // Rotate the point
-            const rotY = time * 0.5;
-            const rotX = time * 0.3;
-            
-            // Rotation matrices
-            const cosY = Math.cos(rotY);
-            const sinY = Math.sin(rotY);
-            const cosX = Math.cos(rotX);
-            const sinX = Math.sin(rotX);
-            
-            // Apply Y rotation
-            const x1 = x * cosY - z * sinY;
-            const z1 = x * sinY + z * cosY;
-            
-            // Apply X rotation
-            const y2 = y * cosX - z1 * sinX;
-            const z2 = y * sinX + z1 * cosX;
-            
-            // Perspective projection
-            const distance = 15;
-            const focal = 500;
-            
-            if (z2 + distance > 0.1) {
-                const screenX = (x1 * focal) / (z2 + distance) + width / 2;
-                const screenY = (y2 * focal) / (z2 + distance) + height / 2;
-                const depth = z2 + distance;
-                
-                projectedPoints.push({
-                    x: screenX,
-                    y: screenY,
-                    z: depth,
-                    colorR: colors[i / 3 * 3] * 255,
-                    colorG: colors[i / 3 * 3 + 1] * 255,
-                    colorB: colors[i / 3 * 3 + 2] * 255
-                });
-            }
-        }
-        
-        // Sort by depth (painter's algorithm)
-        projectedPoints.sort((a, b) => b.z - a.z);
-        
-        // Draw points
-        projectedPoints.forEach(point => {
-            if (point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) {
-                const size = Math.max(1, 4 - point.z * 0.1);
-                ctx.fillStyle = `rgb(${Math.round(point.colorR)}, ${Math.round(point.colorG)}, ${Math.round(point.colorB)})`;
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-    }
-    
-    // Cleanup method - removes this individual's mesh from shared scene
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            framework.removeMeshFromScene(this.id);
-        }
-    }
-    
-    // Legacy methods removed - now using shared Three.js scene
-    // Individual Three.js initialization, mesh management, and cleanup 
-    // are now handled by the InteractiveEAFramework's shared scene system
-    
+    // Readable summary instead of the raw superformula strings.
     getPhenotype() {
-        const params = this.getParameters();
-        const thetaRange = this.calculateAngleRange(params.r1.m_numerator, params.r1.m_denominator);
-        const phiRange = this.calculateAngleRange(params.r2.m_numerator, params.r2.m_denominator);
-        return `r1(θ): m=${params.r1.m_numerator}/${params.r1.m_denominator} (${params.r1.m.toFixed(2)}), θRange=${(thetaRange / Math.PI).toFixed(1)}π | r2(φ): m=${params.r2.m_numerator}/${params.r2.m_denominator} (${params.r2.m.toFixed(2)}), φRange=${(phiRange / Math.PI).toFixed(1)}π`;
-    }
-    
-    // Check if this is a 3D individual
-    is3D() {
-        return true;
+        const p = this.phenotype;
+        const fmt = (b) =>
+            `m=${b.mNum}/${b.mDen}, n=[${b.n1.toFixed(2)}, ${b.n2.toFixed(2)}, ${b.n3.toFixed(2)}], a=${b.A.toFixed(2)}, b=${b.B.toFixed(2)}`;
+        return `r₁(θ): ${fmt(p.meridianParams)} | r₂(φ): ${fmt(p.crossParams)}`;
     }
 
     describeExtra() {
-        const p = this.getParameters();
-        let s = `\n<span class="genome-label">Formulas:</span>\n`;
-        s += `${this._formulaLine(p.r1, 'r₁(θ)')}\n`;
-        s += `${this._formulaLine(p.r2, 'r₂(φ)')}\n`;
-        s += `\nCombined: r(θ,φ) = r₁(θ) × r₂(φ)\n`;
+        const p = this.phenotype;
+        const line = (b, label) =>
+            `  ${label} = [|cos(${b.mNum}/${b.mDen}·a/4)/${b.A.toFixed(2)}|^${b.n2.toFixed(2)} + ` +
+            `|sin(${b.mNum}/${b.mDen}·a/4)/${b.B.toFixed(2)}|^${b.n3.toFixed(2)}]^(-1/${b.n1.toFixed(2)})\n`;
+        let s = `\n<span class="genome-label">Superformula:</span>\n`;
+        s += line(p.meridianParams, 'r₁(θ)');
+        s += line(p.crossParams, 'r₂(φ)');
+        s += `\nCombined: r(θ,φ) = r₁(θ) × r₂(φ), φ range ${(p.phiRange / Math.PI).toFixed(1)}π\n`;
         return s;
-    }
-
-    _formulaLine(p, label) {
-        return `${label} = [|cos(${p.m}·φ/4)/${p.a.toFixed(3)}|^${p.n2.toFixed(3)} + |sin(${p.m}·φ/4)/${p.b.toFixed(3)}|^${p.n3.toFixed(3)}]^(-1/${p.n1.toFixed(3)})`;
     }
 }

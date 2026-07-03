@@ -394,6 +394,7 @@ class InteractiveEAFramework {
         this.lightboxInfo = document.getElementById('lightbox-info');
         this.lightboxClose = document.getElementById('lightbox-close');
         this.lightboxSave = document.getElementById('lightbox-save');
+        this.lightboxExportStl = document.getElementById('lightbox-export-stl');
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -453,6 +454,7 @@ class InteractiveEAFramework {
         // Lightbox save: explicit button (works on mobile + desktop), plus
         // right-click / long-press on the zoomed canvas as a bonus affordance.
         if (this.lightboxSave) this.lightboxSave.addEventListener('click', () => this.saveCurrentImage());
+        if (this.lightboxExportStl) this.lightboxExportStl.addEventListener('click', () => this.exportCurrentSTL());
         if (this.lightboxCanvas) {
             this.lightboxCanvas.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -613,9 +615,9 @@ class InteractiveEAFramework {
                 if (individual.cleanup) {
                     individual.cleanup();
                 }
-                if (individual._animationRunning) {
-                    individual._animationRunning = false;
-                }
+                // Rotation loops self-terminate when their canvas leaves the DOM
+                // (see animate3DWithSharedScene); removing the mesh above also
+                // makes any in-flight frame a no-op.
             });
         }
         this.currentlyPlaying = null;
@@ -776,10 +778,38 @@ class InteractiveEAFramework {
             console.warn('Zoom render failed:', err);
         }
         if (this.lightboxInfo) this.lightboxInfo.innerHTML = individual.describe();
+        // STL export only makes sense for individuals with a triangle mesh
+        // (the 3D types expose generate3DPoints()).
+        if (this.lightboxExportStl) {
+            const exportable = typeof individual.generate3DPoints === 'function';
+            this.lightboxExportStl.style.display = exportable ? '' : 'none';
+        }
         this.lightbox.classList.add('open');
+        // The one-shot visualize() above draws a static frame; keep the zoomed
+        // 3D view rotating too.
+        this.startZoomAnimation(individual);
+    }
+
+    // Rotate the zoomed 3D view. The grid tiles idle while the lightbox is open
+    // (see animate3DWithSharedScene), so only this loop drives the renderer. A
+    // token supersedes any previous zoom loop and stops it on close.
+    startZoomAnimation(individual) {
+        const token = {};
+        this._zoomAnimToken = token;
+        if (!(individual.is3D && individual.is3D()) || !this.shared3D || !this.lightboxCanvas) return;
+        const canvas = this.lightboxCanvas;
+        const animate = () => {
+            if (this._zoomAnimToken !== token) return;                 // superseded / closed
+            if (!this.lightbox.classList.contains('open')) return;      // closed
+            const mesh = this.shared3D.meshes.get(individual.id);
+            if (mesh) this.renderMeshToCanvas(canvas, individual.id, mesh);
+            requestAnimationFrame(animate);
+        };
+        animate();
     }
 
     closeZoom() {
+        this._zoomAnimToken = null; // stop the zoom rotation loop
         if (this.lightbox) this.lightbox.classList.remove('open');
     }
 
@@ -794,6 +824,21 @@ class InteractiveEAFramework {
                 console.warn('Image save failed:', err);
                 this.showToast('Could not save image');
             });
+    }
+
+    // Export the currently-zoomed individual's mesh as a binary STL for 3D
+    // printing (see MeshExport.js). Only wired for 3D types; the button is
+    // hidden otherwise in openZoom().
+    exportCurrentSTL() {
+        const individual = this.currentIndividual;
+        if (!individual || typeof individual.generate3DPoints !== 'function' || !window.MeshExport) return;
+        try {
+            const filename = window.MeshExport.downloadSTL(individual);
+            this.showToast(`Exported ${filename}`);
+        } catch (err) {
+            console.warn('STL export failed:', err);
+            this.showToast('Could not export STL');
+        }
     }
 
     // Brief, self-dismissing confirmation message.
@@ -958,6 +1003,9 @@ class InteractiveEAFramework {
             'BranchIndividual': BranchIndividual,
             'SuperShapeIndividual': SuperShapeIndividual,
             'SuperShape3DIndividual': SuperShape3DIndividual,
+            'PetalSphere3DIndividual': PetalSphere3DIndividual,
+            'FreeSurface3DIndividual': FreeSurface3DIndividual,
+            'WarpedSurface3DIndividual': WarpedSurface3DIndividual,
             'RobotIndividual': RobotIndividual,
             'PenroseIndividual': PenroseIndividual,
             'SheepIndividual': SheepIndividual,
@@ -1028,23 +1076,30 @@ class InteractiveEAFramework {
     }
     
     animate3DWithSharedScene(individual, canvas) {
-        // Create animation function for this individual using shared scene
+        if (!canvas || !(individual.is3D && individual.is3D()) || !this.shared3D) return;
+
+        // One rotation loop per canvas, keyed on the canvas itself. renderGrid
+        // creates a FRESH canvas on every rebuild, so the old canvas leaves the
+        // DOM (isConnected → false) and its loop self-terminates below, while the
+        // new canvas starts its own. (The previous _animationRunning flag lived
+        // on the individual and persisted across rebuilds, so after a palette
+        // change the guard blocked a restart and the old loop kept drawing to a
+        // detached canvas — that was the "rotation stops" bug.)
+        if (canvas._anemAnimating) return;
+        canvas._anemAnimating = true;
+
         const animate = () => {
-            if (individual._animationRunning && individual.is3D && individual.is3D() && this.shared3D) {
-                // Get the mesh for this individual from shared scene
+            if (!canvas.isConnected || !this.shared3D) { canvas._anemAnimating = false; return; }
+            // Idle (but stay scheduled) while the zoom lightbox is open, so the
+            // shared renderer isn't thrashed between the 128px tiles and the
+            // 768px zoom canvas every frame; resumes automatically on close.
+            if (!this.lightbox || !this.lightbox.classList.contains('open')) {
                 const mesh = this.shared3D.meshes.get(individual.id);
-                if (mesh) {
-                    this.renderMeshToCanvas(canvas, individual.id, mesh);
-                }
-                requestAnimationFrame(animate);
+                if (mesh) this.renderMeshToCanvas(canvas, individual.id, mesh);
             }
+            requestAnimationFrame(animate);
         };
-        
-        // Start animation if not already running
-        if (!individual._animationRunning) {
-            individual._animationRunning = true;
-            animate();
-        }
+        animate();
     }
     
     animate3D(individual) {
