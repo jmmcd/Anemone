@@ -62,6 +62,8 @@ Every individual evolves via `PTORepresentation` (genome = PTO trace). The other
 
 The two DAG individuals each define their own self-contained, plain-data generator (mouse: 3 inputs / 3 outputs; EEG: 5 inputs / 2 outputs) emitting connections as indices, and share `buildDAG` to instantiate the node graph. (The old configurable `createDAGGenerator` factory is gone — structural naming can't compile a factory closure.)
 
+`PhotoFilterIndividual` is a *third* DAG type but a different kind: its edges carry whole **images** (not scalars) and the graph is a **pure, stateless function** of the source photo, so it does **not** use `DAGRepresentation.js`/`buildDAG` (those build stateful scalar/MIDI node objects). It keeps the same plain-data / index-based / acyclic generator shape (op→arity table, inputs as indices into earlier nodes) but evaluates the graph by a direct memoised walk in the individual — mirroring how the grammar individuals keep their definition local while only the operators are PTO's. (It replaced the earlier linear op-chain photo filter, which is just a degenerate branch-free DAG.)
+
 ### PTORepresentation (`representations/PTORepresentation.js`)
 A representation backed by [Program Trace Optimisation](https://github.com/Program-Trace-Optimisation/PTO) (vendored at `vendor/pto-bundle.js`, loaded as a global `PTO`). Instead of a fixed genome shape, the search space is defined by a **generator** `generator(rnd)` that builds a phenotype using PTO's `rnd` (`rnd.random/uniform/randint/choice/sample`). PTO records the sequence of `rnd` decisions — the **trace** — and that trace is the genotype; one representation can thus emulate any structure (fixed/variable length, mixed int/float, etc.), so an individual only supplies a generator, not bespoke operators.
 
@@ -139,7 +141,7 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `PatternGrammarIndividual` | expression string | Canvas2D | derivation generator expands a BNF grammar directly |
 | `PolarCurveIndividual` | r(t) expression string | Canvas2D | derivation generator → polar-coordinate r(t) curve |
 | `ShapesIndividual` | 60 bytes | Canvas2D | Sequence of drawing ops |
-| `PhotoFilterIndividual` | variable-length op chain | Canvas2D | Evolves a photo filter (brightness/contrast/gamma/hue/blur/…) applied to the shared `window.Photo`; opts into palette (tint/gradientMap) |
+| `PhotoFilterIndividual` | plain-data image DAG | Canvas2D | CGP-IP-style: evolves a *graph* of whole-image ops (unary like blur/gamma/edges/tiltShift/edgeHue + binary combiners like add/diff/blend) over the shared `window.Photo`, reusing/recombining intermediate images; opts into palette (tint/gradientMap/edgeHue) |
 | `GridIndividual` | 64 bits | Canvas2D | 8×8 grid |
 | `SuperShapeIndividual` | mixed int/float | Canvas2D | Gielis polar curve |
 | `SuperShape3DIndividual` | superformula expr strings + params | ThreeD | `RadialSurface3D` subclass: Gielis superformula as a fixed-form "grammar" (continuous params baked into the expr as literals) + extended φ range |
