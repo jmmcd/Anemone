@@ -7,7 +7,12 @@ class EvolutionaryAlgorithm {
         this.generation = 0;
         this.history = [];
         this.selectedIndividuals = [];
-        
+        // Every individual liked at any point during the run (not just the
+        // current generation). saveGeneration() clears selectedIndividuals each
+        // evolve, so this is the only durable record of the whole run's likes —
+        // it backs the "export all liked" feature. Deduped by id in toggleLike.
+        this.likedArchive = [];
+
         this.initializePopulation();
     }
     
@@ -176,10 +181,17 @@ class EvolutionaryAlgorithm {
             individual.selected = false;
             individual.fitness = 0;
             this.selectedIndividuals = this.selectedIndividuals.filter(ind => ind.id !== individual.id);
+            // Unliking within the current generation withdraws it from the run
+            // archive too (the user changed their mind); past-generation likes
+            // can no longer be unliked, so they persist.
+            this.likedArchive = this.likedArchive.filter(ind => ind.id !== individual.id);
         } else {
             individual.selected = true;
             individual.fitness = 1;
             this.selectedIndividuals.push(individual);
+            if (!this.likedArchive.some(ind => ind.id === individual.id)) {
+                this.likedArchive.push(individual);
+            }
         }
         return individual.selected;
     }
@@ -210,6 +222,7 @@ class EvolutionaryAlgorithm {
         this.generation = 0;
         this.history = [];
         this.selectedIndividuals = [];
+        this.likedArchive = [];
         this.initializePopulation();
     }
     

@@ -24,7 +24,7 @@ class GridIndividual extends Individual {
 
         ctx.clearRect(0, 0, width, height);
 
-        const gridSize = 8;
+        const gridSize = 4;
         const cellWidth = width / gridSize;
         const cellHeight = height / gridSize;
 

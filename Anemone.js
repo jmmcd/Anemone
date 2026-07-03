@@ -405,6 +405,8 @@ class InteractiveEAFramework {
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
         this.loadPngInput = document.getElementById('load-png-input');
+        this.savePopulationBtn = document.getElementById('save-population-btn');
+        this.saveLikedBtn = document.getElementById('save-liked-btn');
         this.placeBanner = document.getElementById('place-banner');
         this.placePreview = document.getElementById('place-preview');
         this.placeCancel = document.getElementById('place-cancel');
@@ -517,6 +519,11 @@ class InteractiveEAFramework {
             });
         }
         if (this.placeCancel) this.placeCancel.addEventListener('click', () => this.exitPlacementMode());
+
+        // Bulk exports: the whole population as one image, or every liked
+        // individual from the run as a ZIP of reproducible PNGs.
+        if (this.savePopulationBtn) this.savePopulationBtn.addEventListener('click', () => this.savePopulationImage());
+        if (this.saveLikedBtn) this.saveLikedBtn.addEventListener('click', () => this.saveLikedRunZip());
 
         // Mount UI extensions
         this.mountUIExtensions();
@@ -830,6 +837,91 @@ class InteractiveEAFramework {
                 console.warn('Image save failed:', err);
                 this.showToast('Could not save image');
             });
+    }
+
+    // Short, filesystem-safe stem for the current individual type, e.g.
+    // AnemoneIndividual -> "anemone". Shared by the population/liked exports.
+    typeStem(typeName) {
+        return String(typeName || 'individual')
+            .replace(/Individual$/, '')
+            .replace(/[^A-Za-z0-9]+/g, '')
+            .toLowerCase() || 'individual';
+    }
+
+    // Save the whole current population as one bordered PNG montage. Uses the
+    // grid's already-rendered 128px tiles, so it captures exactly what's on
+    // screen (2D and 3D alike) with no re-rendering.
+    savePopulationImage() {
+        if (!window.ImageSave || !this.grid) return;
+        const canvases = Array.from(this.grid.children)
+            .map(div => div.querySelector('canvas'))
+            .filter(Boolean);
+        if (canvases.length === 0) { this.showToast('Nothing to save'); return; }
+        try {
+            const montage = window.ImageSave.composeMontage(canvases, { border: 8, gap: 8, background: '#111' });
+            const name = `anemone-${this.typeStem(this.individualClass && this.individualClass.name)}-population.png`;
+            montage.toBlob((blob) => {
+                if (!blob) { this.showToast('Could not save population'); return; }
+                window.ImageSave.download(blob, name);
+                this.showToast(`Saved ${name}`);
+            }, 'image/png');
+        } catch (err) {
+            console.warn('Population save failed:', err);
+            this.showToast('Could not save population');
+        }
+    }
+
+    // Export every individual liked during the whole run as a ZIP of
+    // reproducible PNGs (each carries its genome, so it re-loads via Load PNG),
+    // plus a manifest.json. Draws each liked individual to an offscreen canvas
+    // — most are from past generations and no longer on the grid.
+    async saveLikedRunZip() {
+        if (!window.ImageSave || !this.ea) return;
+        // Dedup by phenotype signature: an elite that stays liked recurs across
+        // generations as distinct instances but identical art — save it once.
+        const seen = new Set();
+        const liked = [];
+        (this.ea.likedArchive || []).forEach((ind) => {
+            let key;
+            try { key = window.ImageSave.phenotypeSignature(ind); } catch (e) { key = null; }
+            key = key || ('id:' + (ind && ind.id));
+            if (!seen.has(key)) { seen.add(key); liked.push(ind); }
+        });
+        if (liked.length === 0) { this.showToast('No liked individuals yet'); return; }
+
+        this.showToast(`Building ZIP of ${liked.length} liked…`);
+        try {
+            const size = 256;
+            const off = document.createElement('canvas');
+            off.width = size; off.height = size;
+            const entries = [];
+            const manifest = [];
+            const counts = {};
+            for (const ind of liked) {
+                ind.visualize(off);   // 2D draws directly; 3D draws a static frame via the shared renderer
+                const bytes = await window.ImageSave.buildPngBytes(off, ind);
+                const stem = this.typeStem(ind.constructor && ind.constructor.name);
+                counts[stem] = (counts[stem] || 0) + 1;
+                const name = `anemone-${stem}-${String(counts[stem]).padStart(3, '0')}.png`;
+                entries.push({ name, bytes });
+                manifest.push({
+                    file: name,
+                    type: ind.constructor && ind.constructor.name,
+                    id: ind.id,
+                    phenoSig: window.ImageSave.phenotypeSignature(ind),
+                    genome: ind.genome,
+                });
+            }
+            const enc = new TextEncoder();
+            entries.push({ name: 'manifest.json', bytes: enc.encode(JSON.stringify(manifest, null, 2)) });
+            const zip = window.ImageSave.buildZip(entries);
+            const zipName = `anemone-${this.typeStem(this.individualClass && this.individualClass.name)}-liked.zip`;
+            window.ImageSave.download(new Blob([zip], { type: 'application/zip' }), zipName);
+            this.showToast(`Saved ${zipName} (${liked.length})`);
+        } catch (err) {
+            console.warn('Liked ZIP export failed:', err);
+            this.showToast('Could not build ZIP');
+        }
     }
 
     // Export the currently-zoomed individual's mesh as a binary STL for 3D

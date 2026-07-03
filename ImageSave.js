@@ -130,8 +130,23 @@
         return ('0000000' + h.toString(16)).slice(-8);
     }
 
-    // ---- Public: save a canvas + individual to a downloaded PNG ----------
-    function saveCanvas(canvas, individual) {
+    // ---- Reproducible metadata embedded in every saved PNG --------------
+    function metaFor(individual) {
+        return {
+            app: 'Anemone',
+            type: individual && individual.constructor && individual.constructor.name,
+            id: individual && individual.id,
+            timestamp: new Date().toISOString(),
+            phenoSig: phenotypeSignature(individual),
+            genome: individual && individual.genome,
+        };
+    }
+
+    // ---- Render a canvas to PNG bytes with the individual's genome embedded.
+    // The shared core of both single-image save and the bulk ZIP export: it
+    // produces the same metadata-carrying, reloadable PNG, just without
+    // triggering a download (the caller decides what to do with the bytes).
+    function buildPngBytes(canvas, individual) {
         return new Promise((resolve, reject) => {
             if (!canvas || !canvas.toBlob) { reject(new Error('No canvas to save')); return; }
             canvas.toBlob((blob) => {
@@ -139,25 +154,134 @@
                 blob.arrayBuffer().then((buf) => {
                     let bytes = new Uint8Array(buf);
                     try {
-                        const meta = {
-                            app: 'Anemone',
-                            type: individual && individual.constructor && individual.constructor.name,
-                            id: individual && individual.id,
-                            timestamp: new Date().toISOString(),
-                            phenoSig: phenotypeSignature(individual),
-                            genome: individual && individual.genome,
-                        };
-                        const chunk = buildITxtChunk('anemone', JSON.stringify(meta));
+                        const chunk = buildITxtChunk('anemone', JSON.stringify(metaFor(individual)));
                         bytes = insertChunk(bytes, chunk);
                     } catch (e) {
                         console.warn('Could not embed metadata, saving plain PNG:', e);
                     }
-                    const filename = nextFilename(individual && individual.constructor && individual.constructor.name);
-                    triggerDownload(new Blob([bytes], { type: 'image/png' }), filename);
-                    resolve(filename);
+                    resolve(bytes);
                 }).catch(reject);
             }, 'image/png');
         });
+    }
+
+    // ---- Public: save a canvas + individual to a downloaded PNG ----------
+    function saveCanvas(canvas, individual) {
+        return buildPngBytes(canvas, individual).then((bytes) => {
+            const filename = nextFilename(individual && individual.constructor && individual.constructor.name);
+            triggerDownload(new Blob([bytes], { type: 'image/png' }), filename);
+            return filename;
+        });
+    }
+
+    // ---- Compose several canvases into one bordered montage canvas -------
+    // Lays the tiles out in a grid with a uniform border/gutter on a solid
+    // background. Tiles are assumed uniform in size (the 128px grid canvases);
+    // the first canvas's dimensions set the tile size. Returns a new canvas.
+    function composeMontage(canvases, opts) {
+        opts = opts || {};
+        const tiles = (canvases || []).filter(Boolean);
+        if (tiles.length === 0) throw new Error('No canvases to compose');
+        const border = opts.border != null ? opts.border : 8;
+        const gap = opts.gap != null ? opts.gap : border;
+        const bg = opts.background || '#111';
+        const cols = opts.cols || Math.ceil(Math.sqrt(tiles.length));
+        const rows = Math.ceil(tiles.length / cols);
+        const tw = tiles[0].width, th = tiles[0].height;
+        const W = border * 2 + cols * tw + (cols - 1) * gap;
+        const H = border * 2 + rows * th + (rows - 1) * gap;
+        const out = document.createElement('canvas');
+        out.width = W; out.height = H;
+        const ctx = out.getContext('2d');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+        tiles.forEach((c, i) => {
+            const col = i % cols, row = Math.floor(i / cols);
+            const x = border + col * (tw + gap);
+            const y = border + row * (th + gap);
+            ctx.drawImage(c, x, y, tw, th);
+        });
+        return out;
+    }
+
+    // ---- Build a ZIP archive (STORE / no compression) from byte entries --
+    // entries: [{ name, bytes: Uint8Array }]. PNGs are already compressed, so
+    // STORE loses nothing and keeps this dependency-free — the CRC-32 the ZIP
+    // format needs is the very same routine the PNG chunks use above. Hand-rolled
+    // in the spirit of the PNG-chunk and STL writers already in this repo.
+    function buildZip(entries) {
+        const enc = new TextEncoder();
+        const parts = [];      // local headers + file data, in order
+        const central = [];    // central directory records
+        let offset = 0;
+
+        for (const entry of entries) {
+            const nameBytes = enc.encode(entry.name);
+            const data = entry.bytes;
+            const crc = crc32(data);
+            const size = data.length;
+
+            const local = new Uint8Array(30 + nameBytes.length);
+            const lv = new DataView(local.buffer);
+            lv.setUint32(0, 0x04034b50, true);   // local file header signature
+            lv.setUint16(4, 20, true);           // version needed to extract
+            lv.setUint16(6, 0, true);            // general purpose flags
+            lv.setUint16(8, 0, true);            // compression method: store
+            lv.setUint16(10, 0, true);           // last mod file time
+            lv.setUint16(12, 0, true);           // last mod file date
+            lv.setUint32(14, crc, true);
+            lv.setUint32(18, size, true);        // compressed size
+            lv.setUint32(22, size, true);        // uncompressed size
+            lv.setUint16(26, nameBytes.length, true);
+            lv.setUint16(28, 0, true);           // extra field length
+            local.set(nameBytes, 30);
+            parts.push(local, data);
+
+            const cen = new Uint8Array(46 + nameBytes.length);
+            const cv = new DataView(cen.buffer);
+            cv.setUint32(0, 0x02014b50, true);   // central directory signature
+            cv.setUint16(4, 20, true);           // version made by
+            cv.setUint16(6, 20, true);           // version needed to extract
+            cv.setUint16(8, 0, true);            // flags
+            cv.setUint16(10, 0, true);           // compression method
+            cv.setUint16(12, 0, true);           // time
+            cv.setUint16(14, 0, true);           // date
+            cv.setUint32(16, crc, true);
+            cv.setUint32(20, size, true);
+            cv.setUint32(24, size, true);
+            cv.setUint16(28, nameBytes.length, true);
+            cv.setUint16(30, 0, true);           // extra length
+            cv.setUint16(32, 0, true);           // comment length
+            cv.setUint16(34, 0, true);           // disk number start
+            cv.setUint16(36, 0, true);           // internal attributes
+            cv.setUint32(38, 0, true);           // external attributes
+            cv.setUint32(42, offset, true);      // offset of local header
+            cen.set(nameBytes, 46);
+            central.push(cen);
+
+            offset += local.length + data.length;
+        }
+
+        const centralSize = central.reduce((s, c) => s + c.length, 0);
+        const centralOffset = offset;
+
+        const end = new Uint8Array(22);
+        const ev = new DataView(end.buffer);
+        ev.setUint32(0, 0x06054b50, true);       // end of central directory signature
+        ev.setUint16(4, 0, true);                // number of this disk
+        ev.setUint16(6, 0, true);                // disk with central directory
+        ev.setUint16(8, entries.length, true);   // entries on this disk
+        ev.setUint16(10, entries.length, true);  // total entries
+        ev.setUint32(12, centralSize, true);
+        ev.setUint32(16, centralOffset, true);
+        ev.setUint16(20, 0, true);               // comment length
+
+        const all = parts.concat(central, [end]);
+        const total = all.reduce((s, a) => s + a.length, 0);
+        const out = new Uint8Array(total);
+        let p = 0;
+        for (const a of all) { out.set(a, p); p += a.length; }
+        return out;
     }
 
     function triggerDownload(blob, filename) {
@@ -208,7 +332,8 @@
     }
 
     window.ImageSave = {
-        saveCanvas, readMetadata, readMetadataFromFile, phenotypeSignature,
+        saveCanvas, buildPngBytes, composeMontage, buildZip, download: triggerDownload,
+        readMetadata, readMetadataFromFile, phenotypeSignature,
         nextFilename, buildITxtChunk, insertChunk, crc32,
     };
 })();

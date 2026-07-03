@@ -17,15 +17,11 @@
 * In the xy pattern, allow use of individual points as centres with r and theta. Also mod. And somehow, special points defined by intersections of other curves, eg (theta mod 12 intersected with r % 10 == 0) can become useful as reference points for others. Reference points define new x and y frames. So maybe we have functions like r() and theta(). If called with no arguments they give radius wrt the image centre. If called with some arguments, calculate wrt the point defined by those arguments. 
 
 * Fix several upstream PTO-js bugs. The one about serialising the trace is important for our load/save feature. Currently, the grammar individuals are not reconstructing correctly because of that.
-
-* Allow a user to assemble a "hall of fame" easily - all liked individuals from the run. Or point to a directory containing many saves, and automatically assemble a grid.
-
 * We have editable generators, but some individuals will need to have editable draw() instead/as well. The hook for this is working.
 
 * We have genotypes saved as metadata inside the pngs. But this is not really enough. 
 
-
-
+* The zoom-in re-render is a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. Not sure what is the right solution here.
 
 
 
@@ -37,7 +33,6 @@
 
 * A graph grammar with 3d coordinates per node as in my old GPEM paper, but better. Rotating images
 
-
 * Another type of individual: Polyomino CFG
 
 * Another L-system-like structure where commands draw pixel strokes, but are constrained by existing pixels. Variants are BFS and DFS.
@@ -47,7 +42,5 @@
 * Moving pictures using either t in [0, 1], or sin theta and cos theta
 
 * A series of lines, each a curve with x, y start and end and control points and colour and style and glow (like in visuals at a good concert I was at recently)
-
-* Load photo and evolve filter. Allow to replace photo and continue.
 
 * Same for eg a drum loop (any audio loop) and filter
