@@ -87,6 +87,9 @@ All sound-producing individuals **share one** `MIDIModality` instance, owned by 
 ### Color Palette (`Palette.js`)
 `window.Palette` is an app-level, medium-agnostic color service consumed by both 2D and 3D individuals: `window.Palette.color(t)` returns an `{r,g,b}` for `t∈[0,1]` using the framework's current palette (`window.Palette.name()` reads `framework.settings.colorPalette`). It is the palette provider for the app. Individuals opt in by returning `true` from `usesColorPalette()`, which makes the framework attach `PaletteControlUI`. (This replaced the old `withPaletteExtensions` mixin, which is gone.)
 
+### Photo (`Photo.js`)
+`window.Photo` is an app-level image service (mirrors `Palette`): it holds **one shared source photo**, not part of any genome, so `PhotoFilterIndividual`s all filter the same image and evolve only the filter chain. The default is scikit-image's "coffee" (a standard, cleanly-licensed demo photo), fetched from jsDelivr (pinned tag, CORS-enabled) in the background over a generated gradient placeholder that also serves as the offline fallback. `sourceImageData(w,h)` returns the source scaled to cover w×h (cached per size per version, treated read-only). Individuals opt in via `usesPhoto()`, which makes the framework attach `PhotoControlUI` (load/replace photo). Replacing the photo bumps `Photo.version()` and calls `framework.invalidateAndRender()` — caches drop and everything redraws, but the **population is kept, so evolution continues** on the new photo. Render caches must include `Photo.version()` in `renderKey()`.
+
 ## Composition Pattern
 
 Every individual is backed by `PTORepresentation`: the individual-specific part is a **generator** `generator(rnd)` (the search space); `mutate`/`crossover`/`clone` are inherited from `Individual` and delegate to the representation. The generator's output is the phenotype, read via `this.phenotype` (the genome itself is the PTO trace).
@@ -136,6 +139,7 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `PatternGrammarIndividual` | expression string | Canvas2D | derivation generator expands a BNF grammar directly |
 | `PolarCurveIndividual` | r(t) expression string | Canvas2D | derivation generator → polar-coordinate r(t) curve |
 | `ShapesIndividual` | 60 bytes | Canvas2D | Sequence of drawing ops |
+| `PhotoFilterIndividual` | variable-length op chain | Canvas2D | Evolves a photo filter (brightness/contrast/gamma/hue/blur/…) applied to the shared `window.Photo`; opts into palette (tint/gradientMap) |
 | `GridIndividual` | 64 bits | Canvas2D | 8×8 grid |
 | `SuperShapeIndividual` | mixed int/float | Canvas2D | Gielis polar curve |
 | `SuperShape3DIndividual` | superformula expr strings + params | ThreeD | `RadialSurface3D` subclass: Gielis superformula as a fixed-form "grammar" (continuous params baked into the expr as literals) + extended φ range |

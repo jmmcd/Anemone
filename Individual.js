@@ -40,6 +40,7 @@ class Individual {
     // --- Capability flags (read by the framework) ---
     is3D()             { return false; }
     usesColorPalette() { return false; }
+    usesPhoto()        { return false; }
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {

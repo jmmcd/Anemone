@@ -288,6 +288,12 @@ class InteractiveEAFramework {
             this.uiExtensions.push(new PaletteControlUI(this));
         }
 
+        // Attach the photo-loading UI panel for individuals that filter a shared
+        // photo (usesPhoto()), so the user can load/replace it mid-evolution.
+        if (sample && typeof sample.usesPhoto === 'function' && sample.usesPhoto()) {
+            this.uiExtensions.push(new PhotoControlUI(this));
+        }
+
         // Attach the code-editor panel for individuals that expose editable code
         // sections (all PTO-backed types do — at minimum their generator).
         if (sample && typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
@@ -998,6 +1004,7 @@ class InteractiveEAFramework {
             'PatternGrammarIndividual': PatternGrammarIndividual,
             'PolarCurveIndividual': PolarCurveIndividual,
             'ShapesIndividual': ShapesIndividual,
+            'PhotoFilterIndividual': PhotoFilterIndividual,
             'GridIndividual': GridIndividual,
             'AnemoneIndividual': AnemoneIndividual,
             'BranchIndividual': BranchIndividual,
