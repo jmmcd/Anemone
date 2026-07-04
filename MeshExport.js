@@ -76,8 +76,7 @@ window.MeshExport = {
         const { vertices, indices } = individual.generate3DPoints();
         const buffer = this.buildBinarySTL(vertices, indices);
 
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const filename = `${individual.constructor.name}-${stamp}.stl`;
+        const filename = window.ExportNaming.filename(individual, 'stl');
 
         const blob = new Blob([buffer], { type: 'model/stl' });
         const url = URL.createObjectURL(blob);

@@ -41,6 +41,7 @@ class Individual {
     is3D()             { return false; }
     usesColorPalette() { return false; }
     usesPhoto()        { return false; }
+    usesAudio()        { return false; }
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {

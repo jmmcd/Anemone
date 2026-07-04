@@ -294,6 +294,12 @@ class InteractiveEAFramework {
             this.uiExtensions.push(new PhotoControlUI(this));
         }
 
+        // Attach the audio-loading UI panel for individuals that filter a shared
+        // audio clip (usesAudio()), so the user can load/replace it mid-evolution.
+        if (sample && typeof sample.usesAudio === 'function' && sample.usesAudio()) {
+            this.uiExtensions.push(new AudioControlUI(this));
+        }
+
         // Attach the code-editor panel for individuals that expose editable code
         // sections (all PTO-backed types do — at minimum their generator).
         if (sample && typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
@@ -401,6 +407,7 @@ class InteractiveEAFramework {
         this.lightboxClose = document.getElementById('lightbox-close');
         this.lightboxSave = document.getElementById('lightbox-save');
         this.lightboxExportStl = document.getElementById('lightbox-export-stl');
+        this.lightboxExportWav = document.getElementById('lightbox-export-wav');
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -463,6 +470,7 @@ class InteractiveEAFramework {
         // right-click / long-press on the zoomed canvas as a bonus affordance.
         if (this.lightboxSave) this.lightboxSave.addEventListener('click', () => this.saveCurrentImage());
         if (this.lightboxExportStl) this.lightboxExportStl.addEventListener('click', () => this.exportCurrentSTL());
+        if (this.lightboxExportWav) this.lightboxExportWav.addEventListener('click', () => this.exportCurrentWav());
         if (this.lightboxCanvas) {
             this.lightboxCanvas.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -797,6 +805,12 @@ class InteractiveEAFramework {
             const exportable = typeof individual.generate3DPoints === 'function';
             this.lightboxExportStl.style.display = exportable ? '' : 'none';
         }
+        // Audio-producing individuals export a .wav instead of a .png; hide the
+        // PNG Save for them and show ⤓ WAV. Gated on the render capability, not
+        // usesAudio() (the drum machine produces audio but loads no clip panel).
+        const audioOut = window.AudioExport && window.AudioExport.canExport(individual);
+        if (this.lightboxExportWav) this.lightboxExportWav.style.display = audioOut ? '' : 'none';
+        if (this.lightboxSave) this.lightboxSave.style.display = audioOut ? 'none' : '';
         this.lightbox.classList.add('open');
         // The one-shot visualize() above draws a static frame; keep the zoomed
         // 3D view rotating too.
@@ -842,10 +856,7 @@ class InteractiveEAFramework {
     // Short, filesystem-safe stem for the current individual type, e.g.
     // AnemoneIndividual -> "anemone". Shared by the population/liked exports.
     typeStem(typeName) {
-        return String(typeName || 'individual')
-            .replace(/Individual$/, '')
-            .replace(/[^A-Za-z0-9]+/g, '')
-            .toLowerCase() || 'individual';
+        return window.ExportNaming.stem(typeName);
     }
 
     // Save the whole current population as one bordered PNG montage. Uses the
@@ -937,6 +948,21 @@ class InteractiveEAFramework {
             console.warn('STL export failed:', err);
             this.showToast('Could not export STL');
         }
+    }
+
+    // Export the currently-zoomed audio individual's filtered clip as a .wav
+    // (see AudioExport.js — an offline render of its effects graph). Only wired
+    // for audio types; the button is hidden otherwise in openZoom().
+    exportCurrentWav() {
+        const individual = this.currentIndividual;
+        if (!individual || !window.AudioExport) return;
+        this.showToast('Rendering WAV…');
+        window.AudioExport.downloadWAV(individual)
+            .then((filename) => this.showToast(`Exported ${filename}`))
+            .catch((err) => {
+                console.warn('WAV export failed:', err);
+                this.showToast('Could not export WAV');
+            });
     }
 
     // Brief, self-dismissing confirmation message.
@@ -1097,6 +1123,8 @@ class InteractiveEAFramework {
             'PolarCurveIndividual': PolarCurveIndividual,
             'ShapesIndividual': ShapesIndividual,
             'PhotoFilterIndividual': PhotoFilterIndividual,
+            'AudioFilterIndividual': AudioFilterIndividual,
+            'DrumMachineIndividual': DrumMachineIndividual,
             'GridIndividual': GridIndividual,
             'AnemoneIndividual': AnemoneIndividual,
             'BranchIndividual': BranchIndividual,

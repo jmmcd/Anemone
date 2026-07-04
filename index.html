@@ -58,6 +58,8 @@
                 <option value="PolarCurveIndividual">Polar Curve</option>
                 <option value="ShapesIndividual">Shapes</option>
                 <option value="PhotoFilterIndividual">Photo Filter</option>
+                <option value="AudioFilterIndividual">Audio Filter</option>
+                <option value="DrumMachineIndividual">Drum Machine</option>
                 <option value="GridIndividual">Grid</option>
                 <option value="SuperShapeIndividual">Supershape</option>
                 <option value="SuperShape3DIndividual">Supershape 3D</option>
@@ -111,6 +113,7 @@
             <button id="lightbox-close" class="icon-btn lightbox-close" aria-label="Close">✕</button>
             <button id="lightbox-save" class="lightbox-save" aria-label="Save image">⤓ Save</button>
             <button id="lightbox-export-stl" class="lightbox-save lightbox-export-stl" aria-label="Export STL for 3D printing">⤓ STL</button>
+            <button id="lightbox-export-wav" class="lightbox-save lightbox-export-wav" aria-label="Export WAV audio">⤓ WAV</button>
             <canvas id="lightbox-canvas" width="768" height="768"></canvas>
             <div id="lightbox-info" class="genome-content"></div>
         </div>
@@ -124,11 +127,15 @@
     <script src="vendor/pto-bundle.js"></script>
     <script src="Palette.js"></script>
     <script src="Photo.js"></script>
+    <script src="AudioClip.js"></script>
+    <script src="ExportNaming.js"></script>
     <script src="ImageSave.js"></script>
     <script src="MeshExport.js"></script>
+    <script src="AudioExport.js"></script>
     <script src="Individual.js"></script>
     <script src="PaletteControlUI.js"></script>
     <script src="PhotoControlUI.js"></script>
+    <script src="AudioControlUI.js"></script>
     <script src="CodeEditorUI.js"></script>
 
     <!-- Representation and Modality helpers -->
@@ -143,6 +150,8 @@
     <script src="GridIndividual.js"></script>
     <script src="ShapesIndividual.js"></script>
     <script src="PhotoFilterIndividual.js"></script>
+    <script src="AudioFilterIndividual.js"></script>
+    <script src="DrumMachineIndividual.js"></script>
     <script src="MelodyIndividual.js"></script>
     <script src="MouseMusicIndividual.js"></script>
     <script src="EEGPreprocessing.js"></script>

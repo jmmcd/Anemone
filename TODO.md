@@ -42,5 +42,3 @@
 * Moving pictures using either t in [0, 1], or sin theta and cos theta
 
 * A series of lines, each a curve with x, y start and end and control points and colour and style and glow (like in visuals at a good concert I was at recently)
-
-* Same for eg a drum loop (any audio loop) and filter

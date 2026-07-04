@@ -91,21 +91,8 @@
         return out;
     }
 
-    // ---- Filename helper: anemone-<type>-<NNNN>.png ---------------------
-    const COUNTER_KEY = 'anemone:saveCounter';
-
-    function nextFilename(typeName) {
-        let n = 0;
-        try { n = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) || 0; } catch (e) { /* private mode */ }
-        n += 1;
-        try { localStorage.setItem(COUNTER_KEY, String(n)); } catch (e) { /* ignore */ }
-        const type = String(typeName || 'Individual')
-            .replace(/Individual$/, '')      // AnemoneIndividual -> Anemone
-            .replace(/[^A-Za-z0-9]+/g, '')
-            .toLowerCase() || 'individual';
-        const seq = String(n).padStart(4, '0');
-        return `anemone-${type}-${seq}.png`;
-    }
+    // Single-file download names come from window.ExportNaming (shared with the
+    // STL/WAV exports); batch/zip entries keep their own per-archive index below.
 
     // ---- Phenotype signature -------------------------------------------
     // A short hash of the individual's expressed phenotype, embedded alongside
@@ -168,7 +155,7 @@
     // ---- Public: save a canvas + individual to a downloaded PNG ----------
     function saveCanvas(canvas, individual) {
         return buildPngBytes(canvas, individual).then((bytes) => {
-            const filename = nextFilename(individual && individual.constructor && individual.constructor.name);
+            const filename = window.ExportNaming.filename(individual, 'png');
             triggerDownload(new Blob([bytes], { type: 'image/png' }), filename);
             return filename;
         });
@@ -334,6 +321,6 @@
     window.ImageSave = {
         saveCanvas, buildPngBytes, composeMontage, buildZip, download: triggerDownload,
         readMetadata, readMetadataFromFile, phenotypeSignature,
-        nextFilename, buildITxtChunk, insertChunk, crc32,
+        buildITxtChunk, insertChunk, crc32,
     };
 })();
