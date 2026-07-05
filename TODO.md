@@ -4,8 +4,6 @@
 
 * PTO AnemoneIndividual "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in old AnemoneIndividual). 
 
-* Individual can state its preference for (width, height) in the grid - might be needed for music individuals.
-
 * User controls for popsize, mutation rate..?
 
 * In the pattern individual, theta tends to be bad, so better would be sin theta and cos theta? With factor of 2 pi.
@@ -15,15 +13,13 @@
 * Fix several upstream PTO-js bugs. The one about serialising the trace is important for our load/save feature. Currently, the grammar individuals are not reconstructing correctly because of that.
 * We have editable generators, but some individuals will need to have editable draw() instead/as well. The hook for this is working.
 
-* We have genotypes saved as metadata inside the pngs. But this is not really enough. 
+* The zoom-in re-render has a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. I'm not sure if the "glow" effect in PolarCurve is being applied to the zoomed-in image. Not sure what is the right solution here.
 
-* The zoom-in re-render is a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. Not sure what is the right solution here.
+* The drum machine does not allow Velocity editing still TODO (the mechanism works, just needs a UI gesture).
 
-* ~~The drum machine should possibly remove the per-cell genes, and make the beat completely generated from the style parameters?~~ Resolved the other way: KEEP the per-cell genes — they're the write target that makes direct editing trivial. Cells are now individually addressable (hit_c_s / vel_c_s genes) and hand-edits fold straight back into the genome via representation.setGene, so they keep evolving (no inference/backward-mapping needed). Cell-by-cell click/drag editing lives in the zoom lightbox. (Velocity editing still TODO — mechanism works, just needs a gesture.)
+* The drum machine has global controls which override the genome's values for eg tempo and swing. Could extend to accent/push/swingTarget.
 
-* ~~The drum machine should remove tempo from the genome and put it under user control.~~ Done as an override, not a removal: the render-stage dials (tempo, swing, humanize, drive) can be LOCKED globally in the drawer "Performance" panel (window.DrumControls) — user control *as well as* in the genome, since the gene stays and unlocking restores the per-genome feel. (Could extend to accent/push/swingTarget.)
-
-* Drum machine needs MIDI export, and potentially, proper MIDI interface (ie sync with GB via Web MIDI?)
+* Someday could consider adding a proper MIDI interface (ie sync with GB via Web MIDI?).
 
 * The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
 

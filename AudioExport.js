@@ -75,15 +75,28 @@ window.AudioExport = {
     },
 
     // Encode an AudioBuffer as a 16-bit PCM WAV (interleaved) ArrayBuffer.
-    encodeWAV(buffer) {
+    // If metaJson is given, an extra "anmn" RIFF chunk carrying that UTF-8 string
+    // is appended after the data chunk: conformant WAV decoders skip chunks they
+    // don't recognise, so the file still plays everywhere, but the individual's
+    // {type, genome, phenotype, phenoSig} provenance travels with it. RIFF chunks
+    // are word-aligned, so an odd-length payload gets a trailing pad byte.
+    encodeWAV(buffer, metaJson) {
         const numCh = buffer.numberOfChannels, sr = buffer.sampleRate, len = buffer.length;
         const blockAlign = numCh * 2;               // 16-bit
         const dataSize = len * blockAlign;
-        const ab = new ArrayBuffer(44 + dataSize);
+
+        let metaBytes = null, metaChunkSize = 0;
+        if (metaJson != null) {
+            metaBytes = new TextEncoder().encode(String(metaJson));
+            const padded = metaBytes.length + (metaBytes.length & 1); // word-align
+            metaChunkSize = 8 + padded;             // "anmn" + size + data(+pad)
+        }
+
+        const ab = new ArrayBuffer(44 + dataSize + metaChunkSize);
         const view = new DataView(ab);
         const wstr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
 
-        wstr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); wstr(8, 'WAVE');
+        wstr(0, 'RIFF'); view.setUint32(4, 36 + dataSize + metaChunkSize, true); wstr(8, 'WAVE');
         wstr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); // PCM
         view.setUint16(22, numCh, true); view.setUint32(24, sr, true);
         view.setUint32(28, sr * blockAlign, true); view.setUint16(32, blockAlign, true);
@@ -101,13 +114,48 @@ window.AudioExport = {
                 off += 2;
             }
         }
+
+        if (metaBytes) {
+            wstr(off, 'anmn'); off += 4;
+            view.setUint32(off, metaBytes.length, true); off += 4; // real (unpadded) length
+            new Uint8Array(ab, off, metaBytes.length).set(metaBytes);
+            // trailing pad byte (if any) is left as the ArrayBuffer's zero fill
+        }
         return ab;
+    },
+
+    // ---- Read embedded provenance back out of a WAV -------------------------
+    // Inverse of the "anmn" chunk written by encodeWAV: walk the RIFF chunks and
+    // return the parsed {type, genome, phenotype, phenoSig} JSON, or null. This is
+    // the load path's reader (symmetric with ImageSave.readMetadata for PNG).
+    readMetadata(bytes) {
+        if (!bytes || bytes.length < 12) return null;
+        const tag = (o) => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+        if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        let pos = 12;
+        while (pos + 8 <= bytes.length) {
+            const id = tag(pos);
+            const size = view.getUint32(pos + 4, true);
+            if (id === 'anmn') {
+                try { return JSON.parse(new TextDecoder().decode(bytes.subarray(pos + 8, pos + 8 + size))); }
+                catch (e) { return null; }
+            }
+            pos += 8 + size + (size & 1); // chunks are word-aligned
+        }
+        return null;
+    },
+
+    readMetadataFromFile(file) {
+        return file.arrayBuffer().then((buf) => this.readMetadata(new Uint8Array(buf)));
     },
 
     // Render + encode + download the filtered clip as a .wav. Returns the filename.
     async downloadWAV(individual) {
         const buffer = await this.renderToBuffer(individual);
-        const wav = this.encodeWAV(buffer);
+        const meta = (window.ImageSave && window.ImageSave.metaFor)
+            ? JSON.stringify(window.ImageSave.metaFor(individual)) : null;
+        const wav = this.encodeWAV(buffer, meta);
 
         const filename = window.ExportNaming.filename(individual, 'wav');
 

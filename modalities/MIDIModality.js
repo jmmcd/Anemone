@@ -103,4 +103,62 @@ class MIDIModality {
             }
         }
     }
+
+    /**
+     * Loop a note sequence to the MIDI output, synced to a shared transport. This is
+     * the live-MIDI side of the unified step-sequencer playback (the AudioModality
+     * buffer loop is the fallback when no output is available).
+     *
+     * seq = { bpm, ppq, loopTicks, notes:[{ pitch, velocity, start, duration, channel }] }.
+     * Uses a lookahead scheduler: a short interval schedules note-on/off for every loop
+     * iteration entering a ~120 ms horizon via output.send(bytes, timestampMs). Web MIDI
+     * timestamps are in the performance.now() domain — the same clock the transport uses,
+     * so loops stay phase-aligned. Returns false (a no-op) if there's no MIDI output, so
+     * the caller can fall back to synthesised audio.
+     */
+    playSequence(seq, transport) {
+        this.stopSequence();
+        if (!this.midiOutput || !seq || !seq.notes) return false;
+        const out = this.midiOutput;
+        const ppq = seq.ppq || 96;
+        const tickSec = 60 / ((seq.bpm > 0 ? seq.bpm : 120) * ppq);
+        const loopSec = Math.max(0.05, (seq.loopTicks || ppq * 4) * tickSec);
+        const LOOKAHEAD = 0.12; // seconds
+        const now0 = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+        const phase = transport ? transport.phase(loopSec) : 0;
+        const t0 = now0 - phase;   // virtual bar-0 start (seconds), so we enter at `phase`
+        let nextLoop = 0;
+
+        const tick = () => {
+            const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+            const horizon = now + LOOKAHEAD;
+            while (t0 + nextLoop * loopSec < horizon) {
+                const base = t0 + nextLoop * loopSec;
+                for (const n of seq.notes) {
+                    const on = base + n.start * tickSec;
+                    const off = base + (n.start + n.duration) * tickSec;
+                    if (off <= now) continue;                       // already elapsed
+                    const ch = (n.channel || 0) & 0x0f;
+                    const pitch = Math.max(0, Math.min(127, Math.round(n.pitch)));
+                    const vel = Math.max(1, Math.min(127, Math.round(n.velocity)));
+                    try {
+                        out.send([0x90 | ch, pitch, vel], Math.max(now, on) * 1000);
+                        out.send([0x80 | ch, pitch, 0], off * 1000);
+                    } catch (e) { /* send failed — skip this note */ }
+                }
+                nextLoop++;
+            }
+        };
+        tick();
+        this._seqTimer = setInterval(tick, 25);
+        this.isRunning = true;
+        return true;
+    }
+
+    /** Stop the looping note sequence and silence any held notes. */
+    stopSequence() {
+        if (this._seqTimer) { clearInterval(this._seqTimer); this._seqTimer = null; }
+        this.isRunning = false;
+        this.allNotesOff();
+    }
 }

@@ -39,9 +39,9 @@
         <section class="drawer-section">
             <h3>Population</h3>
             <button id="reset-btn" class="secondary-btn">Reset</button>
-            <button id="load-png-btn" class="secondary-btn">Load PNG…</button>
-            <input type="file" id="load-png-input" accept="image/png" style="display: none;">
-            <button id="save-population-btn" class="secondary-btn">Save Population Image</button>
+            <button id="load-png-btn" class="secondary-btn">Load…</button>
+            <input type="file" id="load-png-input" accept="image/png,audio/wav,.wav,audio/midi,.mid,.midi" style="display: none;">
+            <button id="save-population-btn" class="secondary-btn">Save Population</button>
             <button id="save-liked-btn" class="secondary-btn">Save Liked (ZIP)</button>
             <div class="info-line">
                 Selected <span id="selected-count">0</span> ·
@@ -71,7 +71,7 @@
                 <option value="RobotIndividual">Robot</option>
                 <option value="SheepIndividual">Sheep</option>
                 <option value="PenroseIndividual">Penrose</option>
-                <option value="MelodyIndividual">Melody</option>
+                <option value="MelodyIndividual">Melody Grid</option>
                 <option value="MouseMusicIndividual">Mouse Music</option>
                 <option value="EEGSonificationIndividual">EEG Sonification</option>
             </select>
@@ -114,6 +114,7 @@
             <button id="lightbox-save" class="lightbox-save" aria-label="Save image">⤓ Save</button>
             <button id="lightbox-export-stl" class="lightbox-save lightbox-export-stl" aria-label="Export STL for 3D printing">⤓ STL</button>
             <button id="lightbox-export-wav" class="lightbox-save lightbox-export-wav" aria-label="Export WAV audio">⤓ WAV</button>
+            <button id="lightbox-export-midi" class="lightbox-save lightbox-export-midi" aria-label="Export MIDI file">⤓ MIDI</button>
             <canvas id="lightbox-canvas" width="768" height="768"></canvas>
             <div id="lightbox-info" class="genome-content"></div>
         </div>
@@ -132,11 +133,12 @@
     <script src="ImageSave.js"></script>
     <script src="MeshExport.js"></script>
     <script src="AudioExport.js"></script>
+    <script src="MidiExport.js"></script>
     <script src="Individual.js"></script>
     <script src="PaletteControlUI.js"></script>
     <script src="PhotoControlUI.js"></script>
     <script src="AudioControlUI.js"></script>
-    <script src="DrumControls.js"></script>
+    <script src="PerformanceControls.js"></script>
     <script src="CodeEditorUI.js"></script>
 
     <!-- Representation and Modality helpers -->
@@ -145,6 +147,7 @@
     <script src="representations/PTORepresentation.js"></script>
     <script src="modalities/Canvas2DModality.js"></script>
     <script src="modalities/MIDIModality.js"></script>
+    <script src="modalities/AudioModality.js"></script>
     <script src="modalities/ThreeDModality.js"></script>
 
     <!-- Individual types -->

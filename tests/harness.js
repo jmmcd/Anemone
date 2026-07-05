@@ -17,6 +17,10 @@ const ROOT = path.join(__dirname, '..');
 
 // Source files in dependency order (classes use `extends` at definition time,
 // so base classes must come first; representations/modalities before individuals).
+// IMPORTANT: keep this in sync with the <script> tags in index.html whenever an
+// individual type is added/removed or a base class is introduced — a missing base
+// (e.g. RadialSurface3DIndividual before its subclasses) makes the whole bundle
+// throw a ReferenceError at load and every test fails. See CLAUDE.md > Testing.
 const SOURCES = [
     'vendor/pto-bundle.js',
     'Individual.js',
@@ -26,23 +30,34 @@ const SOURCES = [
     'Grammar.js',
     'modalities/Canvas2DModality.js',
     'modalities/MIDIModality.js',
+    'modalities/AudioModality.js',
     'modalities/ThreeDModality.js',
-    'GridIndividual.js',
+    'PerformanceControls.js',   // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
     'EvolutionaryAlgorithm.js',
+    // Individuals (base classes before their subclasses).
+    'GridIndividual.js',
+    'ShapesIndividual.js',
+    'PhotoFilterIndividual.js',
+    'AudioFilterIndividual.js',
+    'DrumMachineIndividual.js',
+    'MelodyIndividual.js',
+    'MouseMusicIndividual.js',
+    'EEGPreprocessing.js',
+    'EEGSonificationIndividual.js',
     'PatternIndividual.js',
     'PatternGrammarIndividual.js',
     'PolarCurveIndividual.js',
-    'ShapesIndividual.js',
     'AnemoneIndividual.js',
     'BranchIndividual.js',
     'SuperShapeIndividual.js',
+    'RadialSurface3DIndividual.js',   // base for the 3D surface family
     'SuperShape3DIndividual.js',
+    'PetalSphere3DIndividual.js',
+    'FreeSurface3DIndividual.js',
+    'WarpedSurface3DIndividual.js',
     'RobotIndividual.js',
     'SheepIndividual.js',
     'PenroseIndividual.js',
-    'MelodyIndividual.js',
-    'MouseMusicIndividual.js',
-    'EEGSonificationIndividual.js',
 ];
 
 // Every concrete individual class, in the order the UI lists them.
@@ -51,15 +66,21 @@ const INDIVIDUAL_CLASSES = [
     'PatternGrammarIndividual',
     'PolarCurveIndividual',
     'ShapesIndividual',
+    'PhotoFilterIndividual',
     'GridIndividual',
-    'AnemoneIndividual',
-    'BranchIndividual',
     'SuperShapeIndividual',
     'SuperShape3DIndividual',
+    'PetalSphere3DIndividual',
+    'FreeSurface3DIndividual',
+    'WarpedSurface3DIndividual',
+    'AnemoneIndividual',
+    'BranchIndividual',
     'RobotIndividual',
     'SheepIndividual',
     'PenroseIndividual',
     'MelodyIndividual',
+    'DrumMachineIndividual',
+    'AudioFilterIndividual',
     'MouseMusicIndividual',
     'EEGSonificationIndividual',
 ];
@@ -73,7 +94,7 @@ function makeContext() {
         getImageData: (x, y, w, h) => imageData(w, h),
         putImageData: noop, clearRect: noop, fillRect: noop, strokeRect: noop,
         beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop,
-        arc: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
+        arc: noop, arcTo: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
         fill: noop, stroke: noop, save: noop, restore: noop,
         translate: noop, scale: noop, rotate: noop, setLineDash: noop, fillText: noop,
         // settable properties used by the drawing code
@@ -133,7 +154,44 @@ function load() {
             getPaletteInfo(name) {
                 return { description: name.charAt(0).toUpperCase() + name.slice(1), type: 'sequential' };
             }
-        }
+        },
+        // Shared source-photo service (PhotoFilterIndividual). A tiny flat image is
+        // enough to exercise the render path headlessly.
+        Photo: {
+            version() { return 1; },
+            sourceImageData(w, h) { return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h }; },
+        },
+        // Shared source-clip service (AudioFilterIndividual waveform tile). The
+        // context stub is a tiny Web Audio recorder — enough for AudioModality's
+        // play/stop lifecycle (createBufferSource/createGain/connect/start/stop).
+        AudioClip: {
+            peaks(w) { return { max: new Array(w).fill(0.5), min: new Array(w).fill(-0.5) }; },
+            buffer() { return { duration: 1, sampleRate: 44100, length: 44100, numberOfChannels: 1, getChannelData: () => new Float32Array(44100) }; },
+            context() {
+                if (this._ctx) return this._ctx;
+                // One generic AudioNode stub with all the params/props the graph code
+                // sets, so any create*() works (createGain/Delay/Biquad/… all reuse it).
+                const node = () => ({
+                    connect() { }, disconnect() { }, start() { }, stop() { },
+                    gain: { value: 1 }, frequency: { value: 0 }, Q: { value: 1 },
+                    delayTime: { value: 0 }, detune: { value: 0 },
+                    threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 1 },
+                    attack: { value: 0 }, release: { value: 0 },
+                    type: 'sine', curve: null, oversample: 'none', buffer: null, loop: false,
+                });
+                const ctx = {
+                    state: 'running', currentTime: 0, sampleRate: 44100, destination: node(),
+                    resume() { },
+                    // Persist channel arrays so a test can read back what renderToAudioBuffer wrote.
+                    createBuffer: (ch, len, sr) => { const chans = Array.from({ length: ch }, () => new Float32Array(len)); return { duration: len / sr, length: len, sampleRate: sr, numberOfChannels: ch, getChannelData: (c) => chans[c || 0] }; },
+                };
+                for (const m of ['createBufferSource', 'createGain', 'createBiquadFilter',
+                    'createOscillator', 'createDelay', 'createWaveShaper', 'createConvolver',
+                    'createDynamicsCompressor', 'createStereoPanner']) ctx[m] = node;
+                this._ctx = ctx;
+                return ctx;
+            },
+        },
     };
     sandbox.document = { addEventListener: () => {}, getElementById: () => null };
     sandbox.navigator = {};
@@ -147,23 +205,28 @@ function load() {
     // Re-expose the lexically-scoped class declarations on the sandbox global.
     combined += `;globalThis.__classes = { ${INDIVIDUAL_CLASSES.join(', ')} };\n`;
     combined += `;globalThis.__MIDIModality = MIDIModality;\n`;
+    combined += `;globalThis.__AudioModality = AudioModality;\n`;
     combined += `;globalThis.__Canvas2DModality = Canvas2DModality;\n`;
     combined += `;globalThis.__EvolutionaryAlgorithm = EvolutionaryAlgorithm;\n`;
     combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
+    combined += `;globalThis.__drumVoices = (typeof drumVoices === 'function') ? drumVoices : null;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
-    // Mirror the app: a single shared MIDIModality on the framework, which sound
+    // Mirror the app: single shared output modalities on the framework, which sound
     // individuals reference instead of each constructing their own.
     sandbox.window.framework.sharedMIDI = new sandbox.__MIDIModality();
+    sandbox.window.framework.sharedAudio = new sandbox.__AudioModality();
 
     return {
         sandbox,
         classes: sandbox.__classes,
         makeCanvas,
         MIDIModality: sandbox.__MIDIModality,
+        AudioModality: sandbox.__AudioModality,
         Canvas2DModality: sandbox.__Canvas2DModality,
         EvolutionaryAlgorithm: sandbox.__EvolutionaryAlgorithm,
         TerminalNode: sandbox.__TerminalNode,
+        drumVoices: sandbox.__drumVoices,
     };
 }
 

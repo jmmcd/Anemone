@@ -14,7 +14,36 @@ python -m http.server 8000
 # Then navigate to http://localhost:8000
 ```
 
-There is no build step, test suite, or linting configuration in this repository.
+There is no build step or linting configuration in this repository.
+
+## Testing
+
+A dependency-free smoke/regression suite runs under Node (no browser, no CI):
+
+```bash
+node tests/run.js   # exits non-zero on any failure
+```
+
+`tests/harness.js` loads the plain-`<script>` source files into a Node `vm`
+sandbox with minimal browser stubs (`window`, a no-op canvas 2D context, and
+`Palette`/`Photo`/`AudioClip` stubs) and exposes the individual classes; `tests/run.js`
+exercises the genetic operators, the render path, capability flags, and the
+save/load/export services for every type.
+
+**IMPORTANT — keep the harness in sync with the code.** The harness has two
+hand-maintained lists that must track the app whenever an individual type (or a
+shared base class) is added, removed, or renamed:
+
+- `SOURCES` in `tests/harness.js` — the source files, **in dependency order**
+  (base classes before subclasses; mirror the `<script>` order in `index.html`). A
+  missing base (e.g. `RadialSurface3DIndividual.js` before its subclasses) throws a
+  `ReferenceError` at bundle load and **every** test fails.
+- `INDIVIDUAL_CLASSES` in `tests/harness.js` — the concrete individual class names.
+
+New app-level services accessed via `window.*` from a constructor/`visualize()`
+also need a stub in the harness `sandbox.window`. Update these lists (and run
+`node tests/run.js`) as part of the same change that adds the type — it's easy to
+forget after closing the laptop or clearing the session.
 
 ## Architecture
 
@@ -26,8 +55,8 @@ The codebase separates three concerns:
 
 ### Framework Layer (`Anemone.js`)
 `InteractiveEAFramework` orchestrates the system:
-- Initialises MIDI access, a single shared `MIDIModality` (`framework.sharedMIDI`), and shared 3D resources (Three.js scene/renderer)
-- Tracks `currentlyPlaying` so only one sound individual plays at a time (they share one modality)
+- Initialises MIDI access, the shared output modalities (`framework.sharedMIDI` for notes, `framework.sharedAudio` for sample buffers/graphs), and shared 3D resources (Three.js scene/renderer)
+- Tracks `currentlyPlaying` so only one sound individual plays at a time (they share the output modalities)
 - Extension system: the framework attaches UI panels based on individual capability flags (e.g. the palette panel when `usesColorPalette()` is true)
 - Settings management: framework-level settings (e.g. `colorPalette`) accessed via `getFrameworkSetting()`
 - 3D resource management: single shared Three.js scene and renderer to avoid WebGL context exhaustion
@@ -81,10 +110,13 @@ A representation backed by [Program Trace Optimisation](https://github.com/Progr
 | File | Purpose |
 |---|---|
 | `Canvas2DModality.js` | Pixel-by-pixel 2D rendering: takes an `(x,y)→value` evaluator and a `value→color` mapper. Also exposes shared static helpers used by path-drawing individuals: `renderCached(canvas, individual, renderFn)` (ImageData caching by `individual.renderKey()` + size), `drawLine`/`drawThickLine`/`drawCircle`, and a reusable `bloom(imageData, {radius, strength, background})` glow/smoothing post-filter (separable Gaussian over brightness above the background, added back over the original) |
-| `MIDIModality.js` | `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop |
+| `MIDIModality.js` | **Note** output: `sendNote(pitch, velocity, duration)` with automatic Web Audio fallback; `allNotesOff()`; managed `start(callback, interval)` / `stop()` loop; and `playSequence(seq, transport)` / `stopSequence()` — a lookahead clock that loops a `{bpm,ppq,loopTicks,notes}` sequence to the MIDI output. Used by note individuals (Melody/DrumMachine live MIDI, MouseMusic/EEG) |
+| `AudioModality.js` | **Sample** output: `playBuffer(buffer, {loop,gain,offset})` and `playGraph(build → {output, sources}, {gain})` + `stop()`, over the shared `AudioClip.context()`. Owns the Web Audio play/stop lifecycle (source→gain→destination) so the step sequencers (DrumMachine/Melody via `playBuffer`) and AudioFilter (`playGraph`) don't hand-roll it. Also the static `declickTail(data, sr, ms)` — a loop-seam fade both step sequencers' `renderToAudioBuffer` apply so a looped buffer has no click at the seam (the one shared copy of that fix). The sibling of MIDIModality (samples vs. notes) |
 | `ThreeDModality.js` | `createMesh(vertices, indices, colors)` and `render(canvas, id, vertices, indices, colors, framework)` via the shared Three.js scene |
 
-All sound-producing individuals **share one** `MIDIModality` instance, owned by the framework (`framework.sharedMIDI`) — mirroring the shared 3D scene/renderer, and avoiding one Web Audio `AudioContext` per individual. Individuals reference it (`window.framework.sharedMIDI`, with a local fallback for tests) rather than constructing their own. The framework wires the resolved MIDI output into it; if no MIDI output is available (or a send fails), `sendNote` falls back to Web Audio synthesis automatically. Because the modality is shared, only one individual plays at a time (the framework stops the current one when another is started).
+Sound individuals **share one output modality per medium**, owned by the framework — mirroring the shared 3D scene/renderer, and avoiding one Web Audio `AudioContext` per individual: `framework.sharedMIDI` (a `MIDIModality`) for **note** output, and `framework.sharedAudio` (an `AudioModality`) for **sample** output (rendered buffers / live graphs). Individuals reference the one they need (`window.framework.sharedMIDI` / `.sharedAudio`, with a local `new …Modality()` fallback for tests) rather than constructing their own. For MIDI, the framework wires the resolved output in and `sendNote` falls back to Web Audio synthesis if none is available. `AudioModality` plays through the single shared context that `window.AudioClip` owns, so the whole app has one `AudioContext` for sample playback. Because each modality is shared and plays one thing at a time, only one individual sounds at once (the framework stops the current one when another is started).
+
+**Unified step-sequencer playback.** The two step sequencers (DrumMachine, Melody) share one output path: base `Individual.playSequenced()`/`stopSequenced()` sends **live MIDI when `sharedMIDI.midiOutput` exists** (via `MIDIModality.playSequence`), **else synthesises a loop buffer** (`renderToAudioBuffer` → `sharedAudio.playBuffer`). A type only supplies `toMIDISequence()` (with a `loopTicks`) + `renderToAudioBuffer()`; `playMIDI`/`stopMIDI` are one-liners delegating to the base. Both paths enter at the shared `window.Transport` phase (a `performance.now()` clock, so audio and MIDI stay aligned), so editing a cell or switching individuals resumes in time. Global tempo/swing come from `window.PerformanceControls` (renamed from `DrumControls`): shared dials + the transport, attached as the "Performance" drawer panel when a type returns `usesPerformanceControls()`, showing only the dials the type declares via `performanceDials()` (drum: tempo/swing/humanize/drive/**length**; melody: tempo/swing/**length**). The `length` dial (shared by both step sequencers) is locked to 16 by **default** (so most users get uniform 16-step 4/4 loops); unlocking it lets each individual's evolved `length` gene (8–16) run free. It's the one dial that changes a *visual* (the dimmed inactive steps), so `PerformanceControls.update` calls `framework.invalidateAndRender()` for it; both types read the effective length via `_effectiveLength()` everywhere (grid, synth, export). The `[` / `]` hotkeys nudge it in a step-sequencer run (and stay the 3D camera zoom otherwise); `.` (the `>` key) toggles play/pause of the current sound individual (or 3D auto-rotation). This is what lets Anemone drive Logic/GarageBand live off an IAC/virtual port, or preview internally with no MIDI.
 
 ### Color Palette (`Palette.js`)
 `window.Palette` is an app-level, medium-agnostic color service consumed by both 2D and 3D individuals: `window.Palette.color(t)` returns an `{r,g,b}` for `t∈[0,1]` using the framework's current palette (`window.Palette.name()` reads `framework.settings.colorPalette`). It is the palette provider for the app. Individuals opt in by returning `true` from `usesColorPalette()`, which makes the framework attach `PaletteControlUI`. (This replaced the old `withPaletteExtensions` mixin, which is gone.)
@@ -153,7 +185,8 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `RobotIndividual` | 43 floats | Canvas2D | Parametric cartoon character |
 | `SheepIndividual` | 8 floats | Canvas2D | Float genome fed into fixed-random neural network |
 | `PenroseIndividual` | 8 params | Canvas2D | Kite-and-dart tiling |
-| `MelodyIndividual` | 64 bits | MIDI | 8-note sequences |
+| `MelodyIndividual` | 8-pitch × 16-step grid + style genes | MIDI / audio | Polyphonic piano-roll (held note = run of on-cells; `length` gene = bar length 8–16). Shares the DrumMachine step-sequencer core: per-cell editable genes, global Performance panel, unified live-MIDI-else-synth playback, MIDI export |
+| `DrumMachineIndividual` | 8-channel × 16-step grid + style genes (incl. `length` 8–16) | MIDI / audio | Evolvable drum loop; the step-sequencer template Melody is built on (per-cell `hit_c_s`/`vel_c_s` genes, `renderToAudioBuffer`, GM-percussion MIDI). See its file header |
 | `MouseMusicIndividual` | plain-data DAG | MIDI | `buildDAG` → mouse-driven DAG → notes |
 | `EEGSonificationIndividual` | plain-data DAG | MIDI | `buildDAG` → EEG-stream-driven DAG → notes |
 
@@ -208,20 +241,26 @@ To avoid WebGL context limits (typically 16), all 3D individuals share one `THRE
 4. Inherited `mutate`/`crossover`/`clone` delegate to `this.representation` — only override for non-standard genome semantics
 5. Register in `Anemone.js` individual type selector and add `<script>` tags to `index.html` (PTO-backed types need `vendor/pto-bundle.js` and `representations/PTORepresentation.js`, which are already loaded)
 
-**Sound-producing individual:**
+**Sound-producing individual:** reference the framework's shared modality for your
+medium (local fallback for tests). **Notes** → `sharedMIDI`:
 ```javascript
-constructor(genome = null) {
-    // ...
-    // Reference the framework's single shared modality (local fallback for tests)
-    this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
-}
-// send notes:
-this.midiModality.sendNote(pitch, velocity, duration); // falls back to Web Audio
-// interval loop (DAG-style):
-this.midiModality.start(() => this.evaluate(), this.timeStep);
+this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
+// ...
+this.midiModality.sendNote(pitch, velocity, duration);          // falls back to Web Audio
+this.midiModality.start(() => this.evaluate(), this.timeStep);  // interval loop (DAG-style)
 this.midiModality.stop();
 ```
-The modality is shared, so `clone()` needs no MIDI re-wiring — the generic base `clone` works. The framework guarantees only one individual drives the shared modality at a time.
+**Samples** (a rendered loop or a live effects graph) → `sharedAudio`:
+```javascript
+this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
+// ...
+this.audio.playBuffer(this.renderToAudioBuffer(), { loop: true, offset });  // DrumMachine
+this.audio.playGraph((ctx) => ({ output, sources }));                       // AudioFilter
+this.audio.stop();
+```
+The modality is shared, so `clone()` needs no re-wiring — the generic base `clone` works. The framework guarantees only one individual drives sound at a time.
+
+**Step-sequencer individual** (drum/melody): don't pick a modality — implement `toMIDISequence()` (with `loopTicks`) + `renderToAudioBuffer()`, make `playMIDI`/`stopMIDI` delegate to the base `this.playSequenced()`/`this.stopSequenced()`, and the base chooses live MIDI vs synth for you. Add `usesPerformanceControls()` + `performanceDials()` for the global tempo panel, and the grid-edit hooks (`isGridEditable`/`cellAtCanvasXY`/`cellOn`/`setCellHit`) for click/drag editing.
 
 **3D individual:**
 ```javascript

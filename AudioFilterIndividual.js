@@ -95,7 +95,8 @@ class AudioFilterIndividual extends Individual {
         super('SKIP_GENOME_GENERATION');
         this.representation = audioFilterRepresentation;
         this.genome = genome || this.representation.generateRandom();
-        this._active = null;   // { nodes:[…startable], master } while playing
+        // Shared buffer/graph playback modality (local fallback for tests).
+        this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
         this.isPlaying = false;
     }
 
@@ -153,36 +154,24 @@ class AudioFilterIndividual extends Individual {
 
     // --- Playback (framework sound-individual interface) -----------------------
     // The framework shows a ▶ button because playMIDI exists, and stops the current
-    // individual before starting another (single shared AudioContext).
+    // individual before starting another. The Web Audio lifecycle (gain, connect,
+    // start/stop) is owned by the shared AudioModality; the individual only compiles
+    // its DAG into the live graph the modality plays.
     playMIDI() {
-        const clip = window.AudioClip;
-        const buffer = clip.buffer();
+        const buffer = window.AudioClip.buffer();
         if (!buffer) return;                 // nothing decoded yet
-        const ctx = clip.context();
-        if (ctx.state === 'suspended') ctx.resume();
-        this.stopMIDI();                     // tear down any existing graph first
-
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.loop = true;
-        const { output, sources } = this._compileGraph(ctx, src, this.phenotype);
-        const master = ctx.createGain();
-        master.gain.value = 0.9;
-        output.connect(master);
-        master.connect(ctx.destination);
-
-        const nodes = [src, ...sources];
-        nodes.forEach(n => { try { n.start(); } catch (_) { /* already started */ } });
-        this._active = { nodes, master };
+        this.audio.playGraph((ctx) => {
+            const src = ctx.createBufferSource();
+            src.buffer = buffer;
+            src.loop = true;
+            const { output, sources } = this._compileGraph(ctx, src, this.phenotype);
+            return { output, sources: [src, ...sources] };
+        });
         this.isPlaying = true;
     }
 
     stopMIDI() {
-        if (this._active) {
-            this._active.nodes.forEach(n => { try { n.stop(); } catch (_) { } });
-            try { this._active.master.disconnect(); } catch (_) { }
-            this._active = null;
-        }
+        this.audio.stop();
         this.isPlaying = false;
     }
 

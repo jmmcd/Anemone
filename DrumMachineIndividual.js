@@ -98,14 +98,17 @@ const DRUM_HIT_RES = 48;
 const DRUM_TARGET_RMS = 0.16;
 
 const drumMachineGenerator = (rnd) => {
-    const bpm = 80 + rnd.randint(0, 90);        // 80–170 BPM
-    const swing = rnd.uniform(0, 0.38);
+    // Defaults kept deliberately calmer (less manic): moderate tempo, gentle swing,
+    // mostly-clean drive. Bigger ranges are still reachable by evolution/editing.
+    const bpm = 70 + rnd.randint(0, 60);        // 70–130 BPM
+    const swing = rnd.uniform(0, 0.22);         // subtle shuffle by default
     const swingTarget = rnd.choice([8, 16]);    // swing the 8th offbeats or the 16ths
     const accent = rnd.uniform(0, 1);           // flat ↔ strongly metrical velocities
     const humanize = rnd.uniform(0, 1);         // tight ↔ loose timing & velocity
-    const drive = rnd.uniform(0, 1);            // clean ↔ saturated / lo-fi
+    const drive = rnd.uniform(0, 0.5);          // clean ↔ mildly saturated (rarely full lo-fi)
     const syncopation = rnd.uniform(0, 1);      // on-beat ↔ off-beat emphasis (0.5 neutral)
     const push = rnd.uniform(-1, 1);            // ONE pocket gene: snare rushed(-)/laid-back(+)
+    const length = rnd.randint(8, 16);          // active bar length in steps (latent unless the Length override is unlocked)
     const g = (syncopation - 0.5) * 2;          // -1..1
 
     const density = [];
@@ -137,7 +140,7 @@ const drumMachineGenerator = (rnd) => {
         }
         grid.push(row);
     }
-    return { bpm, swing, swingTarget, accent, humanize, drive, syncopation, push, density, grid };
+    return { bpm, swing, swingTarget, accent, humanize, drive, syncopation, push, length, density, grid };
 };
 
 const drumMachineRepresentation = new PTORepresentation(drumMachineGenerator);
@@ -178,6 +181,10 @@ function drumVoices(sampleRate) {
     // 808-ish cowbell: two detuned square tones.
     const cowbell = () => { const n = Math.floor(0.20 * sr), s = new Float32Array(n), e = env(n, 0.001, 0.09); let p1 = 0, p2 = 0; for (let i = 0; i < n; i++) { p1 += 2 * Math.PI * 540 / sr; p2 += 2 * Math.PI * 800 / sr; s[i] = ((Math.sin(p1) >= 0 ? 1 : -1) * 0.5 + (Math.sin(p2) >= 0 ? 1 : -1) * 0.5) * e[i] * 0.4; } return s; };
     const voices = { kick: kick(), snare: snare(), chh: hat(0.045), ohh: hat(0.4), clap: clap(), rim: rim(), tom: tom(), cowbell: cowbell() };
+    // Each voice's exponential envelope ends at ~8–11% amplitude, so a voice whose tail
+    // lands mid-loop steps to silence and clicks (most audibly the frequent closed hat).
+    // Fade every voice's tail to zero once — same shared helper as the loop-seam declick.
+    for (const k in voices) AudioModality.declickTail(voices[k], sr, 4);
     _drumVoiceCache[sampleRate] = voices;
     return voices;
 }
@@ -194,12 +201,22 @@ class DrumMachineIndividual extends Individual {
         super('SKIP_GENOME_GENERATION');
         this.representation = drumMachineRepresentation;
         this.genome = genome || this.representation.generateRandom();
-        this._active = null;
+        // Shared buffer/graph playback modality (local fallback for tests).
+        this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
         this.isPlaying = false;
     }
 
-    usesColorPalette() { return true; } // rows are palette-coloured
-    usesDrumControls() { return true; } // attaches the global Performance panel
+    usesColorPalette() { return true; }        // rows are palette-coloured
+    usesPerformanceControls() { return true; } // attaches the global Performance panel
+    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive', 'length']; }
+
+    // Effective bar length in steps: the genome's `length` gene, unless the global
+    // "Length" override is locked (the default, forcing 16). Shared concept with the
+    // melody grid (see PerformanceControls); the [ and ] hotkeys drive it.
+    _effectiveLength() {
+        const p = window.PerformanceControls ? window.PerformanceControls.apply(this.phenotype) : this.phenotype;
+        return Math.max(1, Math.min(16, Math.round(p.length != null ? p.length : 16)));
+    }
 
     // 8 channels with the colour rows now spread over all cells is ~117 mutable
     // hit genes. Scale the framework's rate to keep a single-parent offspring
@@ -241,6 +258,7 @@ class DrumMachineIndividual extends Individual {
         if (!p || !p.grid) return;
 
         const { rows, cols, pad, cw, chh, gridH, yTop } = this._gridLayout(W, H);
+        const L = this._effectiveLength();
 
         // Shade the quarter-note columns so the beat is legible.
         ctx.fillStyle = 'rgba(255,255,255,0.05)';
@@ -264,6 +282,14 @@ class DrumMachineIndividual extends Individual {
                     ctx.fillRect(x + m, y + m, cw - 2 * m, chh - 2 * m);
                 }
             }
+        }
+
+        // Dim the inactive steps beyond the active bar length, and mark the boundary.
+        if (L < cols) {
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(pad + L * cw, yTop, (cols - L) * cw, gridH);
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(pad + L * cw, yTop); ctx.lineTo(pad + L * cw, yTop + gridH); ctx.stroke();
         }
     }
 
@@ -303,9 +329,10 @@ class DrumMachineIndividual extends Individual {
         const p = this.phenotype;
         if (!p || !p.grid) return '';
         const label = ['K', 'S', 'h', 'o', 'C', 'R', 'T', 'b'];
-        let s = `<span class="genome-label">Feel:</span> ${Math.round(p.bpm)} BPM · swing ${p.swing.toFixed(2)} (${p.swingTarget === 16 ? '16th' : '8th'}) · accent ${p.accent.toFixed(2)} · humanize ${p.humanize.toFixed(2)} · drive ${p.drive.toFixed(2)} · sync ${p.syncopation.toFixed(2)}\n`;
+        const L = this._effectiveLength();
+        let s = `<span class="genome-label">Feel:</span> ${Math.round(p.bpm)} BPM · swing ${p.swing.toFixed(2)} (${p.swingTarget === 16 ? '16th' : '8th'}) · accent ${p.accent.toFixed(2)} · humanize ${p.humanize.toFixed(2)} · drive ${p.drive.toFixed(2)} · sync ${p.syncopation.toFixed(2)} · length ${L}\n`;
         p.grid.forEach((row, c) => {
-            s += '  ' + label[c] + ' ' + row.map((v, i) => (v > 0 ? (this._velocity(v, i) > 0.66 ? 'X' : 'x') : '·')).join('') + '\n';
+            s += '  ' + label[c] + ' ' + row.map((v, i) => (i >= L ? '·' : (v > 0 ? (this._velocity(v, i) > 0.66 ? 'X' : 'x') : '·'))).join('') + '\n';
         });
         return s;
     }
@@ -319,8 +346,9 @@ class DrumMachineIndividual extends Individual {
         // in the Performance panel). Render-stage only: the genome is untouched, so
         // unlocking restores the per-genome feel. accent stays from the genome (read
         // via _velocity, which isn't overridable).
-        const p = window.DrumControls ? window.DrumControls.apply(this.phenotype) : this.phenotype;
-        const beat = 60 / p.bpm, bar = beat * 4, step = bar / 16;
+        const p = window.PerformanceControls ? window.PerformanceControls.apply(this.phenotype) : this.phenotype;
+        const L = this._effectiveLength();          // active steps (bar length)
+        const beat = 60 / p.bpm, step = beat / 4, bar = L * step; // step = one 16th
         const N = Math.max(1, Math.round(bar * sr));
         const buffer = ctx.createBuffer(1, N, sr);
         const buf = buffer.getChannelData(0);
@@ -349,7 +377,7 @@ class DrumMachineIndividual extends Individual {
         // Free-ringing voices (kick/snare/clap/rim/tom/cowbell) mix additively.
         for (const c of DRUM_FREE_CHANNELS) {
             const sig = voices[DRUM_CHANNELS[c]];
-            for (let s = 0; s < 16; s++) {
+            for (let s = 0; s < L; s++) {
                 if (p.grid[c][s] <= 0) continue;
                 const vel = cellVel(c, s), start = startAt(c, s);
                 for (let k = 0; k < sig.length && start + k < N; k++) buf[start + k] += sig[k] * vel;
@@ -362,7 +390,7 @@ class DrumMachineIndividual extends Individual {
         const hatEvents = [];
         for (const c of DRUM_HAT_CHANNELS) {
             const sig = voices[DRUM_CHANNELS[c]];
-            for (let s = 0; s < 16; s++) {
+            for (let s = 0; s < L; s++) {
                 if (p.grid[c][s] > 0) hatEvents.push({ start: startAt(c, s), sig, vel: cellVel(c, s) });
             }
         }
@@ -398,37 +426,52 @@ class DrumMachineIndividual extends Individual {
         let gain = rms > 1e-6 ? DRUM_TARGET_RMS / rms : 1;
         if (peak * gain > 0.98) gain = 0.98 / peak;
         for (let i = 0; i < N; i++) buf[i] *= gain;
+        // Fade the loop seam so truncated voice tails don't click on repeat (shared
+        // with the melody synth — see AudioModality.declickTail).
+        AudioModality.declickTail(buf, sr);
         return buffer;
     }
 
-    // --- Playback (framework sound-individual interface) -----------------------
-    playMIDI() {
-        const ctx = window.AudioClip.context();
-        if (ctx.state === 'suspended') ctx.resume();
-        this.stopMIDI();
-        const buffer = this.renderToAudioBuffer();
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.loop = true;
-        const g = ctx.createGain();
-        g.gain.value = 0.9;
-        src.connect(g);
-        g.connect(ctx.destination);
-        // Enter at the global transport phase (not always 0), so editing a loop or
-        // switching individuals resumes mid-bar instead of restarting the downbeat.
-        // start(when, offset): offset seeks into the buffer, then loop=true wraps it.
-        const offset = window.DrumControls ? window.DrumControls.transport.phase(ctx, buffer.duration) : 0;
-        src.start(ctx.currentTime, offset);
-        this._active = { src, g };
-        this.isPlaying = true;
+    // --- MIDI export (window.MidiExport) ----------------------------------------
+    // Emit the loop as a note sequence for a Standard MIDI File. Deterministic:
+    // reuses the render-stage timing (16th grid + swing + snare push + accent
+    // velocities, with any locked Performance override) but DROPS the random
+    // humanize jitter so the file reproduces exactly. Rows map to General MIDI
+    // percussion on channel 9 (the GM drum channel).
+    toMIDISequence() {
+        const p = window.PerformanceControls ? window.PerformanceControls.apply(this.phenotype) : this.phenotype;
+        const ppq = 96, step = ppq / 4;            // one 16th note in ticks
+        // Absolute-seconds offsets (push) → ticks, via the bar's tick/second rate.
+        const secToTicks = ppq * p.bpm / 60;
+        const MAX_PUSH = 0.008;                     // seconds (matches renderToAudioBuffer)
+
+        const swung = s => (p.swingTarget === 16 ? (s % 2 === 1) : (s % 4 === 2));
+        const swingFac = p.swingTarget === 16 ? 0.66 : 1.3;
+        // General MIDI percussion note per channel (kick, snare, chh, ohh, clap, rim, tom, cowbell).
+        const GM = [36, 38, 42, 46, 39, 37, 47, 56];
+
+        const L = this._effectiveLength();
+        const notes = [];
+        for (let c = 0; c < 8; c++) {
+            for (let s = 0; s < L; s++) {
+                const seed = p.grid[c][s];
+                if (seed <= 0) continue;
+                let t = s * step + (swung(s) ? p.swing * step * swingFac : 0);
+                if (c === 1) t += p.push * MAX_PUSH * secToTicks; // snare pocket
+                const vel = Math.round(this._velocity(seed, s) * DRUM_CHANNEL_GAIN[c] * 127);
+                notes.push({ pitch: GM[c], velocity: Math.max(1, Math.min(127, vel)),
+                    start: Math.max(0, Math.round(t)), duration: Math.round(step), channel: 9 });
+            }
+        }
+        // loopTicks = the active bar length; the live-MIDI player loops on it.
+        return { bpm: p.bpm, ppq, loopTicks: L * step, notes };
     }
 
-    stopMIDI() {
-        if (this._active) {
-            try { this._active.src.stop(); } catch (_) { }
-            try { this._active.g.disconnect(); } catch (_) { }
-            this._active = null;
-        }
-        this.isPlaying = false;
-    }
+    // --- Playback (framework sound-individual interface) -----------------------
+    // Unified step-sequencer playback (base Individual.playSequenced): live MIDI to
+    // GM percussion when an output is available, else the synthesised loop buffer
+    // (renderToAudioBuffer) through the shared AudioModality — both entered at the
+    // shared Transport phase.
+    playMIDI() { this.playSequenced(); }
+    stopMIDI() { this.stopSequenced(); }
 }

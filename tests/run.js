@@ -122,7 +122,7 @@ const expectedPalette = {
     AnemoneIndividual: true,
     GridIndividual: false, RobotIndividual: false,
     SheepIndividual: false, PenroseIndividual: false,
-    MelodyIndividual: false, MouseMusicIndividual: false, EEGSonificationIndividual: false,
+    MelodyIndividual: true, MouseMusicIndividual: false, EEGSonificationIndividual: false,
 };
 check('usesColorPalette() matches expectation', () => {
     for (const [name, expect] of Object.entries(expectedPalette)) {
@@ -130,10 +130,15 @@ check('usesColorPalette() matches expectation', () => {
         assert(ind.usesColorPalette() === expect, `${name}.usesColorPalette() should be ${expect}`);
     }
 });
-check('SuperShape3DIndividual is the only 3D type', () => {
+check('only the RadialSurface3D family reports is3D()', () => {
+    // The 3D types are exactly the RadialSurface3DIndividual subclasses.
+    const threeD = new Set([
+        'SuperShape3DIndividual', 'PetalSphere3DIndividual',
+        'FreeSurface3DIndividual', 'WarpedSurface3DIndividual',
+    ]);
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
-        const expect = name === 'SuperShape3DIndividual';
+        const expect = threeD.has(name);
         assert(ind.is3D() === expect, `${name}.is3D() should be ${expect}`);
     }
 });
@@ -279,20 +284,182 @@ check('two individuals of the same type share one modality instance', () => {
     }
 });
 
+// --- Shared AudioModality (buffer/graph playback) ---
+// The sibling of MIDIModality: DrumMachine/AudioFilter reference the framework's
+// single sharedAudio for buffer/graph playback (one owner of the Web Audio
+// play/stop lifecycle instead of per-individual boilerplate).
+console.log('\nShared AudioModality (buffer/graph playback):');
+const audioTypes = ['DrumMachineIndividual', 'AudioFilterIndividual'];
+check('audio individuals reference the framework shared AudioModality', () => {
+    const env = load();
+    const fwShared = env.sandbox.window.framework.sharedAudio;
+    for (const name of audioTypes) {
+        assert(new env.classes[name]().audio === fwShared, `${name} should reference framework.sharedAudio`);
+    }
+});
+check('AudioModality plays a buffer / graph and tracks a single active playback', () => {
+    const env = load();
+    const audio = new env.AudioModality();
+    assert(audio.isActive === false, 'starts idle');
+    const ctx = env.sandbox.window.AudioClip.context();
+    audio.playBuffer(ctx.createBuffer(1, 100, 44100), { loop: true });
+    assert(audio.isActive === true, 'active after playBuffer');
+    // A second start replaces the first (single active playback).
+    audio.playGraph((c) => ({ output: c.createGain(), sources: [c.createBufferSource()] }));
+    assert(audio.isActive === true, 'still one active playback after playGraph');
+    audio.stop();
+    assert(audio.isActive === false, 'idle after stop');
+    audio.stop(); // idempotent
+});
+check('DrumMachine/AudioFilter play + stop through the shared AudioModality', () => {
+    const env = load();
+    for (const name of audioTypes) {
+        const ind = new env.classes[name]();
+        ind.playMIDI();
+        assert(ind.audio.isActive === true, `${name}.playMIDI should start the shared modality`);
+        assert(ind.isPlaying === true, `${name}.isPlaying should be true`);
+        ind.stopMIDI();
+        assert(ind.audio.isActive === false, `${name}.stopMIDI should stop the shared modality`);
+        assert(ind.isPlaying === false, `${name}.isPlaying should be false`);
+    }
+});
+
+// --- Melody piano-roll (the DrumMachine machinery propagated to melody) ---
+console.log('\nMelody piano-roll:');
+check('getPhenotype merges consecutive on-cells in a row into one held note', () => {
+    const m = new classes.MelodyIndividual();
+    // Force a known row 0: on at steps 2,3,4 (a 3-step held note) and 8 (a 1-step note).
+    // Mutating the expressed phenotype directly is fine here — we're testing the
+    // run-merging in getPhenotype(), not the genome.
+    const p = m.phenotype;
+    for (let s = 0; s < 16; s++) p.grid[0][s] = 0;
+    p.grid[0][2] = 0.8; p.grid[0][3] = 0.8; p.grid[0][4] = 0.8; p.grid[0][8] = 0.7;
+    p.length = 16;
+    const row0 = m.getPhenotype().filter(n => n.pitch === p.scale[0]);
+    assert(row0.length === 2, `expected 2 notes in row 0, got ${row0.length}`);
+    const held = row0.find(n => n.start === 2);
+    assert(held && held.steps === 3, 'the 2..4 run should be one 3-step held note');
+    assert(row0.find(n => n.start === 8 && n.steps === 1), 'the lone step-8 note should be 1 step');
+});
+check('the Length override is locked to 16 by default (uniform loops)', () => {
+    const env = load();
+    assert(env.sandbox.window.PerformanceControls.dials.length.on === true, 'Length override on by default');
+    const m = new env.classes.MelodyIndividual();
+    const p = m.phenotype;
+    for (let s = 0; s < 16; s++) p.grid[0][s] = 0.8;   // fill row 0 fully
+    p.length = 8;                                       // gene says 8, but the override forces 16
+    assert(m._effectiveLength() === 16, 'effective length is forced to 16 while the override is locked');
+    const notes = m.getPhenotype().filter(n => n.pitch === p.scale[0]);
+    assert(notes.length === 1 && notes[0].steps === 16, 'a full row spans all 16 steps while locked');
+    assert(m.toMIDISequence().loopTicks === 16 * 24, 'export loops the full 16 steps while locked');
+});
+check('DrumMachine also honours the shared Length override (default 16, unlockable)', () => {
+    const env = load();
+    const dm = new env.classes.DrumMachineIndividual();
+    assert(dm._effectiveLength() === 16, 'drum defaults to 16 steps (override locked)');
+    assert(dm.toMIDISequence().loopTicks === 16 * 24, 'drum export loops the full 16 steps by default');
+    env.sandbox.window.PerformanceControls.dials.length.on = false; // free the gene
+    dm.phenotype.length = 8;
+    assert(dm._effectiveLength() === 8, 'unlocked drum uses its own length gene');
+    assert(dm.toMIDISequence().loopTicks === 8 * 24, 'unlocked drum export loops the gene length');
+});
+check('unlocking the Length override lets the length gene bound the loop', () => {
+    const env = load();
+    env.sandbox.window.PerformanceControls.dials.length.on = false; // free the gene (advanced users)
+    const m = new env.classes.MelodyIndividual();
+    const p = m.phenotype;
+    for (let s = 0; s < 16; s++) p.grid[0][s] = 0.8;
+    p.length = 8;
+    const notes = m.getPhenotype().filter(n => n.pitch === p.scale[0]);
+    assert(notes.length === 1 && notes[0].start === 0 && notes[0].steps === 8,
+        'a full row reads as one 8-step note when the gene length is 8 and the override is off');
+    const seq = m.toMIDISequence();
+    assert(seq.loopTicks === 8 * (seq.ppq / 4), 'loopTicks = gene length × stepTicks when unlocked');
+    assert(seq.notes.every(n => n.channel === 0), 'melody notes on channel 0 (MIDI ch 1)');
+});
+check('a grid edit folds into the genome and toggles the cell (like the drum machine)', () => {
+    const m = new classes.MelodyIndividual();
+    const was = m.cellOn(3, 5);
+    m.setCellHit(3, 5, !was);
+    assert(m.cellOn(3, 5) === !was, 'setCellHit should toggle the cell');
+    // The edit is heritable: a fresh individual from the edited genome reproduces it.
+    const child = new classes.MelodyIndividual(JSON.parse(JSON.stringify(m.representation.revive(m.genome))));
+    assert(child.cellOn(3, 5) === !was, 'the edited cell should survive into a genome-built child');
+});
+
+// --- Unified step-sequencer playback (live MIDI else synth) ---
+// Both DrumMachine and Melody: send live MIDI when framework.sharedMIDI has an output,
+// else fall back to a synthesised buffer through sharedAudio.
+console.log('\nUnified playback (live MIDI else synth):');
+const seqTypes = ['DrumMachineIndividual', 'MelodyIndividual'];
+check('no MIDI output → play through the synth (AudioModality) path', () => {
+    const env = load();
+    env.sandbox.window.framework.sharedMIDI.midiOutput = null;
+    for (const name of seqTypes) {
+        const ind = new env.classes[name]();
+        ind.playMIDI();
+        assert(env.sandbox.window.framework.sharedAudio.isActive === true, `${name} should use the synth path`);
+        ind.stopMIDI();
+        assert(env.sandbox.window.framework.sharedAudio.isActive === false, `${name} should stop the synth path`);
+    }
+});
+check('rendered loop buffers end at zero (shared loop-seam declick, no click on repeat)', () => {
+    const env = load();
+    for (const name of seqTypes) {
+        const ind = new env.classes[name]();
+        // Force something loud right at the last step so the seam is exercised.
+        const p = ind.phenotype;
+        if (name === 'MelodyIndividual') { env.sandbox.window.PerformanceControls.dials.length.on = false; p.length = 8; p.swing = 0.5; p.grid[0][7] = 1.0; }
+        else { p.grid[0][15] = 1.0; }
+        const data = ind.renderToAudioBuffer().getChannelData(0);
+        assert(Math.abs(data[data.length - 1]) < 1e-4, `${name} buffer must fade to ~0 at the loop seam (got ${data[data.length - 1]})`);
+    }
+});
+check('every drum voice ends at zero (no mid-loop tail cliff, e.g. the kick ~step 3)', () => {
+    const env = load();
+    const voices = env.drumVoices(44100);
+    assert(voices && voices.kick, 'drumVoices should expose the baked voices');
+    for (const name of Object.keys(voices)) {
+        const s = voices[name];
+        // The exponential envelopes end at ~8–11%; AudioModality.declickTail must fade
+        // each voice's tail to zero so it doesn't step to silence mid-loop and click.
+        assert(Math.abs(s[s.length - 1]) < 1e-4, `voice "${name}" must end at ~0 (got ${s[s.length - 1]})`);
+    }
+});
+check('MIDI output present → send live notes (and no synth buffer)', () => {
+    const env = load();
+    const sent = [];
+    env.sandbox.window.framework.sharedMIDI.midiOutput = { send: (bytes) => sent.push(bytes) };
+    for (const name of seqTypes) {
+        const ind = new env.classes[name]();
+        // Guarantee at least one note so the scheduler emits something.
+        const p = ind.phenotype; p.length = 16; p.grid[0][0] = 0.9;
+        ind.playMIDI();
+        assert(env.sandbox.window.framework.sharedAudio.isActive === false, `${name} must NOT use the synth when MIDI is available`);
+        ind.stopMIDI();
+    }
+    assert(sent.some(b => (b[0] & 0xf0) === 0x90), 'a note-on (0x9n) should have been sent to the MIDI output');
+    assert(sent.some(b => (b[0] & 0xf0) === 0x80), 'a note-off (0x8n) should have been sent to the MIDI output');
+});
+
 // --- Image save: PNG metadata round-trip ---
 // Saved PNGs embed {type, genome, ...} in an uncompressed iTXt chunk so an
 // individual can be reproduced later. The chunk must read back byte-identically
 // (incl. UTF-8 and nested genome data) and must be spliced in without breaking
 // the PNG signature or the trailing IEND chunk.
 console.log('\nImage save (PNG metadata round-trip):');
-const ImageSave = (() => {
+// The browser-global export services share one window; load them together so
+// metaFor (ImageSave) is available to the WAV/MIDI writers, exactly as in the app.
+const { ImageSave, ExportNaming, AudioExport, MidiExport } = (() => {
     const prev = global.window;
-    global.window = {};
-    delete require.cache[require.resolve('../ImageSave.js')];
-    require('../ImageSave.js');
-    const api = global.window.ImageSave;
+    const w = {};
+    global.window = w;
+    for (const f of ['../ExportNaming.js', '../ImageSave.js', '../AudioExport.js', '../MidiExport.js']) {
+        delete require.cache[require.resolve(f)];
+        require(f);
+    }
     global.window = prev;
-    return api;
+    return w;
 })();
 check('embedded metadata reads back identically (UTF-8 + nested genome)', () => {
     const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };
@@ -307,13 +474,11 @@ check('embedded metadata reads back identically (UTF-8 + nested genome)', () => 
     assert(sig.every((b, i) => out[i] === b), 'PNG signature corrupted');
     assert(String.fromCharCode(...out.slice(-8, -4)) === 'IEND', 'IEND must remain last chunk');
 });
-check('filename increments and strips the Individual suffix', () => {
-    let store = '7';
-    const prev = global.localStorage;
-    global.localStorage = { getItem: () => store, setItem: (k, v) => { store = v; } };
-    const name = ImageSave.nextFilename('SuperShape3DIndividual');
-    global.localStorage = prev;
-    assert(name === 'anemone-supershape3d-0008.png', `unexpected filename: ${name}`);
+check('ExportNaming builds a type-stemmed, timestamped filename', () => {
+    assert(ExportNaming.stem('SuperShape3DIndividual') === 'supershape3d',
+        'stem strips the Individual suffix and lowercases');
+    const name = ExportNaming.filename({ constructor: { name: 'DrumMachineIndividual' } }, 'mid');
+    assert(/^anemone-drummachine-[\dT-]+\.mid$/.test(name), `unexpected filename: ${name}`);
 });
 check('phenotype signature is stable and discriminates', () => {
     const a = new classes.PatternIndividual();
@@ -371,6 +536,123 @@ check('self-check detects grammar individuals that cannot round-trip (load refus
     // Most (effectively all) must fail to reproduce; the signature mismatch is
     // exactly what the loader uses to refuse them.
     assert(reproduced < 30, `grammar individuals unexpectedly all round-tripped (${reproduced}/30)`);
+});
+
+// --- WAV / MIDI export metadata + reconstruct ---
+// WAV and MIDI exports carry the same {type, genome, phenotype, phenoSig}
+// provenance the PNG does (metaFor), so a saved audio file can be reconstructed
+// the same way a saved PNG is. WAV puts it in a custom RIFF 'anmn' chunk; MIDI in
+// an SMF sequencer-specific meta event (FF 7F).
+console.log('\nAudio/MIDI export metadata:');
+check('metaFor embeds the expressed phenotype alongside the genome', () => {
+    const ind = new classes.GridIndividual();
+    const meta = ImageSave.metaFor(ind);
+    assert(meta.genome != null && meta.phenoSig != null, 'genome + phenoSig present');
+    assert(meta.phenotype !== undefined, 'phenotype present');
+    assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.getPhenotype()),
+        'phenotype must be the expressed value');
+});
+check('WAV carries provenance in an anmn chunk and still frames as RIFF', () => {
+    const buf = { numberOfChannels: 1, sampleRate: 44100, length: 3,
+        getChannelData: () => new Float32Array([0, 0.5, -0.5]) };
+    const metaJson = JSON.stringify({ app: 'Anemone', type: 'X', n: 'café→π' }); // odd byte length → pad
+    const wav = new Uint8Array(AudioExport.encodeWAV(buf, metaJson));
+    const riffSize = new DataView(wav.buffer).getUint32(4, true);
+    assert(riffSize + 8 === wav.length, 'RIFF size field must include the anmn chunk');
+    assert(JSON.stringify(AudioExport.readMetadata(wav)) === metaJson, 'anmn metadata did not round-trip');
+    assert(AudioExport.readMetadata(new Uint8Array(AudioExport.encodeWAV(buf))) === null,
+        'a plain WAV (no metadata) reads back null');
+});
+// A strict SMF reader: consumes exactly the `ntracks` MTrk chunks the header
+// declares (as any DAW does), parsing note events, then records any TRAILING
+// top-level chunks (our metadata lives in a non-MTrk "anmn" chunk that a DAW
+// skips). Proves the notes are a clean track and the metadata is outside it.
+function parseSMF(smf) {
+    const view = new DataView(smf.buffer, smf.byteOffset, smf.byteLength);
+    const tag = o => String.fromCharCode(smf[o], smf[o + 1], smf[o + 2], smf[o + 3]);
+    if (tag(0) !== 'MThd') throw new Error('not an SMF');
+    const out = { format: view.getUint16(8), ntrk: view.getUint16(10), tracks: [], trailing: [] };
+    let cur = 8 + view.getUint32(4);
+    for (let t = 0; t < out.ntrk; t++) {
+        if (tag(cur) !== 'MTrk') throw new Error('expected MTrk at ' + cur);
+        const end = cur + 8 + view.getUint32(cur + 4);
+        let p = cur + 8, running = 0, noteOns = 0, outOfRange = 0, evs = 0;
+        const vlq = () => { let v = 0, b; do { b = smf[p++]; v = (v << 7) | (b & 0x7f); } while (b & 0x80); return v; };
+        while (p < end && evs < 1e6) {
+            vlq(); // delta
+            let s = smf[p]; if (s & 0x80) p++; else s = running;
+            if (s === 0xff) { running = 0; const type = smf[p++]; const len = vlq(); p += len; if (type === 0x2f) break; }
+            else if (s === 0xf0 || s === 0xf7) { running = 0; p += vlq(); }
+            else { running = s; const hi = s & 0xf0; const nb = (hi === 0xc0 || hi === 0xd0) ? 1 : 2; if (hi === 0x90) { noteOns++; if (smf[p] > 127 || smf[p + 1] > 127) outOfRange++; } p += nb; }
+            evs++;
+        }
+        out.tracks.push({ noteOns, outOfRange, landed: p === end });
+        cur = end;
+    }
+    // Trailing (non-track) chunks — where the Anemone metadata lives, ignored by DAWs.
+    while (cur + 8 <= smf.length) { out.trailing.push({ type: tag(cur), len: view.getUint32(cur + 4) }); cur += 8 + view.getUint32(cur + 4); }
+    out.consumedAll = cur === smf.length;
+    return out;
+}
+check('MIDI keeps its metadata in a non-track chunk that DAWs ignore', () => {
+    const seq = { bpm: 128, ppq: 96, notes: [
+        { pitch: 36, velocity: 100, start: 0, duration: 24, channel: 9 },
+        { pitch: 38, velocity: 90, start: 48, duration: 24, channel: 9 },
+    ] };
+    const metaJson = JSON.stringify({ app: 'Anemone', type: 'DrumMachineIndividual', n: 'π' });
+    const p = parseSMF(MidiExport.buildSMF(seq, metaJson));
+    assert(p.format === 0 && p.ntrk === 1, 'format 0, a single note track');
+    assert(p.tracks[0].noteOns === seq.notes.length && p.tracks[0].landed, 'the track holds all notes and frames cleanly');
+    assert(p.trailing.length === 1 && p.trailing[0].type === 'anmn', 'metadata is a trailing non-MTrk "anmn" chunk');
+    assert(p.consumedAll, 'all bytes accounted for');
+    assert(JSON.stringify(MidiExport.readMetadata(MidiExport.buildSMF(seq, metaJson))) === metaJson,
+        'metadata round-trips');
+    assert(parseSMF(MidiExport.buildSMF(seq, null)).trailing.length === 0, 'no metadata chunk when none embedded');
+});
+check('notes stay clean even with a large (34KB-ish) metadata blob — the Logic bug', () => {
+    // A real drum-machine genome serialises to tens of KB. Kept OUT of the track
+    // (an in-track meta event that big made Logic/GB mis-parse the track), so the
+    // note track stays clean and the blob is an ignorable trailing chunk.
+    const dm = new classes.DrumMachineIndividual();
+    const p = parseSMF(MidiExport.buildSMF(dm.toMIDISequence(), JSON.stringify(ImageSave.metaFor(dm))));
+    assert(p.tracks[0].noteOns > 0 && p.tracks[0].outOfRange === 0 && p.tracks[0].landed,
+        'note track has the loop and zero out-of-range events');
+    assert(p.trailing.some(c => c.type === 'anmn'), 'the big blob sits outside the track');
+});
+check('DrumMachine + Melody produce valid MIDI sequences on the right channels', () => {
+    const dseq = new classes.DrumMachineIndividual().toMIDISequence();
+    assert(dseq.notes.length > 0 && dseq.notes.every(n => n.channel === 9), 'drums on GM channel 9');
+    assert(dseq.notes.every(n => n.velocity >= 1 && n.velocity <= 127 && n.pitch >= 0 && n.pitch <= 127),
+        'drum notes in range');
+    const mseq = new classes.MelodyIndividual().toMIDISequence();
+    assert(mseq.notes.every(n => n.channel === 0), 'melody on channel 0');
+    const mp = parseSMF(MidiExport.buildSMF(mseq, null));
+    assert(mp.tracks[0].noteOns === mseq.notes.length, 'melody note track holds all the notes');
+});
+check('a saved MIDI reconstructs the same individual (the load path)', () => {
+    const orig = new classes.MelodyIndividual();          // fixed-structure ⇒ round-trips
+    const meta = ImageSave.metaFor(orig);
+    const smf = MidiExport.buildSMF(orig.toMIDISequence(), JSON.stringify(meta));
+    const read = MidiExport.readMetadata(smf);
+    assert(read && read.type === 'MelodyIndividual', 'type recovered from the file');
+    const recon = new classes.MelodyIndividual(JSON.parse(JSON.stringify(read.genome)));
+    assert(ImageSave.phenotypeSignature(recon) === meta.phenoSig,
+        'reconstructed phenotype must match the saved signature');
+});
+check('a saved WAV reconstructs the same individual (the load path)', () => {
+    const orig = new classes.DrumMachineIndividual();     // fixed-structure ⇒ round-trips
+    const meta = ImageSave.metaFor(orig);
+    const buf = { numberOfChannels: 1, sampleRate: 44100, length: 2, getChannelData: () => new Float32Array([0, 0]) };
+    const wav = new Uint8Array(AudioExport.encodeWAV(buf, JSON.stringify(meta)));
+    const read = AudioExport.readMetadata(wav);
+    assert(read && read.type === 'DrumMachineIndividual', 'type recovered from the WAV');
+    const recon = new classes.DrumMachineIndividual(JSON.parse(JSON.stringify(read.genome)));
+    assert(ImageSave.phenotypeSignature(recon) === meta.phenoSig,
+        'reconstructed phenotype must match the saved signature');
+});
+check('MelodyIndividual opts out of PNG save (MIDI-only)', () => {
+    assert(new classes.MelodyIndividual().usesImageSave() === false, 'Melody should not offer PNG save');
+    assert(new classes.GridIndividual().usesImageSave() === true, 'other types still save PNG by default');
 });
 
 // --- Summary ---

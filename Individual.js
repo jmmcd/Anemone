@@ -42,10 +42,51 @@ class Individual {
     usesColorPalette() { return false; }
     usesPhoto()        { return false; }
     usesAudio()        { return false; }
+    // Whether the lightbox offers a PNG "Save" of the tile. Default true; a type
+    // whose artefact is really the sound (e.g. MelodyIndividual → MIDI only) can
+    // opt out so its lightbox shows just the relevant export.
+    usesImageSave()    { return true; }
     // A type whose tile visual is a directly-editable grid (e.g. a step sequencer).
     // When true, the framework wires click/drag on the zoom lightbox canvas to
     // editCellAtXY(); the type maps pixels→cell and folds the edit into its genome.
     isGridEditable()   { return false; }
+    // Whether the framework attaches the global Performance panel (tempo/swing/…).
+    usesPerformanceControls() { return false; }
+    // Which Performance dials this type exposes (a subset of PerformanceControls.dials).
+    // Step sequencers override: drum → all four, melody → tempo + swing.
+    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive']; }
+
+    // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
+    // Play this individual's loop LIVE over MIDI when an output is available, else
+    // fall back to a synthesised AudioBuffer through the shared AudioModality. Both
+    // paths enter at the shared Transport phase so switching/editing resumes in time.
+    // The type only supplies toMIDISequence() (with a loopTicks) and renderToAudioBuffer().
+    playSequenced() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        const midi = (fw && fw.sharedMIDI) || this.midiModality;
+        const audio = (fw && fw.sharedAudio) || this.audio;
+        const transport = (typeof window !== 'undefined') && window.Transport;
+        this.stopSequenced();
+        if (midi && midi.midiOutput && typeof this.toMIDISequence === 'function' &&
+            midi.playSequence(this.toMIDISequence(), transport)) {
+            this._soundOut = midi;
+        } else if (audio && typeof this.renderToAudioBuffer === 'function') {
+            const buffer = this.renderToAudioBuffer();
+            const offset = transport ? transport.phase(buffer.duration) : 0;
+            audio.playBuffer(buffer, { loop: true, offset });
+            this._soundOut = audio;
+        }
+        this.isPlaying = true;
+    }
+
+    stopSequenced() {
+        if (this._soundOut) {
+            if (typeof this._soundOut.stopSequence === 'function') this._soundOut.stopSequence();
+            else if (typeof this._soundOut.stop === 'function') this._soundOut.stop();
+            this._soundOut = null;
+        }
+        this.isPlaying = false;
+    }
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {

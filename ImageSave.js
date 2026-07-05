@@ -117,7 +117,23 @@
         return ('0000000' + h.toString(16)).slice(-8);
     }
 
+    // Best-effort snapshot of the expressed phenotype, for embedding alongside
+    // the genome. The genome is a PTO trace, and can lose its meaning if a
+    // generator/grammar changes later; the phenotype (an expression string, note
+    // list, plain-data tree/DAG, param array…) stays informative to future code.
+    // Uses the same getPhenotype→phenotype fallback as the signature; anything
+    // that doesn't survive JSON is simply omitted.
+    function phenotypeOf(individual) {
+        let pheno;
+        try { pheno = individual.getPhenotype ? individual.getPhenotype() : individual.phenotype; }
+        catch (e) { return undefined; }
+        try { JSON.stringify(pheno); } catch (e) { return undefined; } // must round-trip through JSON
+        return pheno;
+    }
+
     // ---- Reproducible metadata embedded in every saved PNG --------------
+    // The single source of the provenance object shared across PNG (iTXt chunk),
+    // WAV (RIFF chunk) and MIDI (meta event) exports and the liked-ZIP manifest.
     function metaFor(individual) {
         return {
             app: 'Anemone',
@@ -125,6 +141,7 @@
             id: individual && individual.id,
             timestamp: new Date().toISOString(),
             phenoSig: phenotypeSignature(individual),
+            phenotype: phenotypeOf(individual),
             genome: individual && individual.genome,
         };
     }
@@ -320,7 +337,7 @@
 
     window.ImageSave = {
         saveCanvas, buildPngBytes, composeMontage, buildZip, download: triggerDownload,
-        readMetadata, readMetadataFromFile, phenotypeSignature,
+        readMetadata, readMetadataFromFile, phenotypeSignature, metaFor,
         buildITxtChunk, insertChunk, crc32,
     };
 })();

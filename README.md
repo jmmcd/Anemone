@@ -34,15 +34,17 @@ You can change the palette, which affects the appearance of most apps, by pressi
 
 # Zoom in, saving, and loading
 
-You can double-click an individual to zoom in on it. You'll then see a button for saving it, usually in `png` format, and/or `stl`, `wav`, or `midi` depending on the app. The `png` format includes the individual genome saved as metadata, and the Load button in the side menu allows you to load in a previously-saved individual.
+You can double-click an individual to zoom in on it. You'll then see a button for saving it, usually in `png` format, and/or `stl`, `wav`, or `midi` depending on the app. These formats includes the individual genotype and phenotype, saved as JSON in the metadata (PNG: metadata, WAV: `anmn` RIFF chunk, MIDI (saving Type 0 SMF): sequencer-specific meta event). The Load button in the side menu allows you to load in a previously-saved individual.
 
 # Hotkeys
 
-* `0`, `1`, ... `9`, `A`, `B`, ... `F` selects or de-selects an individual, and
+* `0`, `1`, ... `9`, `A`, `B`, ... `F` selects or de-selects an individual, and also activates it for music types.
 * `space` clicks the Evolve button.
+* `.` toggles play/pause and rotate/stop.
 * `[` and `]` zoom in and out on the 3D individuals, 
 * `=` and `-` change the focal length of the 3D individuals, and 
 * `\` resets all of the above to default.
+* `[` and `]` shorten or lengthen the music sequences.
 * `p` cycles the palette.
 
 # MIDI?

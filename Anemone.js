@@ -5,9 +5,12 @@ class InteractiveEAFramework {
         this.audioContext = null;
         this.currentIndividual = null; // Track the last clicked individual
 
-        // Single shared MIDIModality for all sound individuals (avoids one
-        // AudioContext per individual). Mirrors the shared 3D scene/renderer.
+        // Shared output modalities for all sound individuals (one owner per medium,
+        // avoiding per-individual duplication). Mirrors the shared 3D scene/renderer.
+        // sharedMIDI: note events (Melody/MouseMusic/EEG); sharedAudio: rendered
+        // buffers / live graphs (DrumMachine/AudioFilter, over AudioClip's context).
         this.sharedMIDI = new MIDIModality();
+        this.sharedAudio = new AudioModality();
         this.currentlyPlaying = null; // The individual currently producing sound
 
         // Framework settings
@@ -36,6 +39,13 @@ class InteractiveEAFramework {
         // keeps the same on-screen size when the FOV changes. The - and = hotkeys
         // step it. 30° is gentler than Three's 75° default.
         this.cameraFOV = 30;
+
+        // 3D auto-rotation, toggled by the play/pause hotkey (see rotationTime()).
+        // Implemented as an offset subtracted from the wall clock, so pausing freezes
+        // the angle and resuming continues from it with no jump.
+        this.rotationEnabled = true;
+        this._rotPauseOffsetMs = 0; // total paused wall-time
+        this._rotPausedAtMs = null; // wall time at which we paused (null while running)
 
         // EEG data stream (for EEGSonificationIndividual)
         this.eegStream = null;
@@ -259,8 +269,8 @@ class InteractiveEAFramework {
         const halfFov = (this.cameraFOV / 2) * Math.PI / 180;
         const distance = (maxDim / 2) / Math.tan(halfFov) * 1.6 * this.cameraDistanceFactor;
         
-        // Add rotation based on time for animation
-        const time = Date.now() * 0.001;
+        // Add rotation based on time for animation (pausable — see rotationTime()).
+        const time = this.rotationTime();
         const rotationRadius = distance;
         camera.position.x = center.x + Math.cos(time * 0.5) * rotationRadius;
         camera.position.y = center.y + distance * 0.7;
@@ -326,11 +336,12 @@ class InteractiveEAFramework {
             this.uiExtensions.push(new AudioControlUI(this));
         }
 
-        // Attach the global performance panel (tempo/swing/humanize/drive) for
-        // individuals that declare usesDrumControls() — lets the user drive the
-        // whole population from one place (e.g. lock a tempo to jam over).
-        if (sample && typeof sample.usesDrumControls === 'function' && sample.usesDrumControls()) {
-            this.uiExtensions.push(new DrumControlsUI(this));
+        // Attach the global Performance panel (tempo/swing/…) for step-sequencer
+        // individuals that declare usesPerformanceControls() — lets the user drive the
+        // whole population from one place (e.g. lock a tempo to jam over). The type
+        // chooses which dials to show via performanceDials().
+        if (sample && typeof sample.usesPerformanceControls === 'function' && sample.usesPerformanceControls()) {
+            this.uiExtensions.push(new PerformanceControlsUI(this, sample.performanceDials()));
         }
 
         // Attach the code-editor panel for individuals that expose editable code
@@ -441,6 +452,7 @@ class InteractiveEAFramework {
         this.lightboxSave = document.getElementById('lightbox-save');
         this.lightboxExportStl = document.getElementById('lightbox-export-stl');
         this.lightboxExportWav = document.getElementById('lightbox-export-wav');
+        this.lightboxExportMidi = document.getElementById('lightbox-export-midi');
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -504,6 +516,7 @@ class InteractiveEAFramework {
         if (this.lightboxSave) this.lightboxSave.addEventListener('click', () => this.saveCurrentImage());
         if (this.lightboxExportStl) this.lightboxExportStl.addEventListener('click', () => this.exportCurrentSTL());
         if (this.lightboxExportWav) this.lightboxExportWav.addEventListener('click', () => this.exportCurrentWav());
+        if (this.lightboxExportMidi) this.lightboxExportMidi.addEventListener('click', () => this.exportCurrentMidi());
         if (this.lightboxCanvas) {
             this.lightboxCanvas.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -527,11 +540,17 @@ class InteractiveEAFramework {
             // effect on the next frame with no explicit redraw.
             const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
             if (typing) return;
-            if (e.key === '[') this.cameraDistanceFactor = Math.max(0.3, this.cameraDistanceFactor / 1.15);
-            else if (e.key === ']') this.cameraDistanceFactor = Math.min(4, this.cameraDistanceFactor * 1.15);
+            // [ and ] are context-sensitive: they set the sequencer Length in a
+            // step-sequencer run (drum/melody), else they zoom the 3D camera.
+            const sample = this._sampleIndividual();
+            const isSeq = sample && typeof sample.performanceDials === 'function' && sample.performanceDials().includes('length');
+            if (e.key === '[') { if (isSeq) this.adjustSequencerLength(-1); else this.cameraDistanceFactor = Math.max(0.3, this.cameraDistanceFactor / 1.15); }
+            else if (e.key === ']') { if (isSeq) this.adjustSequencerLength(1); else this.cameraDistanceFactor = Math.min(4, this.cameraDistanceFactor * 1.15); }
             else if (e.key === '-' || e.key === '_') this.cameraFOV = Math.max(8, this.cameraFOV - 5);
             else if (e.key === '=' || e.key === '+') this.cameraFOV = Math.min(100, this.cameraFOV + 5);
             else if (e.key === '\\') { this.cameraDistanceFactor = 1 / (1.15 * 1.15); this.cameraFOV = 30; }
+            // . (the > key) = play/pause the current sound individual (3D run: start/stop rotation).
+            else if (e.key === '.' || e.key === '>') { e.preventDefault(); this.togglePlayPauseOrRotation(); }
             // Space = Evolve. 0-9 / A-F = toggle like on that tile (hex index into
             // the 16-tile grid, matching a left-to-right, top-to-bottom reading).
             else if (e.key === ' ') { e.preventDefault(); doEvolve(); }
@@ -570,7 +589,7 @@ class InteractiveEAFramework {
             });
             this.loadPngInput.addEventListener('change', (e) => {
                 if (e.target && e.target.files && e.target.files.length > 0) {
-                    this.loadIndividualFromPNG(e.target.files[0]);
+                    this.loadIndividualFromFile(e.target.files[0]);
                 }
                 this.loadPngInput.value = ''; // allow re-loading the same file
             });
@@ -873,9 +892,16 @@ class InteractiveEAFramework {
         // Audio-producing individuals export a .wav instead of a .png; hide the
         // PNG Save for them and show ⤓ WAV. Gated on the render capability, not
         // usesAudio() (the drum machine produces audio but loads no clip panel).
+        // Save is also hidden for types that opt out via usesImageSave() (e.g.
+        // Melody, whose artefact is the MIDI, not the piano-roll tile).
         const audioOut = window.AudioExport && window.AudioExport.canExport(individual);
+        const savesImage = !audioOut && (individual.usesImageSave ? individual.usesImageSave() : true);
         if (this.lightboxExportWav) this.lightboxExportWav.style.display = audioOut ? '' : 'none';
-        if (this.lightboxSave) this.lightboxSave.style.display = audioOut ? 'none' : '';
+        if (this.lightboxSave) this.lightboxSave.style.display = savesImage ? '' : 'none';
+        // MIDI export shows for any individual that can produce a note sequence
+        // (drum machine, melody); independent of the WAV/PNG gate above.
+        const midiOut = window.MidiExport && window.MidiExport.canExport(individual);
+        if (this.lightboxExportMidi) this.lightboxExportMidi.style.display = midiOut ? '' : 'none';
         this.lightbox.classList.add('open');
         // The one-shot visualize() above draws a static frame; keep the zoomed
         // 3D view rotating too.
@@ -976,6 +1002,69 @@ class InteractiveEAFramework {
         animate();
     }
 
+    // Seconds of "rotation time" for the 3D camera. Advances with the wall clock while
+    // rotationEnabled; while paused it holds the value at the moment of pausing, and on
+    // resume the paused span is added to the offset so the angle continues seamlessly.
+    rotationTime() {
+        const now = Date.now();
+        const base = this.rotationEnabled ? now : this._rotPausedAtMs;
+        return (base - this._rotPauseOffsetMs) * 0.001;
+    }
+
+    // Start/stop 3D auto-rotation (the play/pause hotkey in a 3D run).
+    toggleRotation() {
+        if (this.rotationEnabled) {
+            this.rotationEnabled = false;
+            this._rotPausedAtMs = Date.now();
+        } else {
+            this.rotationEnabled = true;
+            this._rotPauseOffsetMs += Date.now() - this._rotPausedAtMs; // credit the paused span
+            this._rotPausedAtMs = null;
+        }
+        this.showToast(this.rotationEnabled ? 'Rotating' : 'Rotation paused');
+    }
+
+    // A representative individual of the current run (for capability checks).
+    _sampleIndividual() {
+        return (this.ea && this.ea.population && this.ea.population[0]) || null;
+    }
+
+    // The [ and ] hotkeys nudge the global sequencer Length (locking the override so it
+    // takes effect) for step-sequencer runs, redrawing tiles + refreshing any playing
+    // loop. (For 3D runs the same keys stay the camera zoom — dispatched in keydown.)
+    adjustSequencerLength(delta) {
+        const pc = window.PerformanceControls;
+        if (!pc || !pc.dials.length) return;
+        const d = pc.dials.length;
+        const v = Math.max(d.min, Math.min(d.max, Math.round(d.value) + delta));
+        pc.update('length', { on: true, value: v }); // lock + set → re-render + audio refresh
+        // Keep the Performance panel controls in sync if it's mounted.
+        const cb = document.getElementById('perf-dial-length'); if (cb) cb.checked = true;
+        const sl = document.getElementById('perf-slider-length'); if (sl) { sl.disabled = false; sl.value = v; }
+        const ro = document.getElementById('perf-readout-length'); if (ro) ro.textContent = d.fmt(v);
+        this.showToast(`Length ${v} steps`);
+    }
+
+    // Play/pause hotkey. In a 3D run it toggles auto-rotation; in a sound run it
+    // pauses whatever is playing, or plays the current (last-clicked) individual —
+    // works for every sound type, MouseMusic included (all expose playMIDI/stopMIDI).
+    togglePlayPauseOrRotation() {
+        const sample = this._sampleIndividual();
+        if (sample && sample.is3D && sample.is3D()) { this.toggleRotation(); return; }
+        if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
+            this.currentlyPlaying.stopMIDI();
+            this.currentlyPlaying = null;
+            this.refreshPlayButtons();
+            return;
+        }
+        const ind = this.currentIndividual || sample;
+        if (ind && typeof ind.playMIDI === 'function') {
+            ind.playMIDI();
+            this.currentlyPlaying = ind;
+            this.refreshPlayButtons();
+        }
+    }
+
     closeZoom() {
         this._zoomAnimToken = null; // stop the zoom rotation loop
         this.teardownGridEditing();
@@ -1001,10 +1090,73 @@ class InteractiveEAFramework {
         return window.ExportNaming.stem(typeName);
     }
 
-    // Save the whole current population as one bordered PNG montage. Uses the
-    // grid's already-rendered 128px tiles, so it captures exactly what's on
-    // screen (2D and 3D alike) with no re-rendering.
-    savePopulationImage() {
+    // The natural single-file export format for an individual: audio types save
+    // their sound (WAV if renderable, else MIDI for note sequences), everything
+    // else saves its image. Keeps the bulk exports from writing PNGs of sound.
+    individualExportKind(individual) {
+        if (window.AudioExport && window.AudioExport.canExport(individual)) return 'wav';
+        if (window.MidiExport && window.MidiExport.canExport(individual)) return 'mid';
+        return 'png';
+    }
+
+    // Render one individual to its natural artefact bytes: { ext, bytes }. Shared
+    // by both bulk exports; each artefact embeds the same reproducible metadata as
+    // the single-file exports (WAV anmn chunk / MIDI meta event / PNG iTXt chunk).
+    async exportArtifactFor(individual, canvas) {
+        const meta = () => JSON.stringify(window.ImageSave.metaFor(individual));
+        const kind = this.individualExportKind(individual);
+        if (kind === 'wav') {
+            const buffer = await window.AudioExport.renderToBuffer(individual);
+            return { ext: 'wav', bytes: new Uint8Array(window.AudioExport.encodeWAV(buffer, meta())) };
+        }
+        if (kind === 'mid') {
+            return { ext: 'mid', bytes: window.MidiExport.buildSMF(individual.toMIDISequence(), meta()) };
+        }
+        individual.visualize(canvas); // 2D draws directly; 3D draws a static frame via the shared renderer
+        return { ext: 'png', bytes: await window.ImageSave.buildPngBytes(canvas, individual) };
+    }
+
+    // Bundle a set of individuals into one ZIP, each as its natural artefact
+    // (PNG/WAV/MIDI), plus a manifest.json carrying the full reproducible metadata.
+    async buildIndividualsZip(individuals, zipName) {
+        if (!window.ImageSave) return;
+        this.showToast(`Building ${zipName} (${individuals.length})…`);
+        try {
+            const off = document.createElement('canvas');
+            off.width = 256; off.height = 256;
+            const entries = [];
+            const manifest = [];
+            const counts = {};
+            for (const ind of individuals) {
+                const { ext, bytes } = await this.exportArtifactFor(ind, off);
+                const stem = this.typeStem(ind.constructor && ind.constructor.name);
+                counts[stem] = (counts[stem] || 0) + 1;
+                const name = `anemone-${stem}-${String(counts[stem]).padStart(3, '0')}.${ext}`;
+                entries.push({ name, bytes });
+                manifest.push(Object.assign({ file: name }, window.ImageSave.metaFor(ind)));
+            }
+            entries.push({ name: 'manifest.json', bytes: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) });
+            const zip = window.ImageSave.buildZip(entries);
+            window.ImageSave.download(new Blob([zip], { type: 'application/zip' }), zipName);
+            this.showToast(`Saved ${zipName} (${individuals.length})`);
+        } catch (err) {
+            console.warn('ZIP export failed:', err);
+            this.showToast('Could not build ZIP');
+        }
+    }
+
+    // Save the whole current population. Visual types → one bordered PNG montage of
+    // the on-screen tiles (captures exactly what's shown, 2D and 3D alike). Audio
+    // types → a ZIP of each member's sound file (a montage image is meaningless).
+    async savePopulationImage() {
+        const pop = (this.ea && this.ea.population || []).filter(Boolean);
+        if (pop.length === 0) { this.showToast('Nothing to save'); return; }
+        const stem = this.typeStem(this.individualClass && this.individualClass.name);
+
+        if (this.individualExportKind(pop[0]) !== 'png') {
+            await this.buildIndividualsZip(pop, `anemone-${stem}-population.zip`);
+            return;
+        }
         if (!window.ImageSave || !this.grid) return;
         const canvases = Array.from(this.grid.children)
             .map(div => div.querySelector('canvas'))
@@ -1012,7 +1164,7 @@ class InteractiveEAFramework {
         if (canvases.length === 0) { this.showToast('Nothing to save'); return; }
         try {
             const montage = window.ImageSave.composeMontage(canvases, { border: 8, gap: 8, background: '#111' });
-            const name = `anemone-${this.typeStem(this.individualClass && this.individualClass.name)}-population.png`;
+            const name = `anemone-${stem}-population.png`;
             montage.toBlob((blob) => {
                 if (!blob) { this.showToast('Could not save population'); return; }
                 window.ImageSave.download(blob, name);
@@ -1024,14 +1176,12 @@ class InteractiveEAFramework {
         }
     }
 
-    // Export every individual liked during the whole run as a ZIP of
-    // reproducible PNGs (each carries its genome, so it re-loads via Load PNG),
-    // plus a manifest.json. Draws each liked individual to an offscreen canvas
-    // — most are from past generations and no longer on the grid.
+    // Export every individual liked during the whole run as a ZIP of natural
+    // artefacts (each re-loads via Load…), plus a manifest.json.
     async saveLikedRunZip() {
         if (!window.ImageSave || !this.ea) return;
         // Dedup by phenotype signature: an elite that stays liked recurs across
-        // generations as distinct instances but identical art — save it once.
+        // generations as distinct instances but identical art/sound — save it once.
         const seen = new Set();
         const liked = [];
         (this.ea.likedArchive || []).forEach((ind) => {
@@ -1042,39 +1192,8 @@ class InteractiveEAFramework {
         });
         if (liked.length === 0) { this.showToast('No liked individuals yet'); return; }
 
-        this.showToast(`Building ZIP of ${liked.length} liked…`);
-        try {
-            const size = 256;
-            const off = document.createElement('canvas');
-            off.width = size; off.height = size;
-            const entries = [];
-            const manifest = [];
-            const counts = {};
-            for (const ind of liked) {
-                ind.visualize(off);   // 2D draws directly; 3D draws a static frame via the shared renderer
-                const bytes = await window.ImageSave.buildPngBytes(off, ind);
-                const stem = this.typeStem(ind.constructor && ind.constructor.name);
-                counts[stem] = (counts[stem] || 0) + 1;
-                const name = `anemone-${stem}-${String(counts[stem]).padStart(3, '0')}.png`;
-                entries.push({ name, bytes });
-                manifest.push({
-                    file: name,
-                    type: ind.constructor && ind.constructor.name,
-                    id: ind.id,
-                    phenoSig: window.ImageSave.phenotypeSignature(ind),
-                    genome: ind.genome,
-                });
-            }
-            const enc = new TextEncoder();
-            entries.push({ name: 'manifest.json', bytes: enc.encode(JSON.stringify(manifest, null, 2)) });
-            const zip = window.ImageSave.buildZip(entries);
-            const zipName = `anemone-${this.typeStem(this.individualClass && this.individualClass.name)}-liked.zip`;
-            window.ImageSave.download(new Blob([zip], { type: 'application/zip' }), zipName);
-            this.showToast(`Saved ${zipName} (${liked.length})`);
-        } catch (err) {
-            console.warn('Liked ZIP export failed:', err);
-            this.showToast('Could not build ZIP');
-        }
+        const stem = this.typeStem(this.individualClass && this.individualClass.name);
+        await this.buildIndividualsZip(liked, `anemone-${stem}-liked.zip`);
     }
 
     // Export the currently-zoomed individual's mesh as a binary STL for 3D
@@ -1107,6 +1226,21 @@ class InteractiveEAFramework {
             });
     }
 
+    // Export the currently-zoomed individual's note sequence as a .mid (see
+    // MidiExport.js). Only wired for individuals that expose toMIDISequence()
+    // (drum machine, melody); the button is hidden otherwise in openZoom().
+    exportCurrentMidi() {
+        const individual = this.currentIndividual;
+        if (!individual || !window.MidiExport) return;
+        try {
+            const filename = window.MidiExport.downloadMIDI(individual);
+            this.showToast(`Exported ${filename}`);
+        } catch (err) {
+            console.warn('MIDI export failed:', err);
+            this.showToast('Could not export MIDI');
+        }
+    }
+
     // Brief, self-dismissing confirmation message.
     showToast(message) {
         let toast = this._toastEl;
@@ -1124,27 +1258,40 @@ class InteractiveEAFramework {
         this._toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
-    // ---- Load a saved PNG back into an individual --------------------------
-    // Reads the embedded genome (see ImageSave.js), reconstructs the individual,
-    // verifies it actually reproduces, then lets the user place it on the grid.
-    async loadIndividualFromPNG(file) {
-        if (!file || !window.ImageSave) return;
+    // ---- Load a saved PNG / WAV / MIDI back into an individual --------------
+    // All three export formats embed the same {type, genome, phenotype, phenoSig}
+    // provenance (see ImageSave.metaFor), so load is format-agnostic: pick the
+    // reader by extension, then reconstruct + verify + place identically.
+    async loadIndividualFromFile(file) {
+        if (!file) return;
+        const name = (file.name || '').toLowerCase();
+        let reader = null;
+        if (name.endsWith('.png') && window.ImageSave) reader = window.ImageSave;
+        else if (name.endsWith('.wav') && window.AudioExport) reader = window.AudioExport;
+        else if ((name.endsWith('.mid') || name.endsWith('.midi')) && window.MidiExport) reader = window.MidiExport;
+        else { this.showToast('Load a saved Anemone .png, .wav or .mid'); return; }
+
         let meta;
         try {
-            meta = await window.ImageSave.readMetadataFromFile(file);
+            meta = await reader.readMetadataFromFile(file);
         } catch (err) {
-            console.warn('PNG read failed:', err);
-            this.showToast('Could not read that PNG');
+            console.warn('File read failed:', err);
+            this.showToast('Could not read that file');
             return;
         }
+        this.reconstructAndPlace(meta);
+    }
+
+    // Shared reconstruct/verify/place path for a decoded metadata object.
+    reconstructAndPlace(meta) {
         if (!meta || meta.app !== 'Anemone' || !meta.type || meta.genome == null) {
-            this.showToast('No Anemone individual found in that PNG');
+            this.showToast('No Anemone individual found in that file');
             return;
         }
         // Cross-type load is refused: a mixed-type population would break the
         // EA's crossover (different types have incompatible PTO traces).
         if (meta.type !== this.individualClass.name) {
-            this.showToast(`That PNG is a ${meta.type}; current run is ${this.individualClass.name}`);
+            this.showToast(`That file is a ${meta.type}; current run is ${this.individualClass.name}`);
             return;
         }
         const C = this.individualTypeMap()[meta.type];
