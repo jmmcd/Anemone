@@ -38,17 +38,17 @@ class Palette {
             'sinebow': { func: d3.interpolateSinebow, type: 'cyclical', description: 'Sinebow' },
             'rainbow': { func: d3.interpolateRainbow, type: 'cyclical', description: 'Rainbow' },
 
-            // Perceptual (OKLCH) — generated in OKLCH so lightness/chroma stay
-            // perceptually even across the hue sweep (unlike HSL). See oklchColor().
-            'oklch-rainbow': { func: t => this.oklchColor(0.72, 0.15, t * 360), type: 'perceptual', description: 'OKLCH Rainbow' },
-            'oklch-pastel':  { func: t => this.oklchColor(0.86, 0.07, t * 360), type: 'perceptual', description: 'OKLCH Pastel' },
-            'oklch-neon':    { func: t => this.oklchColor(0.70, 0.26, t * 360), type: 'perceptual', description: 'OKLCH Neon' },
-            'oklch-ember':   { func: t => this.oklchColor(0.28 + 0.64 * t, 0.14, 25 + 70 * t), type: 'perceptual', description: 'OKLCH Ember' },
-            'oklch-ice':     { func: t => this.oklchColor(0.30 + 0.62 * t, 0.11, 265 - 45 * t), type: 'perceptual', description: 'OKLCH Ice' },
-            'oklch-tealmag': { func: t => this.oklchDiverging(t), type: 'perceptual', description: 'OKLCH Teal-Magenta' },
+            // Generated in OKLCH so lightness/chroma stay perceptually even
+            // across the hue sweep, unlike HSL (see oklchColor()).
+            'spectrum': { func: t => this.oklchColor(0.72, 0.15, t * 360), type: 'cyclical', description: 'Spectrum' },
+            'pastel':   { func: t => this.oklchColor(0.86, 0.07, t * 360), type: 'cyclical', description: 'Pastel' },
+            'neon':     { func: t => this.oklchColor(0.70, 0.26, t * 360), type: 'cyclical', description: 'Neon' },
+            'ember':    { func: t => this.oklchColor(0.28 + 0.64 * t, 0.14, 25 + 70 * t), type: 'sequential', description: 'Ember' },
+            'ice':      { func: t => this.oklchColor(0.30 + 0.62 * t, 0.11, 265 - 45 * t), type: 'sequential', description: 'Ice' },
+            'tealmag':  { func: t => this.oklchDiverging(t), type: 'diverging', description: 'Teal-Magenta' },
 
-            // Custom favorites
-            'fire': { func: this.createFirePalette(), type: 'custom', description: 'Fire' },
+            // Custom favorites (interpolated in OKLab — see createOceanPalette)
+            'fire': { func: t => this.oklchFire(t), type: 'custom', description: 'Fire' },
             'ocean': { func: this.createOceanPalette(), type: 'custom', description: 'Ocean' },
             'sunset': { func: this.createSunsetPalette(), type: 'custom', description: 'Sunset' },
             'forest': { func: this.createForestPalette(), type: 'custom', description: 'Forest' }
@@ -58,34 +58,28 @@ class Palette {
         this.defaultPalette = 'viridis';
     }
     
-    createFirePalette() {
-        return t => {
-            const colors = ['#000000', '#4A0E0E', '#8B0000', '#FF4500', '#FF8C00', '#FFD700', '#FFFFFF'];
-            return this.interpolateColors(colors, t);
-        };
-    }
-    
+    // The custom palettes keep their hand-picked color stops but interpolate
+    // between them in OKLab (perceptually uniform) rather than RGB, so the
+    // transitions stay evenly bright instead of dimming through the midpoints.
+    // The oklab stops are precomputed once, since color(t) is called per pixel.
     createOceanPalette() {
-        return t => {
-            const colors = ['#000080', '#0000CD', '#0080FF', '#00BFFF', '#00FFFF', '#E0F6FF', '#FFFFFF'];
-            return this.interpolateColors(colors, t);
-        };
+        const stops = ['#000080', '#0000CD', '#0080FF', '#00BFFF', '#00FFFF', '#E0F6FF', '#FFFFFF']
+            .map(h => this.hexToOklab(h));
+        return t => this.oklabRamp(stops, t);
     }
-    
+
     createSunsetPalette() {
-        return t => {
-            const colors = ['#1A1A2E', '#16213E', '#E94560', '#F39C12', '#F1C40F', '#F8C471', '#FFF3E0'];
-            return this.interpolateColors(colors, t);
-        };
+        const stops = ['#1A1A2E', '#16213E', '#E94560', '#F39C12', '#F1C40F', '#F8C471', '#FFF3E0']
+            .map(h => this.hexToOklab(h));
+        return t => this.oklabRamp(stops, t);
     }
-    
+
     createForestPalette() {
-        return t => {
-            const colors = ['#2C5F2D', '#5D8A5F', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFF9C4', '#F1F8E9'];
-            return this.interpolateColors(colors, t);
-        };
+        const stops = ['#2C5F2D', '#5D8A5F', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFF9C4', '#F1F8E9']
+            .map(h => this.hexToOklab(h));
+        return t => this.oklabRamp(stops, t);
     }
-    
+
     // --- OKLCH color engine (Björn Ottosson's OKLab) -----------------------
     // OKLCH is a perceptually-uniform polar space: L = lightness [0,1],
     // C = chroma (~0..0.37), H = hue in degrees. Sweeping H at fixed L,C gives
@@ -134,6 +128,31 @@ class Palette {
         return `rgb(${r}, ${g}, ${b})`;
     }
 
+    // Interpolate a ramp of [L, C, H] stops in OKLCH (linear per channel; hues
+    // here stay within one turn so no wraparound handling is needed).
+    oklchStops(stops, t) {
+        t = Math.max(0, Math.min(1, t));
+        const scaled = t * (stops.length - 1);
+        const i = Math.min(Math.floor(scaled), stops.length - 2);
+        const f = scaled - i;
+        const [L0, C0, H0] = stops[i], [L1, C1, H1] = stops[i + 1];
+        return this.oklchColor(L0 + (L1 - L0) * f, C0 + (C1 - C0) * f, H0 + (H1 - H0) * f);
+    }
+
+    // The Fire palette: black -> red -> orange -> gold -> white, with lightness
+    // rising evenly and chroma peaking mid-ramp then falling to 0 at white.
+    oklchFire(t) {
+        return this.oklchStops([
+            [0.00, 0.00, 30],   // black
+            [0.25, 0.11, 29],   // dark red
+            [0.48, 0.20, 32],   // red
+            [0.65, 0.20, 50],   // orange-red
+            [0.80, 0.17, 72],   // orange
+            [0.92, 0.15, 92],   // gold
+            [1.00, 0.00, 95],   // white
+        ], t);
+    }
+
     // Diverging teal <-> magenta through a light neutral midpoint.
     oklchDiverging(t) {
         const k = Math.abs(2 * t - 1);           // 0 at centre, 1 at ends
@@ -143,22 +162,36 @@ class Palette {
         return this.oklchColor(L, C, H);
     }
 
-    interpolateColors(colors, t) {
-        t = Math.max(0, Math.min(1, t));
-        
-        if (t === 0) return colors[0];
-        if (t === 1) return colors[colors.length - 1];
-        
-        const scaledT = t * (colors.length - 1);
-        const index = Math.floor(scaledT);
-        const fraction = scaledT - index;
-        
-        const color1 = d3.color(colors[index]);
-        const color2 = d3.color(colors[index + 1]);
-        
-        return d3.interpolateRgb(color1, color2)(fraction);
+    // sRGB hex -> OKLab [L, a, b] (linearise, then Ottosson's forward matrix).
+    hexToOklab(hex) {
+        const c = d3.color(hex).rgb();
+        const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        const r = lin(c.r), g = lin(c.g), b = lin(c.b);
+        const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return [
+            0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+        ];
     }
-    
+
+    // Interpolate precomputed OKLab [L, a, b] stops (a/b are Cartesian, so this
+    // avoids hue-wrap and grey-crossing artefacts), then emit via oklchColor so
+    // the result is gamut-mapped back into sRGB.
+    oklabRamp(stops, t) {
+        t = Math.max(0, Math.min(1, t));
+        const scaled = t * (stops.length - 1);
+        const i = Math.min(Math.floor(scaled), stops.length - 2);
+        const f = scaled - i;
+        const A = stops[i], B = stops[i + 1];
+        const L = A[0] + (B[0] - A[0]) * f;
+        const a = A[1] + (B[1] - A[1]) * f;
+        const b = A[2] + (B[2] - A[2]) * f;
+        return this.oklchColor(L, Math.hypot(a, b), Math.atan2(b, a) * 180 / Math.PI);
+    }
+
     // Get the current palette name from the framework settings
     name() {
         const fw = window.framework;

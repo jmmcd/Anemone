@@ -21,7 +21,7 @@ class PaletteControlUI {
         // Sort by type for better organization
         palettes.sort((a, b) => {
             if (a.type !== b.type) {
-                const typeOrder = { 'perceptual': 0, 'sequential': 1, 'diverging': 2, 'custom': 3, 'cyclical': 4 };
+                const typeOrder = { 'sequential': 0, 'diverging': 1, 'custom': 2, 'cyclical': 3 };
                 return (typeOrder[a.type] || 4) - (typeOrder[b.type] || 4);
             }
             return a.name.localeCompare(b.name);
@@ -58,7 +58,6 @@ class PaletteControlUI {
         
         // Add palettes in organized groups
         const typeLabels = {
-            'perceptual': 'Perceptual (OKLCH)',
             'sequential': 'Sequential',
             'diverging': 'Diverging',
             'custom': 'Custom',
