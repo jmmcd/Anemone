@@ -42,13 +42,21 @@
  * though density/syncopation change the COUNTS of 1s, which is all PTO's
  * categorical operators need (the counts only bias init sampling, not
  * mutation/crossover) — this is what lets density and syncopation vary safely
- * under crossover. Core channels (kick/snare/hats) floor *every* cell, so even a
- * prior-0 cell can throw a 1/RES surprise hit and roam. The colour channels
- * (clap/rim/tom/cowbell) instead LOCK their true-zero cells (pHit=0 ⇒ pool {0}),
- * which stays consistent across genomes (0 can't be lifted by density/sync) and
- * lets those channels be entirely absent. Their nonzero cells are spread but
- * low-probability, so tom/rim/cowbell land in varied spots yet are often absent,
- * with clap about half as likely as the snare.
+ * under crossover. EVERY cell of EVERY channel floors this way (no exceptions), so
+ * even a prior-0 cell can throw a 1/RES surprise hit and roam. The colour channels
+ * (clap/rim/tom/cowbell) differ only in carrying LOW priors (and a quieter mix), so
+ * tom/rim/cowbell land in varied spots yet are usually sparse/absent, with clap
+ * about half as likely as the snare. (Earlier revisions LOCKED colour true-zero
+ * cells to pool {0} so a channel could vanish entirely; that made those cells
+ * un-editable/frozen, so it's gone — universal flooring is simpler and makes every
+ * cell uniformly editable, below.)
+ *
+ * EDITABLE LOOPS: each cell draws two EXPLICITLY-NAMED genes (hit_c_s categorical,
+ * vel_c_s real), so a direct user edit of the grid folds straight back into the
+ * genome via representation.setGene(name, val): the forced value survives replay
+ * (the regenerated pool matches) and — because every pool is {0,1} — keeps evolving
+ * like any other gene. This is what powers cell-by-cell editing in the zoom
+ * lightbox while evolution continues from the edited genome.
  *
  * Rendering is Web Audio, but the loop is mixed by hand into one AudioBuffer
  * (cached voice one-shots added at step times) — synchronous, no
@@ -106,21 +114,25 @@ const drumMachineGenerator = (rnd) => {
         const dens = 0.6 + rnd.uniform(0, 0.9);  // higher-order per-channel busyness
         density.push(dens);
         const prior = DRUM_CHANNEL_PRIOR[DRUM_CHANNELS[c]];
-        const isColor = c >= 4;                  // clap / rim / tom / cowbell
         const row = [];
         for (let s = 0; s < 16; s++) {
             // Syncopation lifts off-beat priors and lowers on-beat ones (or vice
-            // versa). Core channels floor every cell (pool {0,1}) so they roam;
-            // colour channels LOCK their true-zero cells (pool {0}) so they can be
-            // entirely absent — both stay consistent across genomes (see header).
+            // versa). EVERY cell of EVERY channel floors to a {0,1} pool (no locked
+            // cells): colour channels differ only by carrying LOW priors, so they
+            // stay sparse but can still roam AND be hand-edited durably (see header).
             const syncFactor = 1 + g * (0.5 - DRUM_METRICAL[s]) * 1.2;
-            const pHit = (isColor && prior[s] === 0) ? 0
-                : Math.min(1 - 1 / DRUM_HIT_RES, Math.max(1 / DRUM_HIT_RES, prior[s] * dens * syncFactor));
+            const pHit = Math.min(1 - 1 / DRUM_HIT_RES, Math.max(1 / DRUM_HIT_RES, prior[s] * dens * syncFactor));
             const k = Math.round(pHit * DRUM_HIT_RES);
             const pool = [];
             for (let j = 0; j < DRUM_HIT_RES; j++) pool.push(j < k ? 1 : 0);
-            const hit = rnd.choice(pool);        // categorical ⇒ fine mutation FLIPS the bit
-            const vraw = rnd.uniform(0, 1);      // velocity seed (real ⇒ smooth creep)
+            // Explicit stable names make each cell individually addressable, so a
+            // direct user edit can be folded back into the trace via
+            // representation.setGene('hit_c_s'/'vel_c_s', …) — see the header note
+            // on editable loops. (The grid is fixed 8×16, so stable names align
+            // cleanly across genomes; the structural-naming compiler appends its own
+            // {name} as a later arg, which rnd.choice/uniform ignore, so ours wins.)
+            const hit = rnd.choice(pool, { name: 'hit_' + c + '_' + s });   // categorical ⇒ fine mutation FLIPS the bit
+            const vraw = rnd.uniform(0, 1, { name: 'vel_' + c + '_' + s });  // velocity seed (real ⇒ smooth creep)
             row.push(hit ? 0.6 + 0.4 * vraw : 0); // store SEED; accent is applied at render
         }
         grid.push(row);
@@ -141,12 +153,22 @@ function drumVoices(sampleRate) {
     const kick = () => { const n = Math.floor(0.30 * sr), s = new Float32Array(n), e = env(n, 0.001, 0.14); let ph = 0; for (let i = 0; i < n; i++) { const f = 120 * Math.exp(-i / sr / 0.03) + 45; ph += 2 * Math.PI * f / sr; s[i] = Math.sin(ph) * e[i] * 0.95; } return s; };
     const snare = () => { const n = Math.floor(0.18 * sr), s = new Float32Array(n), e = env(n, 0.001, 0.08); for (let i = 0; i < n; i++) s[i] = ((Math.random() * 2 - 1) * 0.6 + Math.sin(2 * Math.PI * 185 * i / sr) * 0.5 * Math.exp(-i / sr / 0.05)) * e[i] * 0.8; return s; };
     const hat = (d) => { const n = Math.floor(d * sr), s = new Float32Array(n), e = env(n, 0.0005, d * 0.4); let prev = 0; for (let i = 0; i < n; i++) { const w = Math.random() * 2 - 1; s[i] = (w - prev) * e[i] * 0.35; prev = w; } return s; };
-    // 909-ish clap: a few quick noise transients + a diffuse tail, high-passed.
+    // 909-ish clap: three sharp noise transients (the "hands") ~9 ms apart plus a
+    // diffuse reverb-like tail, then BAND-passed around ~1.1 kHz. The band-pass is
+    // what gives a clap its body — an earlier high-pass here made it hiss like an
+    // open hat. Uses a Chamberlin state-variable filter, taking the band output.
     const clap = () => {
-        const n = Math.floor(0.22 * sr), s = new Float32Array(n);
-        for (const bt of [0, 0.008, 0.017, 0.028]) { const off = Math.floor(bt * sr); for (let i = 0; off + i < n; i++) s[off + i] += (Math.random() * 2 - 1) * Math.exp(-i / sr / 0.008); }
-        for (let i = 0; i < n; i++) s[i] = s[i] * 0.6 + (Math.random() * 2 - 1) * Math.exp(-i / sr / 0.1) * 0.22;
-        let prev = 0; for (let i = 0; i < n; i++) { const x = s[i]; s[i] = (x - prev) * 0.7 * 0.6; prev = x; }
+        const n = Math.floor(0.20 * sr), s = new Float32Array(n);
+        for (const bt of [0, 0.009, 0.018]) { const off = Math.floor(bt * sr); for (let i = 0; off + i < n; i++) s[off + i] += (Math.random() * 2 - 1) * Math.exp(-i / sr / 0.006); }
+        for (let i = 0; i < n; i++) s[i] = s[i] * 0.7 + (Math.random() * 2 - 1) * Math.exp(-i / sr / 0.12) * 0.18;
+        const fc = 1100, f = 2 * Math.sin(Math.PI * fc / sr), q = 0.6; // q = damping (lower = more resonant)
+        let low = 0, band = 0;
+        for (let i = 0; i < n; i++) {
+            low += f * band;
+            const high = s[i] - low - q * band;
+            band += f * high;
+            s[i] = band * 1.1;
+        }
         return s;
     };
     // Rimshot / side-stick: a bright click plus a short tonal ping.
@@ -177,6 +199,7 @@ class DrumMachineIndividual extends Individual {
     }
 
     usesColorPalette() { return true; } // rows are palette-coloured
+    usesDrumControls() { return true; } // attaches the global Performance panel
 
     // 8 channels with the colour rows now spread over all cells is ~117 mutable
     // hit genes. Scale the framework's rate to keep a single-parent offspring
@@ -196,6 +219,18 @@ class DrumMachineIndividual extends Individual {
         return Math.min(1, 0.35 + 0.6 * accentTerm * seed);
     }
 
+    // Grid geometry for a W×H canvas — the single source of truth shared by
+    // visualize() (drawing) and cellAtCanvasXY() (hit-testing), so a click always
+    // lands on the cell it appears to. Row c is drawn kick (c=0) at the BOTTOM.
+    _gridLayout(W, H) {
+        const rows = 8, cols = 16;
+        const pad = Math.max(2, Math.floor(W * 0.02));
+        const cw = (W - 2 * pad) / cols;
+        const gridH = H - 2 * pad;              // 8 rows fill the padded height
+        const chh = gridH / rows;
+        return { rows, cols, pad, cw, chh, gridH, yTop: pad };
+    }
+
     // --- Tile visual: a step-sequencer grid (kick at the bottom) ----------------
     visualize(canvas) {
         const ctx = canvas.getContext('2d');
@@ -205,12 +240,7 @@ class DrumMachineIndividual extends Individual {
         const p = this.phenotype;
         if (!p || !p.grid) return;
 
-        const rows = 8, cols = 16;
-        const pad = Math.max(2, Math.floor(W * 0.02));
-        const cw = (W - 2 * pad) / cols;
-        const gridH = H - 2 * pad;              // 8 rows fill the padded height
-        const chh = gridH / rows;
-        const yTop = pad;
+        const { rows, cols, pad, cw, chh, gridH, yTop } = this._gridLayout(W, H);
 
         // Shade the quarter-note columns so the beat is legible.
         ctx.fillStyle = 'rgba(255,255,255,0.05)';
@@ -237,6 +267,38 @@ class DrumMachineIndividual extends Individual {
         }
     }
 
+    // --- Direct cell editing (folded back into the genome) ----------------------
+    // The tile visual is a real step sequencer, so the framework lets the user
+    // click/drag it in the zoom lightbox. Each edit is written to the addressable
+    // per-cell genes (hit_c_s / vel_c_s) via representation.setGene, so evolution
+    // continues from the edited genome (see the header's EDITABLE LOOPS note).
+    isGridEditable() { return true; }
+
+    // Map a canvas pixel (already in canvas coordinate space) to { c, s }, or null
+    // if outside the grid. Inverse of the layout used by visualize().
+    cellAtCanvasXY(canvas, px, py) {
+        const { rows, cols, pad, cw, chh, yTop } = this._gridLayout(canvas.width, canvas.height);
+        const s = Math.floor((px - pad) / cw);
+        const rowFromTop = Math.floor((py - yTop) / chh);
+        const c = (rows - 1) - rowFromTop;      // kick (c=0) at the bottom
+        if (s < 0 || s >= cols || c < 0 || c >= rows) return null;
+        return { c, s };
+    }
+
+    cellOn(c, s) {
+        const p = this.phenotype;
+        return !!(p && p.grid && p.grid[c][s] > 0);
+    }
+
+    // Turn a cell on or off by forcing its hit gene, and replace this individual's
+    // genome with the result so the change is heritable. A freshly-turned-on cell
+    // reuses its existing velocity-seed gene (already in the trace), so it inherits
+    // a sensible dynamic rather than a flat default.
+    setCellHit(c, s, on) {
+        this.genome = drumMachineRepresentation.setGene(this.genome, `hit_${c}_${s}`, on ? 1 : 0);
+        this.invalidateImageCache();
+    }
+
     describeExtra() {
         const p = this.phenotype;
         if (!p || !p.grid) return '';
@@ -253,7 +315,11 @@ class DrumMachineIndividual extends Individual {
     renderToAudioBuffer() {
         const ctx = window.AudioClip.context();
         const sr = ctx.sampleRate;
-        const p = this.phenotype;
+        // Apply any GLOBAL performance overrides (tempo/swing/humanize/drive locked
+        // in the Performance panel). Render-stage only: the genome is untouched, so
+        // unlocking restores the per-genome feel. accent stays from the genome (read
+        // via _velocity, which isn't overridable).
+        const p = window.DrumControls ? window.DrumControls.apply(this.phenotype) : this.phenotype;
         const beat = 60 / p.bpm, bar = beat * 4, step = bar / 16;
         const N = Math.max(1, Math.round(bar * sr));
         const buffer = ctx.createBuffer(1, N, sr);
@@ -340,14 +406,19 @@ class DrumMachineIndividual extends Individual {
         const ctx = window.AudioClip.context();
         if (ctx.state === 'suspended') ctx.resume();
         this.stopMIDI();
+        const buffer = this.renderToAudioBuffer();
         const src = ctx.createBufferSource();
-        src.buffer = this.renderToAudioBuffer();
+        src.buffer = buffer;
         src.loop = true;
         const g = ctx.createGain();
         g.gain.value = 0.9;
         src.connect(g);
         g.connect(ctx.destination);
-        src.start();
+        // Enter at the global transport phase (not always 0), so editing a loop or
+        // switching individuals resumes mid-bar instead of restarting the downbeat.
+        // start(when, offset): offset seeks into the buffer, then loop=true wraps it.
+        const offset = window.DrumControls ? window.DrumControls.transport.phase(ctx, buffer.duration) : 0;
+        src.start(ctx.currentTime, offset);
         this._active = { src, g };
         this.isPlaying = true;
     }

@@ -301,6 +301,7 @@ select:focus { outline: none; border-color: var(--accent); }
 }
 .genome-content em { color: #666; font-style: italic; }
 .genome-label { color: var(--accent); font-weight: bold; margin-bottom: 5px; display: block; }
+.edit-hint { color: var(--accent); margin-top: 8px; font-style: italic; white-space: normal; }
 
 /* Palette extension (now lives in the drawer; neutral dark styling). */
 .extensions-container { font-size: 13px; }
@@ -317,6 +318,15 @@ select:focus { outline: none; border-color: var(--accent); }
 .color-swatch { width: 20px; height: 20px; cursor: pointer; }
 .color-swatch:hover { transform: scale(1.1); }
 .hotkey-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+/* Drum "Performance" panel: one row per global dial —
+   [checkbox] [label] [slider] [readout]. */
+.drum-dial { display: grid; grid-template-columns: auto auto 1fr 56px; align-items: center; gap: 8px; margin-top: 10px; }
+.drum-dial input[type="checkbox"] { margin: 0; accent-color: var(--accent); }
+.drum-dial-label { font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.drum-dial-slider { width: 100%; accent-color: var(--accent); }
+.drum-dial-slider:disabled { opacity: 0.4; }
+.drum-dial-readout { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Code-editor extension (UserGeneratorDrawingIndividual). The sidebar holds just
    a button + status; editing happens in the full-screen .code-modal below. */

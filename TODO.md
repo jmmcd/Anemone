@@ -4,8 +4,6 @@
 
 * PTO AnemoneIndividual "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in old AnemoneIndividual). 
 
-* Hotkeys
-
 * Individual can state its preference for (width, height) in the grid - might be needed for music individuals.
 
 * User controls for popsize, mutation rate..?
@@ -21,9 +19,9 @@
 
 * The zoom-in re-render is a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. Not sure what is the right solution here.
 
-* The drum machine should possibly remove the per-cell genes, and make the beat completely generated from the style parameters? Could investigate the backward mapping: infer style parameters which give a certain beat. This would allow user edits to be mapped back into the genome.
+* ~~The drum machine should possibly remove the per-cell genes, and make the beat completely generated from the style parameters?~~ Resolved the other way: KEEP the per-cell genes — they're the write target that makes direct editing trivial. Cells are now individually addressable (hit_c_s / vel_c_s genes) and hand-edits fold straight back into the genome via representation.setGene, so they keep evolving (no inference/backward-mapping needed). Cell-by-cell click/drag editing lives in the zoom lightbox. (Velocity editing still TODO — mechanism works, just needs a gesture.)
 
-* The drum machine should remove tempo from the genome and put it under user control. Maybe other genes (swing, humanisation, ..) should be under user control *as well as* in the genome.
+* ~~The drum machine should remove tempo from the genome and put it under user control.~~ Done as an override, not a removal: the render-stage dials (tempo, swing, humanize, drive) can be LOCKED globally in the drawer "Performance" panel (window.DrumControls) — user control *as well as* in the genome, since the gene stays and unlocking restores the per-genome feel. (Could extend to accent/push/swingTarget.)
 
 * Drum machine needs MIDI export, and potentially, proper MIDI interface (ie sync with GB via Web MIDI?)
 

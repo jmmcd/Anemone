@@ -42,6 +42,10 @@ class Individual {
     usesColorPalette() { return false; }
     usesPhoto()        { return false; }
     usesAudio()        { return false; }
+    // A type whose tile visual is a directly-editable grid (e.g. a step sequencer).
+    // When true, the framework wires click/drag on the zoom lightbox canvas to
+    // editCellAtXY(); the type maps pixels→cell and folds the edit into its genome.
+    isGridEditable()   { return false; }
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {

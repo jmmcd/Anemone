@@ -326,6 +326,13 @@ class InteractiveEAFramework {
             this.uiExtensions.push(new AudioControlUI(this));
         }
 
+        // Attach the global performance panel (tempo/swing/humanize/drive) for
+        // individuals that declare usesDrumControls() — lets the user drive the
+        // whole population from one place (e.g. lock a tempo to jam over).
+        if (sample && typeof sample.usesDrumControls === 'function' && sample.usesDrumControls()) {
+            this.uiExtensions.push(new DrumControlsUI(this));
+        }
+
         // Attach the code-editor panel for individuals that expose editable code
         // sections (all PTO-backed types do — at minimum their generator).
         if (sample && typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
@@ -707,7 +714,8 @@ class InteractiveEAFramework {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
             canvas.height = 128;
-            
+            individual._tileCanvas = canvas; // so a lightbox edit can refresh the tile
+
             div.appendChild(canvas);
 
             // Zoom affordance (revealed on hover on pointer-fine; on touch the
@@ -854,7 +862,8 @@ class InteractiveEAFramework {
         } catch (err) {
             console.warn('Zoom render failed:', err);
         }
-        if (this.lightboxInfo) this.lightboxInfo.innerHTML = individual.describe();
+        const gridEditable = typeof individual.isGridEditable === 'function' && individual.isGridEditable();
+        this._renderLightboxInfo(individual, gridEditable);
         // STL export only makes sense for individuals with a triangle mesh
         // (the 3D types expose generate3DPoints()).
         if (this.lightboxExportStl) {
@@ -871,6 +880,82 @@ class InteractiveEAFramework {
         // The one-shot visualize() above draws a static frame; keep the zoomed
         // 3D view rotating too.
         this.startZoomAnimation(individual);
+        // Wire click/drag editing for grid-editable types (e.g. the drum machine).
+        this.teardownGridEditing();
+        if (gridEditable) this.setupGridEditing(individual);
+    }
+
+    // Render the zoom info panel, appending a one-line hint when the tile is a
+    // directly-editable grid. Re-called after each edit so the ASCII grid updates.
+    _renderLightboxInfo(individual, gridEditable) {
+        if (!this.lightboxInfo) return;
+        let html = individual.describe();
+        if (gridEditable) {
+            html += '<div class="edit-hint">Click or drag cells to edit the loop — edits evolve with it.</div>';
+        }
+        this.lightboxInfo.innerHTML = html;
+    }
+
+    // Turn the zoom canvas into an editable step grid: click toggles a cell,
+    // drag paints (the first cell sets whether the drag turns cells on or off).
+    // Each edit is folded into the individual's genome by the individual itself
+    // (setCellHit → representation.setGene), so evolution continues from it. If the
+    // loop is playing, the audio is refreshed when the gesture ends.
+    setupGridEditing(individual) {
+        const canvas = this.lightboxCanvas;
+        if (!canvas) return;
+        this._gridEditAbort = new AbortController();
+        const signal = this._gridEditAbort.signal;
+        canvas.style.cursor = 'pointer';
+
+        let painting = false, paintOn = null, lastKey = null;
+        const cellAt = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+            return individual.cellAtCanvasXY(canvas, px, py);
+        };
+        const apply = (cell, on) => {
+            const key = cell.c + ',' + cell.s;
+            if (key === lastKey) return;         // don't re-fire within the same cell during a drag
+            lastKey = key;
+            individual.setCellHit(cell.c, cell.s, on);
+            individual.visualize(canvas);
+            this._renderLightboxInfo(individual, true);
+        };
+        canvas.addEventListener('pointerdown', (e) => {
+            const cell = cellAt(e);
+            if (!cell) return;
+            e.preventDefault();
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
+            painting = true; lastKey = null;
+            paintOn = !individual.cellOn(cell.c, cell.s);   // toggle sets the paint direction
+            apply(cell, paintOn);
+        }, { signal });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!painting) return;
+            const cell = cellAt(e);
+            if (cell) apply(cell, paintOn);
+        }, { signal });
+        const end = () => {
+            if (!painting) return;
+            painting = false; lastKey = null;
+            // Keep the small grid tile in sync with the edited genome.
+            if (individual._tileCanvas) {
+                try { individual.visualize(individual._tileCanvas); } catch (_) { }
+            }
+            // Refresh the audible loop if this individual is the one playing.
+            if (this.currentlyPlaying === individual && typeof individual.playMIDI === 'function') {
+                individual.playMIDI();
+            }
+        };
+        canvas.addEventListener('pointerup', end, { signal });
+        canvas.addEventListener('pointercancel', end, { signal });
+    }
+
+    teardownGridEditing() {
+        if (this._gridEditAbort) { this._gridEditAbort.abort(); this._gridEditAbort = null; }
+        if (this.lightboxCanvas) this.lightboxCanvas.style.cursor = '';
     }
 
     // Rotate the zoomed 3D view. The grid tiles idle while the lightbox is open
@@ -893,6 +978,7 @@ class InteractiveEAFramework {
 
     closeZoom() {
         this._zoomAnimToken = null; // stop the zoom rotation loop
+        this.teardownGridEditing();
         if (this.lightbox) this.lightbox.classList.remove('open');
     }
 

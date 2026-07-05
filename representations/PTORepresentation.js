@@ -161,6 +161,32 @@ class PTORepresentation {
     clone(geno) {
         return geno;
     }
+
+    /**
+     * Fold a direct edit of the phenotype back into the genotype: return a NEW
+     * genome identical to `geno` except that the single trace entry named `name`
+     * carries value `val`, then replay so the change is consistent. This is how a
+     * user's hand-edit (e.g. toggling a drum cell) becomes heritable — the forced
+     * value is now an ordinary gene and mutate/crossover act on it normally.
+     *
+     * Requires the gene to be individually addressable, i.e. the generator drew it
+     * with an explicit `{ name }` (see DrumMachine's per-cell hit/vel genes).
+     *
+     * On replay the tracer reuses the forced value because the regenerated
+     * distribution `matches()` the stored one (same funName + args). `val` should
+     * be a legal value for that distribution. Note a categorical whose pool has
+     * collapsed to a single distinct value (e.g. DrumMachine's locked colour cells,
+     * pool {0}): the forced value expresses fine, but fine mutation is a no-op on a
+     * one-value pool, so the edit becomes a *frozen* manual override — permanent and
+     * inert to evolution (it can only be changed by another setGene) rather than an
+     * ordinary evolvable gene.
+     */
+    setGene(geno, name, val) {
+        if (!(name in geno)) throw new Error(`setGene: no trace entry named '${name}'`);
+        const forced = geno[name].clone();   // deep copy: preserves funName/args/mode
+        forced.val = val;
+        return this._remember(this.op().fixInd({ ...geno, [name]: forced }));
+    }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
