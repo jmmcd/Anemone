@@ -22,6 +22,21 @@ class InteractiveEAFramework {
         // Shared 3D resources for WebGL context management
         this.shared3D = null;
 
+        // User-adjustable multiplier on the 3D camera framing distance (see
+        // renderMeshToCanvas). 1.0 = default framing; the [ and ] hotkeys step
+        // it so the user can pull back when a self-intersecting radial surface
+        // has geometry closer to the camera than its bounding-box centre (which
+        // otherwise puts the camera "inside" a lobe). Default is 2 [ steps
+        // closer-in than 1.0 (1/1.15²) for a larger view.
+        this.cameraDistanceFactor = 1 / (1.15 * 1.15);
+
+        // 3D camera field of view in degrees (the "focal length"). Lower = more
+        // telephoto = less foreshortening/perspective distortion; the framing
+        // distance is derived from this (renderMeshToCanvas) so the sculpture
+        // keeps the same on-screen size when the FOV changes. The - and = hotkeys
+        // step it. 30° is gentler than Three's 75° default.
+        this.cameraFOV = 30;
+
         // EEG data stream (for EEGSonificationIndividual)
         this.eegStream = null;
 
@@ -224,14 +239,25 @@ class InteractiveEAFramework {
         const center = boundingBox.getCenter(new THREE.Vector3());
         const size = boundingBox.getSize(new THREE.Vector3());
         
-        // Position camera to frame the object 
         const maxDim = Math.max(size.x, size.y, size.z);
-        const distance = maxDim * 0.9; // Close-up view for detailed inspection
-        
-        // Create a copy of the camera for this individual
+
+        // Create a copy of the camera for this individual, at the user's chosen
+        // focal length. Lower FOV = less foreshortening.
         const camera = this.shared3D.camera.clone();
+        camera.fov = this.cameraFOV;
         camera.aspect = canvas.width / canvas.height;
         camera.updateProjectionMatrix();
+
+        // Derive the framing distance from the FOV: this is the distance at which
+        // maxDim just fills the vertical view, times a margin. Because it scales
+        // as 1/tan(fov/2), narrowing the FOV automatically pushes the camera back
+        // to keep the sculpture the same on-screen size — only the perspective
+        // distortion changes. The margin (<2 keeps the object large in frame) also
+        // gives radial surfaces headroom: their near surface can reach past the
+        // bounding-box centre toward the camera, which 0.9·maxDim used to put the
+        // camera inside. cameraDistanceFactor is the user's [ / ] fine-tune.
+        const halfFov = (this.cameraFOV / 2) * Math.PI / 180;
+        const distance = (maxDim / 2) / Math.tan(halfFov) * 1.6 * this.cameraDistanceFactor;
         
         // Add rotation based on time for animation
         const time = Date.now() * 0.001;
@@ -487,6 +513,22 @@ class InteractiveEAFramework {
         }
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); this.exitPlacementMode(); }
+            // 3D camera hotkeys. Distance: [ pulls in, ] pushes out. Focal length
+            // (foreshortening): - narrows the FOV (more telephoto/flatter), = widens
+            // it. \ resets both. Ignore while typing in the code editor / any input.
+            // The 3D animation loops re-render every frame, so changing these takes
+            // effect on the next frame with no explicit redraw.
+            const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+            if (typing) return;
+            if (e.key === '[') this.cameraDistanceFactor = Math.max(0.3, this.cameraDistanceFactor / 1.15);
+            else if (e.key === ']') this.cameraDistanceFactor = Math.min(4, this.cameraDistanceFactor * 1.15);
+            else if (e.key === '-' || e.key === '_') this.cameraFOV = Math.max(8, this.cameraFOV - 5);
+            else if (e.key === '=' || e.key === '+') this.cameraFOV = Math.min(100, this.cameraFOV + 5);
+            else if (e.key === '\\') { this.cameraDistanceFactor = 1 / (1.15 * 1.15); this.cameraFOV = 30; }
+            // Space = Evolve. 0-9 / A-F = toggle like on that tile (hex index into
+            // the 16-tile grid, matching a left-to-right, top-to-bottom reading).
+            else if (e.key === ' ') { e.preventDefault(); doEvolve(); }
+            else if (/^[0-9a-fA-F]$/.test(e.key)) { this.toggleSelectByIndex(parseInt(e.key, 16)); }
         });
 
         // Individual type switching: changing the selection switches immediately.
@@ -761,6 +803,20 @@ class InteractiveEAFramework {
         console.timeEnd('renderGrid');
     }
     
+    // Toggle "like" on the individual at grid position `index` (0-based), the
+    // keyboard equivalent of clicking the tile: it also makes that individual
+    // current and syncs the tile's selected styling + the info panel.
+    toggleSelectByIndex(index) {
+        if (this.pendingLoad) return;              // placement mode owns clicks
+        const individual = this.ea.population[index];
+        const div = this.grid && this.grid.children[index];
+        if (!individual || !div) return;
+        this.currentIndividual = individual;
+        this.ea.toggleLike(individual);
+        div.classList.toggle('selected', individual.selected);
+        this.renderInfo();
+    }
+
     renderInfo() {
         const count = this.ea.selectedIndividuals.length;
         if (this.selectedCount) this.selectedCount.textContent = count;
@@ -1114,9 +1170,13 @@ class InteractiveEAFramework {
         }
     }
     
-    // Map of individual type names → constructors. Shared by the type selector
-    // and the load-PNG path (which needs to look a type up by its saved name).
-    individualTypeMap() {
+    // Map of individual type names → constructors. Shared by the type selector,
+    // the load-PNG path (which looks a type up by its saved name), and the
+    // deep-link resolver. Static so main.js can resolve a URL token to a class
+    // before the framework is constructed.
+    individualTypeMap() { return InteractiveEAFramework.individualTypeMap(); }
+
+    static individualTypeMap() {
         return {
             'PatternIndividual': PatternIndividual,
             'PatternGrammarIndividual': PatternGrammarIndividual,
@@ -1140,6 +1200,20 @@ class InteractiveEAFramework {
             'MouseMusicIndividual': MouseMusicIndividual,
             'EEGSonificationIndividual': EEGSonificationIndividual
         };
+    }
+
+    // Resolve a deep-link token (e.g. "DrumMachine", "drummachineindividual",
+    // "PetalSphere3DIndividual") to a registered individual class, or null.
+    // Matching is case-insensitive and the "Individual" suffix is optional.
+    static resolveIndividualType(token) {
+        if (!token) return null;
+        const norm = s => decodeURIComponent(s).toLowerCase().replace(/individual$/, '');
+        const target = norm(token);
+        const map = InteractiveEAFramework.individualTypeMap();
+        for (const name of Object.keys(map)) {
+            if (norm(name) === target) return map[name];
+        }
+        return null;
     }
 
     switchIndividualType() {
@@ -1183,7 +1257,14 @@ class InteractiveEAFramework {
 
             // Render the new population
             this.render();
-            
+
+            // Keep the URL hash in sync so the current app is shareable/bookmarkable
+            // (the "Individual" suffix is dropped for a friendlier link). replaceState
+            // avoids spamming browser history on every switch.
+            if (typeof history !== 'undefined' && history.replaceState) {
+                history.replaceState(null, '', '#' + selectedType.replace(/Individual$/, ''));
+            }
+
             console.log(`Successfully switched to ${selectedType}`);
         } else if (NewIndividualClass === this.individualClass) {
             console.log('Already using the selected individual type');

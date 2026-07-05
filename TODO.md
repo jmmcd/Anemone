@@ -21,6 +21,13 @@
 
 * The zoom-in re-render is a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. Not sure what is the right solution here.
 
+* The drum machine should possibly remove the per-cell genes, and make the beat completely generated from the style parameters? Could investigate the backward mapping: infer style parameters which give a certain beat. This would allow user edits to be mapped back into the genome.
+
+* The drum machine should remove tempo from the genome and put it under user control. Maybe other genes (swing, humanisation, ..) should be under user control *as well as* in the genome.
+
+* Drum machine needs MIDI export, and potentially, proper MIDI interface (ie sync with GB via Web MIDI?)
+
+* The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
 
 
 # NEW APPLICATIONS
