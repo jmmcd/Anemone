@@ -2,7 +2,7 @@
 
 * We are now using PTO (pilot) by vendoring in pto-bundle.js. Need to update that occasionally if PTO js changes. Or revisit how we build etc.
 
-* PTO "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in AnemoneIndividual). 
+* PTO AnemoneIndividual "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in old AnemoneIndividual). 
 
 * Hotkeys
 
@@ -11,8 +11,6 @@
 * User controls for popsize, mutation rate..?
 
 * In the pattern individual, theta tends to be bad, so better would be sin theta and cos theta? With factor of 2 pi.
-
-* Consider palettes in HSL or LCH or OKLCH (https://jakub.kr/components/oklch-colors)
 
 * In the xy pattern, allow use of individual points as centres with r and theta. Also mod. And somehow, special points defined by intersections of other curves, eg (theta mod 12 intersected with r % 10 == 0) can become useful as reference points for others. Reference points define new x and y frames. So maybe we have functions like r() and theta(). If called with no arguments they give radius wrt the image centre. If called with some arguments, calculate wrt the point defined by those arguments. 
 
