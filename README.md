@@ -38,11 +38,12 @@ You can double-click an individual to zoom in on it. You'll then see a button fo
 
 # Hotkeys
 
+* `0`, `1`, ... `9`, `A`, `B`, ... `F` selects or de-selects an individual, and
+* `space` clicks the Evolve button.
 * `[` and `]` zoom in and out on the 3D individuals, 
 * `=` and `-` change the focal length of the 3D individuals, and 
 * `\` resets all of the above to default.
 * `p` cycles the palette.
-* `space` clicks the Evolve button.
 
 # MIDI?
 
