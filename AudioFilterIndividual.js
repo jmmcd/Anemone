@@ -92,7 +92,7 @@ const audioFilterRepresentation = new PTORepresentation(audioFilterGenerator);
 
 class AudioFilterIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = audioFilterRepresentation;
         this.genome = genome || this.representation.generateRandom();
         // Shared buffer/graph playback modality (local fallback for tests).

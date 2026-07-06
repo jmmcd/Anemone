@@ -68,7 +68,7 @@ const branchRepresentation = new PTORepresentation(branchGenerator);
 
 class BranchIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = branchRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

@@ -17,7 +17,7 @@ const shapesRepresentation = new PTORepresentation(shapesGenerator);
 
 class ShapesIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = shapesRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

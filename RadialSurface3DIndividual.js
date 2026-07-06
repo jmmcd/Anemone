@@ -28,7 +28,7 @@
  */
 class RadialSurface3DIndividual extends Individual {
     constructor() {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.threeDModality = new ThreeDModality();
         this.thetaPoints = 50;
         this.phiPoints = 100;

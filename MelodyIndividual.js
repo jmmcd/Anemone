@@ -66,7 +66,7 @@ const melodyRepresentation = new PTORepresentation(melodyGenerator);
 
 class MelodyIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = melodyRepresentation;
         this.genome = genome || this.representation.generateRandom();
         // Shared output modalities (local fallbacks for tests): notes → MIDI, else synth.

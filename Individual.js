@@ -29,10 +29,7 @@ class Individual {
         this._cachedImageData = null;
         this._cacheKey = null;
 
-        // Subclasses pass 'SKIP_GENOME_GENERATION' and manage their own genome
-        // (and this.representation) after super(). A concrete genome is stored
-        // directly so the generic crossover/clone below can reconstruct.
-        if (genome !== null && genome !== 'SKIP_GENOME_GENERATION') {
+        if (genome !== null) {
             this.genome = genome;
         }
     }

@@ -40,7 +40,6 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
     constructor(genome = null) {
         super(genome);
         this.eegStream = null;
-        console.log(`🧠 EEG Sonification Individual ${this.id} created`);
     }
 
     makeRepresentation() {
@@ -52,7 +51,6 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
      */
     setEEGDataStream(stream) {
         this.eegStream = stream;
-        console.log(`🧠 EEG stream set for individual ${this.id}`);
     }
 
     evaluateEEGDAG() {
@@ -73,7 +71,7 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
 
             dag.outputNodes.forEach(node => node.evaluate());
         } catch (error) {
-            console.error(`Error in evaluateEEGDAG for ${this.id}:`, error);
+            // silent — EEG evaluation errors are transient (missing data, mid-stream)
         }
     }
 
@@ -124,20 +122,15 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
 
     startEEG() {
         if (!this.midiModality.isRunning) {
-            // Wire MIDI and clear any leftover energy before this play session.
             this.wiredDAG().outputNodes.forEach(node => { node.energyAccumulator = 0; });
-            console.log(`🧠 Starting EEG sonification ${this.id}`);
             this.midiModality.start(() => {
-                try { this.evaluateEEGDAG(); } catch (e) {
-                    console.error(`❌ Error in EEG evaluation for ${this.id}:`, e);
-                }
+                try { this.evaluateEEGDAG(); } catch (e) { /* transient */ }
             }, this.timeStep);
         }
     }
 
     stopEEG() {
         if (this.midiModality.isRunning) {
-            console.log(`⏹ Stopping EEG sonification ${this.id}`);
             this.midiModality.stop();
         }
     }

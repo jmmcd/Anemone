@@ -12,7 +12,7 @@ const gridRepresentation = new PTORepresentation(gridGenerator);
 
 class GridIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = gridRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

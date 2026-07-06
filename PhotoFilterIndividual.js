@@ -70,7 +70,7 @@ const photoFilterRepresentation = new PTORepresentation(photoFilterGenerator);
 
 class PhotoFilterIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = photoFilterRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

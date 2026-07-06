@@ -62,7 +62,7 @@ const SHEEP_TRAIT_RANGES = {
 
 class SheepIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
 
         this.representation = sheepRepresentation;
         this.genome = genome || this.representation.generateRandom();

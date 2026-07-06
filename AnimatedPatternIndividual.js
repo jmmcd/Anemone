@@ -68,7 +68,7 @@ let _paused = false;
 
 class AnimatedPatternIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = animatedPatternRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

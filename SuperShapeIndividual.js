@@ -22,7 +22,7 @@ const supershapeRepresentation = new PTORepresentation(supershapeGenerator);
 
 class SuperShapeIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = supershapeRepresentation;
         this.genome = genome || this.representation.generateRandom();
         this.numPoints = 1000;

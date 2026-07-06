@@ -87,7 +87,7 @@ class AnemoneIndividual extends Individual {
     // mutate/crossover/clone are inherited from Individual and delegate to
     // this.representation (PTORepresentation), so there are no operator overrides.
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = anemoneRepresentation;
         this.genome = genome || this.representation.generateRandom();
 

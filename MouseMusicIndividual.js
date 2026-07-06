@@ -43,7 +43,7 @@ const mouseMusicRepresentation = new PTORepresentation(mouseMusicGenerator);
 
 class MouseMusicIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
 
         this.representation = this.makeRepresentation();
 
@@ -60,8 +60,6 @@ class MouseMusicIndividual extends Individual {
         this.mouseY = 0;
         this.mouseListener = null;
         this.canvas = null;
-
-        console.log(`🎵 DAG Individual ${this.id} created`);
     }
 
     // Which PTO representation this individual uses; overridden by subclasses

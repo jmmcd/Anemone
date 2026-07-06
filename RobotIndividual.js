@@ -809,7 +809,7 @@ const robotDraw = new Editable(function (self, ctx, width, height) {
 
 class RobotIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = robotRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

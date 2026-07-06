@@ -40,7 +40,7 @@ const patternGrammarGenerator = (rnd) => {
     const expand = (symbol, depth) => {
         if (!imagePatternGrammar.isNonTerminal(symbol)) return symbol;
         const choices = depth > 0 ? imagePatternGrammar.getProductions(symbol) : imagePatternGrammar.shortestProductions(symbol);
-        const idx = rnd.randint(0, choices.length - 1);
+        const idx = Math.min(choices.length - 1, rnd.randint(0, choices.length - 1));
         const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
@@ -53,7 +53,7 @@ const patternGrammarRepresentation = new PTORepresentation(patternGrammarGenerat
 
 class PatternGrammarIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = patternGrammarRepresentation;
         this.genome = genome || this.representation.generateRandom();
     }

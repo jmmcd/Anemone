@@ -198,7 +198,7 @@ const DRUM_CHANNEL_GAIN = [1, 1, 1, 1, 0.5, 0.5, 0.3, 0.3]; // tom/cowbell sit f
 
 class DrumMachineIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
         this.representation = drumMachineRepresentation;
         this.genome = genome || this.representation.generateRandom();
         // Shared buffer/graph playback modality (local fallback for tests).

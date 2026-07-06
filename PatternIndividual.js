@@ -15,7 +15,7 @@ const patternTreeRepresentation = new PTORepresentation(treeGenerator);
 class PatternIndividual extends Individual {
     constructor(genome = null) {
         // Skip automatic genome generation
-        super('SKIP_GENOME_GENERATION');
+        super();
 
         this.representation = patternTreeRepresentation;
 

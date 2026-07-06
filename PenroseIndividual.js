@@ -16,7 +16,7 @@ const penroseRepresentation = new PTORepresentation(penroseGenerator);
 
 class PenroseIndividual extends Individual {
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
+        super();
 
         this.representation = penroseRepresentation;
         this.genome = genome || this.representation.generateRandom();
