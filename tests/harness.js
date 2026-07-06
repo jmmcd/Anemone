@@ -32,6 +32,7 @@ const SOURCES = [
     'modalities/MIDIModality.js',
     'modalities/AudioModality.js',
     'modalities/ThreeDModality.js',
+    'MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
     'PerformanceControls.js',   // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
     'EvolutionaryAlgorithm.js',
     // Individuals (base classes before their subclasses).

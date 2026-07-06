@@ -79,6 +79,7 @@ class MelodyIndividual extends Individual {
     usesColorPalette() { return true; }        // rows are palette-coloured
     usesPerformanceControls() { return true; } // attaches the global Performance panel
     performanceDials() { return ['bpm', 'swing', 'length']; }
+    usesMIDISync() { return true; }            // attaches the MIDI Clock Sync panel
     isGridEditable() { return true; }
     // The melody's artefact is the sound (MIDI/audio), not the piano-roll tile.
     usesImageSave() { return false; }
