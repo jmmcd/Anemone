@@ -19,6 +19,7 @@
     </header>
 
     <main class="container">
+        <a href="#" id="about-link" class="about-link">About</a>
         <div class="grid" id="grid"></div>
     </main>
 
@@ -106,6 +107,14 @@
         <canvas id="place-preview" width="64" height="64"></canvas>
         <span class="place-text">Click a tile to replace it with this loaded individual.</span>
         <button id="place-cancel" class="secondary-btn">Cancel</button>
+    </div>
+
+    <!-- About page (opened from the link above the grid; closes back to it). -->
+    <div id="about-modal" class="lightbox about-modal">
+        <div class="lightbox-inner about-inner">
+            <button id="about-close" class="icon-btn lightbox-close" aria-label="Close">✕</button>
+            <div id="about-content" class="about-content">Loading…</div>
+        </div>
     </div>
 
     <!-- Zoom lightbox (long-press on touch, double-click / ⛶ on pointer-fine). -->

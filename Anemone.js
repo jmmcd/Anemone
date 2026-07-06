@@ -454,6 +454,10 @@ class InteractiveEAFramework {
         this.lightboxExportStl = document.getElementById('lightbox-export-stl');
         this.lightboxExportWav = document.getElementById('lightbox-export-wav');
         this.lightboxExportMidi = document.getElementById('lightbox-export-midi');
+        this.aboutLink = document.getElementById('about-link');
+        this.aboutModal = document.getElementById('about-modal');
+        this.aboutContent = document.getElementById('about-content');
+        this.aboutClose = document.getElementById('about-close');
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -512,6 +516,26 @@ class InteractiveEAFramework {
             if (e.target === this.lightbox) this.closeZoom();
         });
 
+        // About page: opens an overlay (same chrome as the lightbox) that
+        // fetches About.md and shows it; closes back to the grid.
+        const openAbout = () => {
+            if (!this.aboutModal) return;
+            this.aboutModal.classList.add('open');
+            if (this.aboutContent) {
+                this.aboutContent.textContent = 'Loading…';
+                fetch('About.md')
+                    .then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+                    .then((text) => { this.aboutContent.textContent = text; })
+                    .catch(() => { this.aboutContent.textContent = 'Could not load About.md.'; });
+            }
+        };
+        const closeAbout = () => { if (this.aboutModal) this.aboutModal.classList.remove('open'); };
+        if (this.aboutLink) this.aboutLink.addEventListener('click', (e) => { e.preventDefault(); openAbout(); });
+        if (this.aboutClose) this.aboutClose.addEventListener('click', closeAbout);
+        if (this.aboutModal) this.aboutModal.addEventListener('click', (e) => {
+            if (e.target === this.aboutModal) closeAbout();
+        });
+
         // Lightbox save: explicit button (works on mobile + desktop), plus
         // right-click / long-press on the zoomed canvas as a bonus affordance.
         if (this.lightboxSave) this.lightboxSave.addEventListener('click', () => this.saveCurrentImage());
@@ -533,7 +557,8 @@ class InteractiveEAFramework {
             this.lightboxCanvas.addEventListener('touchmove', cancelLp, { passive: true });
         }
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); this.exitPlacementMode(); }
+            if (e.key === 'Escape') { this.closeZoom(); closeDrawer(); closeAbout(); this.exitPlacementMode(); }
+            if (this.aboutModal && this.aboutModal.classList.contains('open')) return;
             // 3D camera hotkeys. Distance: [ pulls in, ] pushes out. Focal length
             // (foreshortening): - narrows the FOV (more telephoto/flatter), = widens
             // it. \ resets both. Ignore while typing in the code editor / any input.

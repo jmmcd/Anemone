@@ -69,6 +69,15 @@ body {
     padding: 16px;
 }
 
+.about-link {
+    display: inline-block;
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 13px;
+    text-decoration: none;
+}
+.about-link:hover { color: var(--accent); text-decoration: underline; }
+
 .grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -449,6 +458,10 @@ select:focus { outline: none; border-color: var(--accent); }
    for audio, WAV takes Save's slot at left:8px and MIDI sits here beside it. */
 .lightbox-export-stl,
 .lightbox-export-midi { left: 104px; }
+
+/* About page reuses the lightbox chrome (overlay + close button). */
+.about-inner { max-width: 640px; padding-top: 48px; }
+.about-content { white-space: pre-wrap; line-height: 1.5; }
 
 /* Placement banner: pick a grid tile to replace with a loaded individual. */
 .place-banner {
