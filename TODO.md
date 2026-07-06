@@ -23,8 +23,6 @@
 
 * The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
 
-* Maybe set up GitHub Pages, to avoid using Surge. jmmcd.net/anemone. anemone.ie.
-
 * Make a src/ directory?
 
 

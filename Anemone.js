@@ -132,10 +132,11 @@ class InteractiveEAFramework {
             // Create shared Three.js scene and renderer
             this.shared3D = {
                 scene: new THREE.Scene(),
-                renderer: new THREE.WebGLRenderer({ 
+                renderer: new THREE.WebGLRenderer({
                     canvas: tempCanvas,
                     antialias: true,
-                    preserveDrawingBuffer: true
+                    preserveDrawingBuffer: true,
+                    logarithmicDepthBuffer: true
                 }),
                 camera: new THREE.PerspectiveCamera(75, 1, 0.1, 1000),
                 meshes: new Map() // Track individual meshes by ID
@@ -544,13 +545,22 @@ class InteractiveEAFramework {
             // step-sequencer run (drum/melody), else they zoom the 3D camera.
             const sample = this._sampleIndividual();
             const isSeq = sample && typeof sample.performanceDials === 'function' && sample.performanceDials().includes('length');
-            if (e.key === '[') { if (isSeq) this.adjustSequencerLength(-1); else this.cameraDistanceFactor = Math.max(0.3, this.cameraDistanceFactor / 1.15); }
-            else if (e.key === ']') { if (isSeq) this.adjustSequencerLength(1); else this.cameraDistanceFactor = Math.min(4, this.cameraDistanceFactor * 1.15); }
+            const isAnimPat = sample instanceof AnimatedPatternIndividual;
+            // [ / ] are context-sensitive: sequencer length, animated-pattern period, or 3D camera zoom.
+            if (e.key === '[') {
+                if (isSeq) this.adjustSequencerLength(-1);
+                else if (isAnimPat) AnimatedPatternIndividual.adjustPeriodScale(1.3);   // slower
+                else this.cameraDistanceFactor = Math.max(0.3, this.cameraDistanceFactor / 1.15);
+            } else if (e.key === ']') {
+                if (isSeq) this.adjustSequencerLength(1);
+                else if (isAnimPat) AnimatedPatternIndividual.adjustPeriodScale(1 / 1.3); // faster
+                else this.cameraDistanceFactor = Math.min(4, this.cameraDistanceFactor * 1.15);
+            }
             else if (e.key === '-' || e.key === '_') this.cameraFOV = Math.max(8, this.cameraFOV - 5);
             else if (e.key === '=' || e.key === '+') this.cameraFOV = Math.min(100, this.cameraFOV + 5);
             else if (e.key === '\\') { this.cameraDistanceFactor = 1 / (1.15 * 1.15); this.cameraFOV = 30; }
             // . (the > key) = play/pause the current sound individual (3D run: start/stop rotation).
-            else if (e.key === '.' || e.key === '>') { e.preventDefault(); this.togglePlayPauseOrRotation(); }
+            else if (e.key === '.' || e.key === '>') { e.preventDefault(); if (isAnimPat) AnimatedPatternIndividual.togglePause(); else this.togglePlayPauseOrRotation(); }
             // Space = Evolve. 0-9 / A-F = toggle like on that tile (hex index into
             // the 16-tile grid, matching a left-to-right, top-to-bottom reading).
             else if (e.key === ' ') { e.preventDefault(); doEvolve(); }
@@ -1413,6 +1423,7 @@ class InteractiveEAFramework {
         return {
             'PatternIndividual': PatternIndividual,
             'PatternGrammarIndividual': PatternGrammarIndividual,
+            'AnimatedPatternIndividual': AnimatedPatternIndividual,
             'PolarCurveIndividual': PolarCurveIndividual,
             'ShapesIndividual': ShapesIndividual,
             'PhotoFilterIndividual': PhotoFilterIndividual,

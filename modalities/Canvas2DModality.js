@@ -244,6 +244,10 @@ class Canvas2DModality {
      * changes). `renderFunction(ctx, width, height)` must return an ImageData.
      */
     static renderCached(canvas, holder, renderFunction) {
+        // Evict any animation loop that was drawing to this canvas (e.g. when the
+        // user switches from AnimatedPatternIndividual to a static type).
+        canvas._animOwner = null;
+
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;

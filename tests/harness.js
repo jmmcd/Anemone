@@ -46,6 +46,7 @@ const SOURCES = [
     'EEGSonificationIndividual.js',
     'PatternIndividual.js',
     'PatternGrammarIndividual.js',
+    'AnimatedPatternIndividual.js',
     'PolarCurveIndividual.js',
     'AnemoneIndividual.js',
     'BranchIndividual.js',
@@ -64,6 +65,7 @@ const SOURCES = [
 const INDIVIDUAL_CLASSES = [
     'PatternIndividual',
     'PatternGrammarIndividual',
+    'AnimatedPatternIndividual',
     'PolarCurveIndividual',
     'ShapesIndividual',
     'PhotoFilterIndividual',
