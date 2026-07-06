@@ -183,7 +183,7 @@ All individuals use `PTORepresentation` (default fine/structural operators); the
 | `AnemoneIndividual` | variable-length bytes | Canvas2D | Variable-length turtle graphics |
 | `BranchIndividual` | array of drawing commands | Canvas2D | Free-form branching turtle; generator returns `{op,...}` commands. (Like every type, its generator is editable via CodeEditorUI.) |
 | `RobotIndividual` | structured params object | Canvas2D | Parametric cartoon robot; conditional genes (body shape, locomotion legs/wheels/tracks/monowheel, front panel, hand style, per-anchor accessory slots with 30+ types) |
-| `SheepIndividual` | 8 floats | Canvas2D | Float genome fed into fixed-random neural network |
+| `SheepIndividual` | 6 floats | Canvas2D | Gene-interaction demo: genes feed a fixed hand-written sparse NN (6→4 latent factors→10 traits) that controls a cartoon sheep; `describeExtra()` shows the factor activations |
 | `PenroseIndividual` | 8 params | Canvas2D | Kite-and-dart tiling |
 | `MelodyIndividual` | 8-pitch × 16-step grid + style genes | MIDI / audio | Polyphonic piano-roll (held note = run of on-cells; `length` gene = bar length 8–16). Shares the DrumMachine step-sequencer core: per-cell editable genes, global Performance panel, unified live-MIDI-else-synth playback, MIDI export |
 | `DrumMachineIndividual` | 8-channel × 16-step grid + style genes (incl. `length` 8–16) | MIDI / audio | Evolvable drum loop; the step-sequencer template Melody is built on (per-cell `hit_c_s`/`vel_c_s` genes, `renderToAudioBuffer`, GM-percussion MIDI). See its file header |

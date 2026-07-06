@@ -1,8 +1,64 @@
-// PTO generator: 8 floats in [0,1] (the neural-network inputs). The default
+// PTO generator: 6 floats in [0,1] (the neural-network inputs). The default
 // 'fine' mutation gives Gaussian creep, matching the old FloatRepresentation feel.
 // Explicit for-loop (not Array.from) so structural naming names each gene; see PTORepresentation.
-const sheepGenerator = (rnd) => { const g = []; for (let i = 0; i < 8; i++) g.push(rnd.uniform(0, 1)); return g; };
+const sheepGenerator = (rnd) => { const g = []; for (let i = 0; i < 6; i++) g.push(rnd.uniform(0, 1)); return g; };
 const sheepRepresentation = new PTORepresentation(sheepGenerator);
+
+// ---------------------------------------------------------------------------
+// The point of this type is to illustrate GENE INTERACTIONS: the genome does
+// not control appearance directly. Instead the 6 genes feed a small fixed
+// neural network (6 inputs → 4 hidden → 10 outputs, tanh) whose outputs are
+// the drawing traits. The weights are ad-hoc but FIXED — hand-written
+// constants shared by every sheep — so the same genome always gives the same
+// sheep, and evolution explores a stable genotype→phenotype map.
+//
+// The weights are deliberately SPARSE so the interactions are non-obvious but
+// gradually comprehensible: each hidden unit acts as a nameable latent factor
+// driven by 2-3 genes, and each trait reads 1-2 factors. E.g. nudging gene 3
+// moves the "mood" factor, which shifts the smile, ear perk, eye size and
+// blush together — while genes 0/1 trade body size against leg length.
+//
+//   h0 "bulk"   ← genes 0,1        → bigger body, shorter legs, bigger fluff
+//   h1 "fleece" ← genes 1,2,(5)    → fluff, tail curl, leg length; droops ears
+//   h2 "mood"   ← genes 3,4        → smile, perky ears, wide eyes, blush
+//   h3 "tone"   ← genes 0,4,5      → wool brightness, face paleness, blush
+//
+// Inputs are centred to [-1,1] before the first layer so gene = 0.5 is neutral.
+const SHEEP_W_HIDDEN = [
+    // g0    g1    g2    g3    g4    g5
+    [ 2.0,  1.2,  0.0,  0.0,  0.0,  0.0], // h0 bulk
+    [ 0.0,  1.6, -1.9,  0.0,  0.0,  0.3], // h1 fleece
+    [ 0.0,  0.0,  0.0,  2.2,  1.0,  0.0], // h2 mood
+    [-1.4,  0.0,  0.0,  0.0,  1.3,  1.8], // h3 tone
+];
+const SHEEP_B_HIDDEN = [-0.2, 0.2, 0.0, 0.0];
+
+// One row per trait: [w_h0, w_h1, w_h2, w_h3, bias], then tanh, then map
+// [-1,1] onto the trait's range below.
+const SHEEP_W_OUT = {
+    bodySize:  [ 1.3,  0.0, -0.4,  0.0,  0.0],
+    legLength: [-1.1,  0.9,  0.0,  0.0,  0.3],
+    fluff:     [ 0.5,  1.5,  0.0,  0.0,  0.0],
+    woolTone:  [ 0.0, -0.5,  0.0,  1.2,  0.0],
+    faceTone:  [ 0.0,  0.0,  0.4,  1.6, -0.2],
+    smile:     [ 0.0,  0.2,  1.6,  0.0,  0.0],
+    earPerk:   [ 0.0, -1.1,  1.2,  0.0,  0.0],
+    tailCurl:  [ 0.0,  1.1,  0.7,  0.0,  0.0],
+    eyeSize:   [-0.6,  0.0,  0.8,  0.0,  0.2],
+    blush:     [ 0.0,  0.0,  0.9,  0.7, -0.3],
+};
+const SHEEP_TRAIT_RANGES = {
+    bodySize:  [0.78, 1.22],
+    legLength: [0.70, 1.35],
+    fluff:     [0, 1],
+    woolTone:  [0, 1],
+    faceTone:  [0, 1],
+    smile:     [0, 1],
+    earPerk:   [0, 1],   // 0 = droopy, 1 = perky
+    tailCurl:  [0, 1],
+    eyeSize:   [0.8, 1.3],
+    blush:     [0, 1],
+};
 
 class SheepIndividual extends Individual {
     constructor(genome = null) {
@@ -11,586 +67,275 @@ class SheepIndividual extends Individual {
         this.representation = sheepRepresentation;
         this.genome = genome || this.representation.generateRandom();
 
-        // Neural network architecture: 8 inputs -> 6 hidden -> 8 outputs
-        this.hiddenSize = 6;
-        this.outputSize = 8;
+        // Expose the fixed network (tests check the shapes).
+        this.hiddenSize = SHEEP_W_HIDDEN.length;
+        this.weightsInputHidden = SHEEP_W_HIDDEN;
+        this.hiddenBiases = SHEEP_B_HIDDEN;
+    }
 
-        // Initialize random neural network weights
-        this.initializeNeuralNetwork();
-    }
-    
-    initializeNeuralNetwork() {
-        // Weights from input (genome length) to hidden (6)
-        const inputSize = this.phenotype.length;
-        this.weightsInputHidden = [];
-        for (let h = 0; h < this.hiddenSize; h++) {
-            this.weightsInputHidden[h] = [];
-            for (let i = 0; i < inputSize; i++) {
-                this.weightsInputHidden[h][i] = (Math.random() - 0.5) * 2; // Range: -1 to 1
+    // Forward pass through the fixed network: genes → hidden activations.
+    hiddenActivations() {
+        const genes = this.phenotype;
+        const acts = [];
+        for (let h = 0; h < SHEEP_W_HIDDEN.length; h++) {
+            let sum = SHEEP_B_HIDDEN[h];
+            for (let i = 0; i < genes.length; i++) {
+                sum += (genes[i] * 2 - 1) * SHEEP_W_HIDDEN[h][i];
             }
+            acts.push(Math.tanh(sum));
         }
-        
-        // Hidden layer biases
-        this.hiddenBiases = Array(this.hiddenSize).fill(0).map(() => (Math.random() - 0.5) * 2);
-        
-        // Weights from hidden (6) to output (8)
-        this.weightsHiddenOutput = [];
-        for (let o = 0; o < this.outputSize; o++) {
-            this.weightsHiddenOutput[o] = [];
-            for (let h = 0; h < this.hiddenSize; h++) {
-                this.weightsHiddenOutput[o][h] = (Math.random() - 0.5) * 2; // Range: -1 to 1
-            }
-        }
-        
-        // Output layer biases
-        this.outputBiases = Array(this.outputSize).fill(0).map(() => (Math.random() - 0.5) * 2);
+        return acts;
     }
-    
-    // Tanh activation function
-    tanh(x) {
-        return Math.tanh(x);
-    }
-    
-    // Forward pass through neural network
-    forwardPass(inputs) {
-        // Calculate hidden layer activations
-        const hiddenActivations = [];
-        for (let h = 0; h < this.hiddenSize; h++) {
-            let sum = this.hiddenBiases[h];
-            for (let i = 0; i < inputs.length; i++) {
-                sum += inputs[i] * this.weightsInputHidden[h][i];
-            }
-            hiddenActivations[h] = this.tanh(sum);
-        }
-        
-        // Calculate output layer activations
-        const outputs = [];
-        for (let o = 0; o < this.outputSize; o++) {
-            let sum = this.outputBiases[o];
-            for (let h = 0; h < this.hiddenSize; h++) {
-                sum += hiddenActivations[h] * this.weightsHiddenOutput[o][h];
-            }
-            outputs[o] = this.tanh(sum);
-        }
-        
-        return outputs;
-    }
-    
-    // Convert neural network outputs to sheep phenotype
+
+    // Hidden activations → named traits, each mapped into its range.
     getPhenotype() {
-        const outputs = this.forwardPass(this.phenotype);
-        
-        return {
-            woolColor: Math.max(0.2, Math.min(0.9, (outputs[0] + 1) / 2)), // 0.2-0.9 (light gray to white)
-            curliness: Math.max(0, Math.min(1, (outputs[1] + 1) / 2)), // 0-1 (straight to very curly)
-            faceColor: Math.max(0.3, Math.min(1, (outputs[2] + 1) / 2)), // 0.3-1 (gray to white)
-            smileAmount: Math.max(0, Math.min(1, (outputs[3] + 1) / 2)), // 0-1 (frown to big smile)
-            legLength: Math.max(0.6, Math.min(1.4, outputs[4] + 1)), // 0.6-1.4 (short to long legs)
-            bodySize: Math.max(0.7, Math.min(1.3, outputs[5] + 1)), // 0.7-1.3 (small to large body)
-            earShape: Math.max(0, Math.min(1, (outputs[6] + 1) / 2)), // 0-1 (pointy to floppy ears)
-            tailCurl: Math.max(0, Math.min(1, (outputs[7] + 1) / 2)) // 0-1 (straight to curly tail)
-        };
+        const acts = this.hiddenActivations();
+        const traits = {};
+        for (const [name, w] of Object.entries(SHEEP_W_OUT)) {
+            let sum = w[w.length - 1]; // bias
+            for (let h = 0; h < acts.length; h++) sum += acts[h] * w[h];
+            const t = (Math.tanh(sum) + 1) / 2; // → [0,1]
+            const [lo, hi] = SHEEP_TRAIT_RANGES[name];
+            traits[name] = lo + t * (hi - lo);
+        }
+        return traits;
     }
-    
+
+    // Genome panel: show the middle of the genes → factors → traits story, so
+    // a user comparing two sheep can see how the interactions flow.
+    describeExtra() {
+        const acts = this.hiddenActivations();
+        const names = ['bulk', 'fleece', 'mood', 'tone'];
+        let out = '\n<span class="genome-label">Hidden factors (genes → traits):</span>\n';
+        for (let h = 0; h < acts.length; h++) {
+            out += `  ${names[h]}: ${acts[h].toFixed(2)}\n`;
+        }
+        return out;
+    }
+
     visualize(canvas) {
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
         const height = canvas.height;
-        
+
         ctx.clearRect(0, 0, width, height);
-        
-        const phenotype = this.getPhenotype();
-        
-        // Set up coordinate system (sheep facing right)
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const scale = Math.min(width, height) / 200; // Base scale
-        
+
+        const t = this.getPhenotype();
+
         ctx.save();
-        ctx.translate(centerX, centerY);
+        ctx.translate(width / 2, height / 2);
+        const scale = Math.min(width, height) / 200;
         ctx.scale(scale, scale);
-        
-        // Draw sheep with cartoon outline style
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        
-        this.drawSheep(ctx, phenotype);
-        
-        ctx.restore();
-    }
-    
-    drawSheep(ctx, phenotype) {
-        const bodySize = phenotype.bodySize;
-        const legLength = phenotype.legLength;
-        
-        // Colors
-        const woolGray = Math.floor(phenotype.woolColor * 255);
-        const faceGray = Math.floor(phenotype.faceColor * 255);
-        const woolColor = `rgb(${woolGray}, ${woolGray}, ${woolGray})`;
-        const faceColor = `rgb(${faceGray}, ${faceGray}, ${faceGray})`;
-        
-        // Draw back legs first (behind body)
-        this.drawBackLegs(ctx, legLength);
-        
-        // Draw fluffy body with organic curves
-        this.drawFluffyBody(ctx, bodySize, phenotype.curliness, woolColor);
-        
-        // Draw front legs (in front of body)
-        this.drawFrontLegs(ctx, legLength);
-        
-        // Draw expressive head with character
-        this.drawCartoonHead(ctx, faceColor, phenotype.smileAmount, phenotype.earShape);
-        
-        // Draw integrated tail as part of body silhouette
-        this.drawFluffyTail(ctx, phenotype.tailCurl, woolColor);
-    }
-    
-    drawBackLegs(ctx, legLength) {
-        const legColor = '#2C3E50';
-        ctx.fillStyle = legColor;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        // Back legs (left and right)
-        const backLegPositions = [
-            [-15, 25], // Back left
-            [5, 25]    // Back right
-        ];
-        
-        backLegPositions.forEach(([x, y]) => {
-            // Organic leg shape using curves
-            const legHeight = 35 * legLength;
-            const legWidth = 12;
-            
-            ctx.beginPath();
-            ctx.moveTo(x - legWidth/2, y);
-            ctx.quadraticCurveTo(x - legWidth/2, y + legHeight/2, x - legWidth/3, y + legHeight - 8);
-            ctx.lineTo(x + legWidth/3, y + legHeight - 8);
-            ctx.quadraticCurveTo(x + legWidth/2, y + legHeight/2, x + legWidth/2, y);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            // Cute hooves with rounded shape
-            ctx.beginPath();
-            ctx.ellipse(x, y + legHeight - 3, 8, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        });
-    }
-    
-    drawFrontLegs(ctx, legLength) {
-        const legColor = '#2C3E50';
-        ctx.fillStyle = legColor;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        // Front legs positioned more forward
-        const frontLegPositions = [
-            [25, 25], // Front left
-            [40, 25]  // Front right
-        ];
-        
-        frontLegPositions.forEach(([x, y]) => {
-            // Organic leg shape
-            const legHeight = 35 * legLength;
-            const legWidth = 12;
-            
-            ctx.beginPath();
-            ctx.moveTo(x - legWidth/2, y);
-            ctx.quadraticCurveTo(x - legWidth/2, y + legHeight/2, x - legWidth/3, y + legHeight - 8);
-            ctx.lineTo(x + legWidth/3, y + legHeight - 8);
-            ctx.quadraticCurveTo(x + legWidth/2, y + legHeight/2, x + legWidth/2, y);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            // Hooves
-            ctx.beginPath();
-            ctx.ellipse(x, y + legHeight - 3, 8, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        });
-    }
-    
-    drawFluffyBody(ctx, bodySize, curliness, woolColor) {
-        ctx.fillStyle = woolColor;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        const baseWidth = 50 * bodySize;
-        const baseHeight = 35 * bodySize;
-        
-        // Create fluffy cloud-like body using bezier curves
-        ctx.beginPath();
-        
-        // Start at top and create bumpy, fluffy outline
-        const fluffiness = 0.3 + curliness * 0.4; // More curly = more bumps
-        const numBumps = 12;
-        
-        for (let i = 0; i <= numBumps; i++) {
-            const angle = (i / numBumps) * Math.PI * 2;
-            const nextAngle = ((i + 1) / numBumps) * Math.PI * 2;
-            
-            // Base radius with variation for body shape
-            let radiusX = baseWidth * (0.7 + 0.3 * Math.cos(angle * 2));
-            let radiusY = baseHeight * (0.8 + 0.2 * Math.sin(angle * 3));
-            
-            // Add fluffy bumps
-            const bumpSize = fluffiness * 12;
-            radiusX += bumpSize * Math.sin(angle * 7);
-            radiusY += bumpSize * Math.cos(angle * 5);
-            
-            const x = radiusX * Math.cos(angle);
-            const y = radiusY * Math.sin(angle);
-            
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                // Use bezier curves for smooth, organic transitions
-                const prevAngle = ((i - 1) / numBumps) * Math.PI * 2;
-                const prevRadiusX = baseWidth * (0.7 + 0.3 * Math.cos(prevAngle * 2)) + bumpSize * Math.sin(prevAngle * 7);
-                const prevRadiusY = baseHeight * (0.8 + 0.2 * Math.sin(prevAngle * 3)) + bumpSize * Math.cos(prevAngle * 5);
-                
-                const cp1x = prevRadiusX * Math.cos(prevAngle) * 1.1;
-                const cp1y = prevRadiusY * Math.sin(prevAngle) * 1.1;
-                const cp2x = radiusX * Math.cos(angle) * 1.1;
-                const cp2y = radiusY * Math.sin(angle) * 1.1;
-                
-                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
-            }
-        }
-        
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        
-        // Add integrated wool texture for high curliness
-        if (curliness > 0.5) {
-            this.drawWoolTexture(ctx, bodySize, curliness, woolColor);
-        }
-    }
-    
-    drawWoolTexture(ctx, bodySize, curliness, woolColor) {
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.fillStyle = woolColor;
-        
-        // Draw organic wool swirls instead of circles
-        const numSwirls = Math.floor(curliness * 6);
-        for (let i = 0; i < numSwirls; i++) {
-            const x = (Math.random() - 0.5) * 60 * bodySize;
-            const y = (Math.random() - 0.5) * 40 * bodySize;
-            const size = 4 + curliness * 8;
-            const turns = 1 + curliness * 2;
-            
-            // Draw spiral wool curl
-            ctx.beginPath();
-            for (let t = 0; t <= turns * Math.PI * 2; t += 0.3) {
-                const r = size * (1 - t / (turns * Math.PI * 2));
-                const spiralX = x + r * Math.cos(t);
-                const spiralY = y + r * Math.sin(t);
-                
-                if (t === 0) {
-                    ctx.moveTo(spiralX, spiralY);
-                } else {
-                    ctx.lineTo(spiralX, spiralY);
-                }
-            }
-            ctx.stroke();
-        }
-    }
-    
-    drawCartoonHead(ctx, faceColor, smileAmount, earShape) {
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        // Head positioned to emerge from body
-        const headX = 45;
-        const headY = -15;
-        
-        // Draw ears first (behind head)
-        this.drawCartoonEars(ctx, headX, headY, earShape, faceColor);
-        
-        // Draw rounded, cartoon head shape
-        ctx.fillStyle = faceColor;
-        ctx.beginPath();
-        ctx.moveTo(headX - 22, headY);
-        ctx.bezierCurveTo(headX - 22, headY - 18, headX - 5, headY - 25, headX + 8, headY - 22);
-        ctx.bezierCurveTo(headX + 25, headY - 18, headX + 28, headY - 5, headX + 25, headY + 8);
-        ctx.bezierCurveTo(headX + 20, headY + 18, headX, headY + 20, headX - 15, headY + 15);
-        ctx.bezierCurveTo(headX - 25, headY + 8, headX - 22, headY - 5, headX - 22, headY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        
-        // Draw expressive cartoon eyes
-        this.drawCartoonEyes(ctx, headX, headY, smileAmount);
-        
-        // Draw cute nose
-        this.drawSheepNose(ctx, headX, headY);
-        
-        // Draw expressive mouth
-        this.drawCartoonMouth(ctx, headX, headY, smileAmount);
-    }
-    
-    drawCartoonEars(ctx, headX, headY, earShape, faceColor) {
-        ctx.fillStyle = faceColor;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        if (earShape < 0.4) {
-            // Perky pointed ears
-            ctx.beginPath();
-            ctx.moveTo(headX - 18, headY - 12);
-            ctx.bezierCurveTo(headX - 22, headY - 20, headX - 20, headY - 28, headX - 15, headY - 25);
-            ctx.bezierCurveTo(headX - 12, headY - 22, headX - 14, headY - 15, headX - 16, headY - 12);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(headX - 5, headY - 12);
-            ctx.bezierCurveTo(headX - 9, headY - 20, headX - 7, headY - 28, headX - 2, headY - 25);
-            ctx.bezierCurveTo(headX + 1, headY - 22, headX - 1, headY - 15, headX - 3, headY - 12);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        } else if (earShape < 0.7) {
-            // Medium floppy ears
-            ctx.beginPath();
-            ctx.moveTo(headX - 18, headY - 12);
-            ctx.bezierCurveTo(headX - 25, headY - 15, headX - 28, headY - 8, headX - 25, headY + 2);
-            ctx.bezierCurveTo(headX - 20, headY + 5, headX - 15, headY - 2, headX - 16, headY - 8);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(headX - 5, headY - 12);
-            ctx.bezierCurveTo(headX - 12, headY - 15, headX - 15, headY - 8, headX - 12, headY + 2);
-            ctx.bezierCurveTo(headX - 7, headY + 5, headX - 2, headY - 2, headX - 3, headY - 8);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        } else {
-            // Very floppy, droopy ears
-            ctx.beginPath();
-            ctx.moveTo(headX - 18, headY - 8);
-            ctx.bezierCurveTo(headX - 28, headY - 5, headX - 30, headY + 8, headX - 22, headY + 15);
-            ctx.bezierCurveTo(headX - 18, headY + 12, headX - 15, headY + 5, headX - 16, headY - 5);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.moveTo(headX - 5, headY - 8);
-            ctx.bezierCurveTo(headX - 15, headY - 5, headX - 17, headY + 8, headX - 9, headY + 15);
-            ctx.bezierCurveTo(headX - 5, headY + 12, headX - 2, headY + 5, headX - 3, headY - 5);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-    }
-    
-    drawCartoonEyes(ctx, headX, headY, smileAmount) {
-        // Eye whites
-        ctx.fillStyle = '#FFF';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        
-        // Left eye
-        ctx.beginPath();
-        ctx.ellipse(headX + 5, headY - 8, 8, 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        
-        // Right eye
-        ctx.beginPath();
-        ctx.ellipse(headX + 18, headY - 8, 8, 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        
-        // Eye pupils (affected by smile - happy eyes are different)
-        ctx.fillStyle = '#000';
-        const pupilOffset = smileAmount > 0.6 ? 2 : 0; // Happy eyes look slightly up
-        
-        ctx.beginPath();
-        ctx.arc(headX + 7, headY - 8 - pupilOffset, 4, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.arc(headX + 20, headY - 8 - pupilOffset, 4, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Eye highlights (makes them look alive)
-        ctx.fillStyle = '#FFF';
-        ctx.beginPath();
-        ctx.arc(headX + 8, headY - 10 - pupilOffset, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.arc(headX + 21, headY - 10 - pupilOffset, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    drawSheepNose(ctx, headX, headY) {
-        // Pink sheep nose
-        ctx.fillStyle = '#FFB6C1';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1.5;
-        
-        ctx.beginPath();
-        ctx.ellipse(headX + 12, headY - 2, 4, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        
-        // Nostrils
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(headX + 10, headY - 2, 0.8, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.arc(headX + 14, headY - 2, 0.8, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    drawCartoonMouth(ctx, headX, headY, smileAmount) {
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
         ctx.lineCap = 'round';
-        
-        const mouthY = headY + 5;
-        
-        if (smileAmount < 0.3) {
-            // Sad/neutral mouth
+
+        // --- Palette from the tone traits ---
+        const lerp = (a, b, u) => Math.round(a + (b - a) * u);
+        const wool = `rgb(${lerp(196, 252, t.woolTone)}, ${lerp(194, 250, t.woolTone)}, ${lerp(188, 242, t.woolTone)})`;
+        const face = `rgb(${lerp(52, 232, t.faceTone)}, ${lerp(42, 220, t.faceTone)}, ${lerp(38, 205, t.faceTone)})`;
+        // Face features must read on both dark and pale faces.
+        const faceLine = t.faceTone > 0.45 ? '#2f2a28' : '#efe9e2';
+        const outline = '#2f2a28';
+        const legCol = '#3a3a40';
+        const hoofCol = '#26262b';
+
+        const bodyRX = 46 * t.bodySize;
+        const bodyRY = 30 * t.bodySize;
+        const bodyCX = -6;
+        const bodyCY = 6;
+        const legLen = 34 * t.legLength;
+        const legTopY = bodyCY + bodyRY * 0.55;
+
+        // --- Tail (behind body): three wool puffs off the rump; hangs down
+        // when tailCurl is low, sweeps up over the back when high ---
+        {
+            let px = bodyCX - bodyRX * 0.92;
+            let py = bodyCY - bodyRY * 0.15;
+            let ang = 2.7 - t.tailCurl * 1.1; // down-left → up-left
+            ctx.fillStyle = wool;
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                const r = 7.5 - i * 1.5;
+                px += Math.cos(ang) * (r + 2.5);
+                py += Math.sin(ang) * (r + 2.5);
+                ctx.beginPath();
+                ctx.arc(px, py, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ang -= t.tailCurl * 1.1;
+            }
+        }
+
+        // --- Legs: rounded columns with hooves; hind pair behind the body ---
+        const drawLeg = (x) => {
+            const w = 8.5;
+            ctx.fillStyle = legCol;
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(headX + 8, mouthY);
-            ctx.quadraticCurveTo(headX + 12, mouthY + 3, headX + 16, mouthY);
+            ctx.moveTo(x - w / 2, legTopY);
+            ctx.lineTo(x - w / 2, legTopY + legLen - 6);
+            ctx.quadraticCurveTo(x - w / 2, legTopY + legLen, x, legTopY + legLen);
+            ctx.quadraticCurveTo(x + w / 2, legTopY + legLen, x + w / 2, legTopY + legLen - 6);
+            ctx.lineTo(x + w / 2, legTopY);
+            ctx.closePath();
+            ctx.fill();
             ctx.stroke();
-        } else if (smileAmount < 0.7) {
-            // Slight smile
+            // Hoof
+            ctx.fillStyle = hoofCol;
             ctx.beginPath();
-            ctx.moveTo(headX + 8, mouthY);
-            ctx.quadraticCurveTo(headX + 12, mouthY - 2, headX + 16, mouthY);
+            ctx.moveTo(x - w / 2 - 1, legTopY + legLen - 7);
+            ctx.lineTo(x + w / 2 + 1, legTopY + legLen - 7);
+            ctx.lineTo(x + w / 2, legTopY + legLen);
+            ctx.lineTo(x - w / 2, legTopY + legLen);
+            ctx.closePath();
+            ctx.fill();
             ctx.stroke();
-        } else {
-            // Big happy smile
+        };
+        drawLeg(bodyCX - bodyRX * 0.55);
+        drawLeg(bodyCX + bodyRX * 0.45);
+
+        // --- Wool body: scalloped cloud outline; fluff sets the bump depth ---
+        {
+            const nBumps = 12;
+            const bumpR = (4.5 + t.fluff * 6) * t.bodySize;
+            ctx.fillStyle = wool;
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(headX + 6, mouthY);
-            ctx.quadraticCurveTo(headX + 12, mouthY - 5, headX + 18, mouthY);
-            ctx.stroke();
-            
-            // Add a little tongue for extra cuteness
-            ctx.fillStyle = '#FFB6C1';
-            ctx.beginPath();
-            ctx.ellipse(headX + 12, mouthY - 1, 2, 1.5, 0, 0, Math.PI * 2);
+            for (let i = 0; i < nBumps; i++) {
+                const a = (i / nBumps) * Math.PI * 2;
+                const px = bodyCX + Math.cos(a) * bodyRX;
+                const py = bodyCY + Math.sin(a) * bodyRY;
+                // Each bump is an outward arc centred on the ellipse perimeter.
+                // Span < half the bump spacing + π/2 keeps adjacent arcs from
+                // looping inward into cusps at high fluff.
+                ctx.arc(px, py, bumpR, a - 1.55, a + 1.55);
+            }
+            ctx.closePath();
             ctx.fill();
             ctx.stroke();
         }
-    }
-    
-    drawFluffyTail(ctx, tailCurl, woolColor) {
-        ctx.fillStyle = woolColor;
-        ctx.strokeStyle = '#000';
+
+        // Front legs (over the body)
+        drawLeg(bodyCX - bodyRX * 0.2);
+        drawLeg(bodyCX + bodyRX * 0.8);
+
+        // --- Head group (frontal cartoon face at the body's right shoulder) ---
+        const headX = bodyCX + bodyRX * 0.95;
+        const headY = bodyCY - bodyRY * 0.95;
+        const headRX = 16.5, headRY = 19;
+
+        // Ears behind the head: perky points up-and-out, droopy hangs down-and-out.
+        // Angles are explicit canvas directions (y down): the right ear sweeps
+        // from -45° (perky) to +40° (droopy); the left ear mirrors it.
+        const drawEar = (side) => { // side: -1 left, +1 right
+            const ax = headX + side * headRX * 0.85;
+            const ay = headY - headRY * 0.3;
+            const droop = 1 - t.earPerk;
+            const ang = side === 1
+                ? (-0.78 + droop * 1.48)          // up-right → down-right
+                : (Math.PI + 0.78 - droop * 1.48); // up-left → down-left
+            const len = 14, wid = 6;
+            ctx.save();
+            ctx.translate(ax, ay);
+            ctx.rotate(ang);
+            ctx.fillStyle = face;
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(len / 2, 0, len / 2 + 2, wid, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        };
+        drawEar(-1);
+        drawEar(1);
+
+        // Face
+        ctx.fillStyle = face;
+        ctx.strokeStyle = outline;
         ctx.lineWidth = 2;
-        
-        const tailX = -45;
-        const tailY = 5;
-        
-        if (tailCurl < 0.3) {
-            // Short, fluffy straight tail
+        ctx.beginPath();
+        ctx.ellipse(headX, headY, headRX, headRY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Wool tuft on top of the head (three overlapping puffs)
+        const tuftR = 6 + t.fluff * 3;
+        const tuft = [
+            [headX - 7, headY - headRY * 0.78, tuftR * 0.85],
+            [headX + 8, headY - headRY * 0.72, tuftR * 0.8],
+            [headX + 1, headY - headRY * 0.95, tuftR],
+        ];
+        ctx.fillStyle = wool;
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 2;
+        for (const [tx, ty, tr] of tuft) {
             ctx.beginPath();
-            ctx.moveTo(tailX - 8, tailY - 3);
-            ctx.bezierCurveTo(tailX - 12, tailY - 8, tailX - 10, tailY + 8, tailX - 6, tailY + 5);
-            ctx.bezierCurveTo(tailX - 2, tailY + 8, tailX + 4, tailY + 6, tailX + 6, tailY + 2);
-            ctx.bezierCurveTo(tailX + 8, tailY - 2, tailX + 6, tailY - 6, tailX + 2, tailY - 5);
-            ctx.bezierCurveTo(tailX - 2, tailY - 8, tailX - 6, tailY - 6, tailX - 8, tailY - 3);
-            ctx.closePath();
+            ctx.arc(tx, ty, tr, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-        } else {
-            // Curly, fluffy tail with organic shape
+        }
+
+        // Eyes
+        const eyeR = 4.6 * t.eyeSize;
+        const eyeY = headY - 4;
+        for (const side of [-1, 1]) {
+            const ex = headX + side * 7;
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = outline;
+            ctx.lineWidth = 1.6;
             ctx.beginPath();
-            const curlRadius = 12 + tailCurl * 8;
-            const spiralTurns = tailCurl * 2;
-            
-            // Create curvy tail path with varying thickness
-            for (let t = 0; t <= spiralTurns * Math.PI * 2; t += 0.15) {
-                const progress = t / (spiralTurns * Math.PI * 2);
-                const r = curlRadius * (1 - progress * 0.6); // Tail gets smaller towards end
-                const thickness = 6 * (1 - progress * 0.5); // Varying thickness
-                
-                const centerX = tailX + r * Math.cos(t);
-                const centerY = tailY + r * Math.sin(t);
-                
-                // Create fluffy outline points
-                const fluffiness = 2 + tailCurl * 3;
-                const numFluffPoints = 8;
-                
-                if (t === 0) {
-                    ctx.moveTo(centerX + thickness, centerY);
-                } else {
-                    // Add small fluffy bumps around the spiral
-                    for (let f = 0; f < numFluffPoints; f++) {
-                        const fluffAngle = (f / numFluffPoints) * Math.PI * 2;
-                        const fluffRadius = thickness + Math.sin(t * 5 + fluffAngle * 3) * fluffiness;
-                        const fluffX = centerX + fluffRadius * Math.cos(fluffAngle);
-                        const fluffY = centerY + fluffRadius * Math.sin(fluffAngle);
-                        
-                        if (f === 0 && t === 0.15) {
-                            ctx.moveTo(fluffX, fluffY);
-                        } else {
-                            ctx.bezierCurveTo(
-                                centerX + (fluffRadius * 0.8) * Math.cos(fluffAngle - 0.3),
-                                centerY + (fluffRadius * 0.8) * Math.sin(fluffAngle - 0.3),
-                                centerX + (fluffRadius * 0.8) * Math.cos(fluffAngle + 0.3),
-                                centerY + (fluffRadius * 0.8) * Math.sin(fluffAngle + 0.3),
-                                fluffX, fluffY
-                            );
-                        }
-                    }
-                }
-            }
-            ctx.closePath();
+            ctx.ellipse(ex, eyeY, eyeR, eyeR * 1.15, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-            
-            // Add extra fluffy texture to curly tails
-            if (tailCurl > 0.6) {
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 1;
-                
-                // Small wool curls on tail
-                for (let i = 0; i < 3; i++) {
-                    const t = (i / 3) * spiralTurns * Math.PI * 2;
-                    const r = curlRadius * (1 - (i / 3) * 0.6);
-                    const curlX = tailX + r * Math.cos(t);
-                    const curlY = tailY + r * Math.sin(t);
-                    
-                    // Small spiral wool texture
-                    ctx.beginPath();
-                    for (let s = 0; s <= Math.PI * 3; s += 0.4) {
-                        const sr = 2 * (1 - s / (Math.PI * 3));
-                        const sx = curlX + sr * Math.cos(s);
-                        const sy = curlY + sr * Math.sin(s);
-                        
-                        if (s === 0) {
-                            ctx.moveTo(sx, sy);
-                        } else {
-                            ctx.lineTo(sx, sy);
-                        }
-                    }
-                    ctx.stroke();
-                }
+            ctx.fillStyle = '#1c1c1e';
+            ctx.beginPath();
+            ctx.arc(ex + 0.5, eyeY + (t.smile > 0.6 ? -1 : 0.5), eyeR * 0.55, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(ex + 1.6, eyeY - eyeR * 0.35, eyeR * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Blush
+        if (t.blush > 0.15) {
+            ctx.fillStyle = `rgba(244, 138, 150, ${(t.blush * 0.55).toFixed(2)})`;
+            for (const side of [-1, 1]) {
+                ctx.beginPath();
+                ctx.arc(headX + side * 11, headY + 5, 3.6, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
-    }
-    
-    getPhenotypeString() {
-        const p = this.getPhenotype();
-        return `Sheep: wool=${p.woolColor.toFixed(2)}, smile=${p.smileAmount.toFixed(2)}, legs=${p.legLength.toFixed(2)}`;
+
+        // Muzzle: pink nose + mouth whose curve follows the smile trait
+        ctx.fillStyle = '#f3a4ae';
+        ctx.strokeStyle = faceLine;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.ellipse(headX, headY + 7, 4, 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = faceLine;
+        ctx.lineWidth = 1.8;
+        const mouthY = headY + 12;
+        const curve = 5 - t.smile * 11; // +5 frown → -6 big smile
+        ctx.beginPath();
+        ctx.moveTo(headX - 6, mouthY);
+        ctx.quadraticCurveTo(headX, mouthY - curve, headX + 6, mouthY);
+        ctx.stroke();
+        if (t.smile > 0.75) {
+            // Open-mouth grin with a little tongue
+            ctx.fillStyle = '#e2798a';
+            ctx.beginPath();
+            ctx.ellipse(headX, mouthY + 1.5, 2.6, 1.8, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
     }
 }
