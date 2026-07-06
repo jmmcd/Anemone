@@ -24,7 +24,8 @@ const warpedSurfaceGenerator = (rnd) => {
     const expand = (symbol, depth) => {
         if (!warpedSurfaceGrammar.isNonTerminal(symbol)) return symbol;
         const choices = depth > 0 ? warpedSurfaceGrammar.getProductions(symbol) : warpedSurfaceGrammar.shortestProductions(symbol);
-        const prod = rnd.choice(choices);
+        const idx = rnd.randint(0, choices.length - 1);
+        const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
         return out;

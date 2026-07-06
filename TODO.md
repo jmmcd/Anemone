@@ -25,6 +25,8 @@
 
 * Make a src/ directory?
 
+* The grammar individuals now (as before) generate an int to choose a production, rather than choosing a production directly. That's because a production is not transparent to JSON-encoding, so a save/load round-trip doesn't work. This could indicate we need a PTO fix, or some other solution.
+
 
 # NEW APPLICATIONS
 

@@ -33,7 +33,8 @@ const POLAR_MAX_TURNS = 10; // most full turns (tMax = turns · 2π; old fixed v
 
 // Self-contained derivation generator — see patternGrammarGenerator and
 // PTORepresentation for why it's shaped this way (inline recursion + for-loop,
-// top-level consts only, rnd.choice over productions, depth-bounded).
+// top-level consts only, depth-bounded). Uses rnd.randint for production index
+// (not rnd.choice) so the stored gene is a primitive that survives JSON round-tripping.
 //
 // The phenotype is { turns, expr }: the r(t) expression AND how many full 2π
 // turns to sweep it over — both under evolutionary control. Keeping `turns` an
@@ -44,7 +45,8 @@ const polarCurveGenerator = (rnd) => {
     const expand = (symbol, depth) => {
         if (!polarDrawingGrammar.isNonTerminal(symbol)) return symbol;
         const choices = depth > 0 ? polarDrawingGrammar.getProductions(symbol) : polarDrawingGrammar.shortestProductions(symbol);
-        const prod = rnd.choice(choices);
+        const idx = rnd.randint(0, choices.length - 1);
+        const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
         return out;

@@ -563,7 +563,7 @@ class InteractiveEAFramework {
             else if (e.key === '.' || e.key === '>') { e.preventDefault(); if (isAnimPat) AnimatedPatternIndividual.togglePause(); else this.togglePlayPauseOrRotation(); }
             // Space = Evolve. 0-9 / A-F = toggle like on that tile (hex index into
             // the 16-tile grid, matching a left-to-right, top-to-bottom reading).
-            else if (e.key === ' ') { e.preventDefault(); doEvolve(); }
+            else if (e.key === ' ') { e.preventDefault(); if (this.lightbox && this.lightbox.classList.contains('open')) this.closeZoom(); doEvolve(); }
             else if (/^[0-9a-fA-F]$/.test(e.key)) { this.toggleSelectByIndex(parseInt(e.key, 16)); }
         });
 

@@ -34,13 +34,14 @@ const IMAGE_PATTERN_MAX_DEPTH = 6; // derivation-tree depth bound (keeps express
 // naming names each rule choice by its place in the derivation tree; references
 // only top-level consts; see PTORepresentation). At the depth limit it restricts
 // to the shortest (fewest-non-terminal) productions, so derivation terminates.
-// rnd.choice over the productions is the idiomatic form: PTO's repair keeps the
-// chosen value within the current symbol's productions across mutation/crossover.
+// Uses rnd.randint for production index (not rnd.choice) so the stored gene is a
+// primitive integer that survives JSON round-tripping for save/load.
 const patternGrammarGenerator = (rnd) => {
     const expand = (symbol, depth) => {
         if (!imagePatternGrammar.isNonTerminal(symbol)) return symbol;
         const choices = depth > 0 ? imagePatternGrammar.getProductions(symbol) : imagePatternGrammar.shortestProductions(symbol);
-        const prod = rnd.choice(choices);
+        const idx = rnd.randint(0, choices.length - 1);
+        const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
         return out;

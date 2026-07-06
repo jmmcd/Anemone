@@ -23,7 +23,8 @@ const freeSurfaceGenerator = (rnd) => {
     const expand = (symbol, depth) => {
         if (!freeSurfaceGrammar.isNonTerminal(symbol)) return symbol;
         const choices = depth > 0 ? freeSurfaceGrammar.getProductions(symbol) : freeSurfaceGrammar.shortestProductions(symbol);
-        const prod = rnd.choice(choices);
+        const idx = rnd.randint(0, choices.length - 1);
+        const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
         return out;

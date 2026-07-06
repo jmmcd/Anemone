@@ -490,10 +490,10 @@ check('phenotype signature is stable and discriminates', () => {
     }
     assert(differ > 0, 'distinct individuals should usually get distinct signatures');
 });
-// Load = reconstruct from the saved genome + verify via signature. Fixed-structure
-// types round-trip through serialisation; grammar individuals do NOT (the known
-// upstream PTO trace bug, see pto-trace-roundtrip-bug.js), so the loader's
-// self-check is what keeps load honest.
+// Load = reconstruct from the saved genome + verify via signature. All PTO-backed
+// types (including grammar individuals) round-trip through serialisation now that
+// generators use rnd.randint (primitive) instead of rnd.choice (production array)
+// for production selection, avoiding the upstream PTO identity-compare bug.
 check('fixed-structure individuals reproduce after a genome round-trip (load works)', () => {
     let ok = 0;
     for (let i = 0; i < 30; i++) {
@@ -525,17 +525,15 @@ check('revived genome reproduces and can still evolve (no dead-trace crash)', ()
     assert(a instanceof classes.PatternIndividual && b instanceof classes.PatternIndividual,
         'revived individual should crossover into valid children');
 });
-check('self-check detects grammar individuals that cannot round-trip (load refuses)', () => {
-    let reproduced = 0;
+check('grammar individuals round-trip through JSON after rnd.randint fix (load works)', () => {
+    let ok = 0;
     for (let i = 0; i < 30; i++) {
         const orig = new classes.PatternGrammarIndividual();
         const sig = ImageSave.phenotypeSignature(orig);
         const recon = new classes.PatternGrammarIndividual(JSON.parse(JSON.stringify(orig.genome)));
-        if (ImageSave.phenotypeSignature(recon) === sig) reproduced++;
+        if (ImageSave.phenotypeSignature(recon) === sig) ok++;
     }
-    // Most (effectively all) must fail to reproduce; the signature mismatch is
-    // exactly what the loader uses to refuse them.
-    assert(reproduced < 30, `grammar individuals unexpectedly all round-tripped (${reproduced}/30)`);
+    assert(ok === 30, `expected all 30 grammar individuals to round-trip, got ${ok}`);
 });
 
 // --- WAV / MIDI export metadata + reconstruct ---
