@@ -128,16 +128,23 @@ class PolarCurveIndividual extends Individual {
                 data[i + 3] = 255;              // Alpha
             }
 
+            // Resolution scale: everything in absolute pixels (line thickness,
+            // glow radius) is multiplied by this so a zoomed render (768px) is a
+            // faithful magnification of the 128px tile rather than the same
+            // absolute marks on a 6× larger canvas (which made the glow look weak
+            // and the curve a hairline). Reference is the 128px grid tile.
+            const s = Math.min(width, height) / 128;
+
             // Generate polar coordinates
             const polarPoints = this.generatePolarPoints();
 
             if (polarPoints.length > 0) {
                 // Convert to Cartesian and draw
-                this.drawPolarCurve(data, width, height, polarPoints);
+                this.drawPolarCurve(data, width, height, polarPoints, s);
             }
 
             // Soften and add a palette-coloured glow over the finished render.
-            Canvas2DModality.bloom(imageData, { radius: 2, strength: 2.0, background: backgroundColor });
+            Canvas2DModality.bloom(imageData, { radius: 2 * s, strength: 2.0, background: backgroundColor });
 
             return imageData;
         });
@@ -161,7 +168,7 @@ class PolarCurveIndividual extends Individual {
         return points;
     }
     
-    drawPolarCurve(data, width, height, polarPoints) {
+    drawPolarCurve(data, width, height, polarPoints, s = 1) {
         // Find min/max radius for scaling. (Per-point values are already finite:
         // the compiled expression maps Infinity/NaN to a safe number.)
         const radii = polarPoints.map(p => p.r);
@@ -224,8 +231,9 @@ class PolarCurveIndividual extends Individual {
             }
         }
 
+        const lineWidth = Math.max(1, Math.round(s));
         for (const [x1, y1, x2, y2] of segments) {
-            Canvas2DModality.drawLine(data, width, height, x1, y1, x2, y2, foregroundColor);
+            Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, foregroundColor, lineWidth);
         }
     }
 

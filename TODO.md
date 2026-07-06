@@ -13,7 +13,7 @@
 * Fix several upstream PTO-js bugs. The one about serialising the trace is important for our load/save feature. Currently, the grammar individuals are not reconstructing correctly because of that.
 * We have editable generators, but some individuals will need to have editable draw() instead/as well. The hook for this is working.
 
-* The zoom-in re-render has a small issue. In some image types, the zoom-in looks quite different because of the different resolution. Eg: PhotoFilter, Grid, PolarCurve. I'm not sure if the "glow" effect in PolarCurve is being applied to the zoomed-in image. Not sure what is the right solution here.
+* In PhotoFilter the zoom-in re-render has a small issue. The zoom-in can look a bit different because of the different resolution. It is fixable, but unsure whether we want to fix it. For now I will decide that it is a feature not a bug, because the thumbnails are "exaggerated" relative to the real effect, but that is a good thing for thumbnails.
 
 * The drum machine does not allow Velocity editing still TODO (the mechanism works, just needs a UI gesture).
 
@@ -22,6 +22,10 @@
 * Someday could consider adding a proper MIDI interface (ie sync with GB via Web MIDI?).
 
 * The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
+
+* Maybe set up GitHub Pages, to avoid using Surge. jmmcd.net/anemone. anemone.ie.
+
+* Make a src/ directory?
 
 
 # NEW APPLICATIONS

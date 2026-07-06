@@ -120,7 +120,7 @@ const expectedPalette = {
     PolarCurveIndividual: true, ShapesIndividual: true,
     SuperShapeIndividual: true, SuperShape3DIndividual: true,
     AnemoneIndividual: true,
-    GridIndividual: false, RobotIndividual: false,
+    GridIndividual: true, RobotIndividual: false,
     SheepIndividual: false, PenroseIndividual: false,
     MelodyIndividual: true, MouseMusicIndividual: false, EEGSonificationIndividual: false,
 };

@@ -276,22 +276,33 @@ class AnemoneIndividual extends Individual {
             
             const offsetX = (width - drawWidth * scale) / 2 - minX * scale;
             const offsetY = (height - drawHeight * scale) / 2 - minY * scale;
-            
+
+            // Resolution scale (reference is the 128px grid tile): pen widths and
+            // the glow radius are in absolute pixels, so multiply by this to keep
+            // a zoomed render (768px) a faithful magnification of the tile rather
+            // than the same thin marks / small halo on a 6× larger canvas.
+            const res = Math.min(width, height) / 128;
+
             // Draw all paths
             paths.forEach(path => {
                 // Get color from palette
                 const colorIndex = path.colorIndex / 7; // Normalize to [0,1]
                 const color = window.Palette.color(colorIndex);
-                
+
                 // Scale and translate coordinates
                 const x1 = path.x1 * scale + offsetX;
                 const y1 = path.y1 * scale + offsetY;
                 const x2 = path.x2 * scale + offsetX;
                 const y2 = path.y2 * scale + offsetY;
-                
+
                 // Draw line with appropriate width
-                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, path.width);
+                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, Math.max(1, Math.round(path.width * res)));
             });
+
+            // Bioluminescent glow: Anemones read as underwater life against the
+            // black background, so add a soft palette-coloured halo (same bloom
+            // post-filter PolarCurve uses). Radius scales with resolution.
+            Canvas2DModality.bloom(imageData, { radius: 2 * res, strength: 1.5, background: backgroundColor });
 
             return imageData;
         });
