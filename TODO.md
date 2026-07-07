@@ -30,6 +30,8 @@
 
 # NEW APPLICATIONS
 
+* Nicolau and Costelloe Jenn3D / Cayley Graphs https://ncra.ucd.ie/papers/66250374.pdf
+
 * GL shaders https://tympanus.net/codrops/2025/06/23/modeling-the-world-in-280-characters/
 
 * A music DAG individual for use in brain-computer interface music-mapping
@@ -41,7 +43,5 @@
 * Another L-system-like structure where commands draw pixel strokes, but are constrained by existing pixels. Variants are BFS and DFS.
 
 * 3d L-system, again with space-occupying and non-space occupying 
-
-* Moving pictures using either t in [0, 1], or sin theta and cos theta
 
 * A series of lines, each a curve with x, y start and end and control points and colour and style and glow (like in visuals at a good concert I was at recently)
