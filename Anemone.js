@@ -76,38 +76,38 @@ class InteractiveEAFramework {
         // Initialize MIDI
         if (navigator.requestMIDIAccess) {
             try {
-                const timeoutPromise = new Promise((_, reject) => 
+                const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('MIDI access timeout')), 5000)
                 );
-                
+
                 const midiAccess = await Promise.race([
                     navigator.requestMIDIAccess(),
                     timeoutPromise
                 ]);
-                
+                this.midiAccess = midiAccess; // keep alive — GC of the root object can drop ports in some browsers
+
                 const outputs = Array.from(midiAccess.outputs.values());
                 console.log('🎹 MIDI access granted, found outputs:', outputs.length);
-                
                 outputs.forEach((output, index) => {
-                    console.log(`${index}: ${output.name} (${output.manufacturer}) - State: ${output.state}`);
+                    console.log(`  ${index}: "${output.name}" (${output.manufacturer}) state=${output.state} conn=${output.connection}`);
                 });
-                
+
                 if (outputs.length > 0) {
                     let preferredOutput = outputs.find(output => output.name.includes('IAC Driver'));
+                    if (!preferredOutput) preferredOutput = outputs.find(output => output.name.includes('Logic Pro Virtual'));
                     if (!preferredOutput) {
-                        preferredOutput = outputs.find(output => output.name.includes('Logic Pro Virtual'));
+                        preferredOutput = outputs[0];
+                        console.log(`⚠️ No IAC Driver / Logic Pro Virtual output found — falling back to first port: "${preferredOutput.name}"`);
                     }
-                    
-                    if (preferredOutput) {
-                        this.midiOutput = preferredOutput;
-                        console.log(`✓ Framework using MIDI output: ${preferredOutput.name}`);
 
-                        // Open the MIDI port
-                        if (preferredOutput.connection === 'closed') {
-                            await preferredOutput.open();
-                            console.log(`🔧 MIDI port opened: ${preferredOutput.state}, connection: ${preferredOutput.connection}`);
-                        }
+                    this.midiOutput = preferredOutput;
+                    console.log(`✓ Framework using MIDI output: ${preferredOutput.name}`);
+                    if (preferredOutput.connection === 'closed') {
+                        await preferredOutput.open();
+                        console.log(`🔧 MIDI port opened: state=${preferredOutput.state} conn=${preferredOutput.connection}`);
                     }
+                } else {
+                    console.log('⚠️ No MIDI outputs found — will use Web Audio fallback');
                 }
 
                 // MIDI input, for MIDI Clock sync (window.MIDISync): lets an external
@@ -117,22 +117,26 @@ class InteractiveEAFramework {
                 // the same virtual bus by default.
                 const inputs = Array.from(midiAccess.inputs.values());
                 console.log('🎹 MIDI access granted, found inputs:', inputs.length);
+                inputs.forEach((input, index) => {
+                    console.log(`  ${index}: "${input.name}" (${input.manufacturer}) state=${input.state} conn=${input.connection}`);
+                });
 
-                let preferredInput = inputs.find(input => input.name.includes('IAC Driver'));
-                if (!preferredInput) {
-                    preferredInput = inputs.find(input => input.name.includes('Logic Pro Virtual'));
-                }
+                if (inputs.length > 0) {
+                    let preferredInput = inputs.find(input => input.name.includes('IAC Driver'));
+                    if (!preferredInput) preferredInput = inputs.find(input => input.name.includes('Logic Pro Virtual'));
+                    if (!preferredInput) {
+                        preferredInput = inputs[0];
+                        console.log(`⚠️ No IAC Driver / Logic Pro Virtual input found — falling back to first port: "${preferredInput.name}"`);
+                    }
 
-                if (preferredInput) {
                     this.midiInput = preferredInput;
                     console.log(`✓ Framework using MIDI input: ${preferredInput.name}`);
-
-                    if (preferredInput.connection === 'closed') {
-                        await preferredInput.open();
-                    }
+                    if (preferredInput.connection === 'closed') await preferredInput.open();
                     preferredInput.onmidimessage = (event) => {
                         if (window.MIDISync) window.MIDISync.handleMessage(event.data, event.timeStamp);
                     };
+                } else {
+                    console.log('⚠️ No MIDI inputs found — MIDI clock sync unavailable');
                 }
             } catch (error) {
                 console.error('❌ MIDI initialization failed:', error);

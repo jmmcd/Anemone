@@ -68,10 +68,14 @@ class Individual {
         const audio = (fw && fw.sharedAudio) || this.audio;
         const transport = (typeof window !== 'undefined') && window.Transport;
         this.stopSequenced();
-        if (midi && midi.midiOutput && typeof this.toMIDISequence === 'function' &&
-            midi.playSequence(this.toMIDISequence(), transport)) {
-            this._soundOut = midi;
-        } else if (audio && typeof this.renderToAudioBuffer === 'function') {
+        if (midi && midi.midiOutput && typeof this.toMIDISequence === 'function') {
+            const seq = this.toMIDISequence();
+            if (midi.playSequence(seq, transport)) {
+                if (typeof midi.startClock === 'function') midi.startClock(seq.bpm || 120);
+                this._soundOut = midi;
+            }
+        }
+        if (!this._soundOut && audio && typeof this.renderToAudioBuffer === 'function') {
             const buffer = this.renderToAudioBuffer();
             const offset = transport ? transport.phase(buffer.duration) : 0;
             audio.playBuffer(buffer, { loop: true, offset });
@@ -82,6 +86,7 @@ class Individual {
 
     stopSequenced() {
         if (this._soundOut) {
+            if (typeof this._soundOut.stopClock === 'function') this._soundOut.stopClock();
             if (typeof this._soundOut.stopSequence === 'function') this._soundOut.stopSequence();
             else if (typeof this._soundOut.stop === 'function') this._soundOut.stop();
             this._soundOut = null;

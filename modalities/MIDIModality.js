@@ -174,4 +174,36 @@ class MIDIModality {
         this.isRunning = false;
         this.allNotesOff();
     }
+
+    /**
+     * Send MIDI Beat Clock so an external DAW (Logic, Ableton, Reaper, GarageBand…)
+     * can sync its transport to Anemone's tempo. Sends Start (0xFA) immediately, then
+     * 0xF8 at 24 pulses per quarter note. Called by Individual.playSequenced() when
+     * the MIDI path is active; tempo comes from the sequence's effective BPM (i.e.
+     * after PerformanceControls overrides are applied). stopClock() sends Stop (0xFC).
+     * updateClockBpm() restarts the interval at a new tempo (called when the tempo
+     * dial changes mid-play via PerformanceControls.refreshPlaying → playMIDI).
+     */
+    startClock(bpm) {
+        this.stopClock();
+        if (!this.midiOutput || !(bpm > 0)) return;
+        try { this.midiOutput.send([0xFA]); } catch(e) {}
+        const ms = 60000 / (bpm * 24);
+        this._clockTimer = setInterval(() => {
+            try { if (this.midiOutput) this.midiOutput.send([0xF8]); } catch(e) {}
+        }, ms);
+    }
+
+    stopClock() {
+        if (this._clockTimer) {
+            clearInterval(this._clockTimer);
+            this._clockTimer = null;
+            try { if (this.midiOutput) this.midiOutput.send([0xFC]); } catch(e) {}
+        }
+    }
+
+    /** Restart the clock at a new BPM if it's currently running. */
+    updateClockBpm(bpm) {
+        if (this._clockTimer != null) this.startClock(bpm);
+    }
 }

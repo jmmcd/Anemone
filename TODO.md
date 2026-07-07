@@ -19,7 +19,6 @@
 
 * The drum machine has global controls which override the genome's values for eg tempo and swing. Could extend to accent/push/swingTarget.
 
-* Someday could consider adding a proper MIDI interface (ie sync with GB via Web MIDI?).
 
 * The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
 
