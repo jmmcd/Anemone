@@ -32,15 +32,28 @@
  * of snapping to the downbeat. Phase is time-based mod the bar length, so when loops
  * share a tempo it's a true shared beat grid, and across differing tempos it still
  * preserves time continuity (each loop enters at its own phase).
+ *
+ * When window.MIDISync is actively receiving an external MIDI clock (e.g. GarageBand
+ * over the same IAC bus Anemone's note output uses), phase locks to the DAW's last
+ * Start/Continue instead of free-running — so a synced loop's downbeat lines up with
+ * the DAW's, as long as the caller also asked PerformanceControls.apply() for the
+ * matching synced bpm (see below) so barLenSec is computed at the same tempo.
  */
 window.Transport = {
     epoch: null, // performance.now()/1000 (seconds) at which the timeline began
     // Seconds into a barLenSec-long loop that playback should begin right now.
     phase(barLenSec) {
         const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
-        if (this.epoch == null || !isFinite(this.epoch)) this.epoch = now;
+        const sync = (typeof window !== 'undefined') && window.MIDISync;
+        let epoch;
+        if (sync && sync.active) {
+            epoch = sync.epoch; // lock to the DAW's last Start/Continue
+        } else {
+            if (this.epoch == null || !isFinite(this.epoch)) this.epoch = now;
+            epoch = this.epoch;
+        }
         if (!(barLenSec > 0)) return 0;
-        const t = (now - this.epoch) % barLenSec;
+        const t = (now - epoch) % barLenSec;
         return t < 0 ? t + barLenSec : t;
     },
     reset() { this.epoch = null; }, // start fresh from the next play
@@ -65,10 +78,16 @@ window.PerformanceControls = {
 
     // Effective phenotype for rendering: the genome's phenotype with any LOCKED dials
     // overridden. Returns the input untouched when nothing is locked (no copy).
+    // An active window.MIDISync takes priority over the bpm dial (whether or not it's
+    // locked) — an explicit "sync to my DAW" beats a manually-dialled tempo.
     apply(pheno) {
         if (!pheno) return pheno;
         let out = pheno;
+        const sync = (typeof window !== 'undefined') && window.MIDISync;
+        const syncBpm = !!(sync && sync.active && 'bpm' in pheno);
+        if (syncBpm) out = { ...pheno, bpm: sync.bpm };
         for (const k in this.dials) {
+            if (k === 'bpm' && syncBpm) continue; // MIDI clock sync already set bpm
             const d = this.dials[k];
             if (d.on) {
                 if (out === pheno) out = { ...pheno };

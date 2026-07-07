@@ -11,7 +11,7 @@ class MIDIModality {
         this.midiOutput = null;
         this.audioContext = null;
         this.isRunning = false;
-        this._intervalId = null;
+        this._timeoutId = null;
         this._initWebAudio();
     }
 
@@ -80,15 +80,28 @@ class MIDIModality {
     }
 
     /**
-     * Start a recurring evaluation loop (for DAG-style individuals).
+     * Start a recurring evaluation loop (for DAG-style individuals: MouseMusic, EEG).
+     * A self-rescheduling setTimeout rather than setInterval so the cadence can track
+     * a live tempo: when window.MIDISync is actively receiving an external MIDI clock,
+     * each tick reads the current synced BPM and paces itself to a 16th note at that
+     * tempo instead of the fixed timeStep — so a mouse/EEG-driven individual's note
+     * triggers breathe in time with a DAW transport (GarageBand, etc.) rather than a
+     * free-running wall-clock interval. Falls back to timeStep whenever sync isn't
+     * active, so behaviour is unchanged unless the user opts into MIDI sync.
      * @param {Function} callback - Called on each tick
-     * @param {number} timeStep - Interval in milliseconds
+     * @param {number} timeStep - Interval in milliseconds (used unless MIDI-synced)
      */
     start(callback, timeStep = 100) {
-        if (!this.isRunning) {
-            this.isRunning = true;
-            this._intervalId = setInterval(callback, timeStep);
-        }
+        if (this.isRunning) return;
+        this.isRunning = true;
+        const tick = () => {
+            if (!this.isRunning) return;
+            callback();
+            const sync = (typeof window !== 'undefined') && window.MIDISync;
+            const interval = (sync && sync.active && sync.bpm) ? (60000 / sync.bpm / 4) : timeStep;
+            this._timeoutId = setTimeout(tick, interval);
+        };
+        tick();
     }
 
     /**
@@ -97,9 +110,9 @@ class MIDIModality {
     stop() {
         if (this.isRunning) {
             this.isRunning = false;
-            if (this._intervalId) {
-                clearInterval(this._intervalId);
-                this._intervalId = null;
+            if (this._timeoutId) {
+                clearTimeout(this._timeoutId);
+                this._timeoutId = null;
             }
         }
     }

@@ -653,6 +653,96 @@ check('MelodyIndividual opts out of PNG save (MIDI-only)', () => {
     assert(new classes.GridIndividual().usesImageSave() === true, 'other types still save PNG by default');
 });
 
+// --- MIDI Clock Sync (window.MIDISync) ---
+// Lets an external DAW (GarageBand/Logic sending Beat Clock over the same IAC bus
+// Anemone's note output uses) drive tempo/phase for the step sequencers, and the
+// evaluation cadence for the mouse/EEG DAG individuals. Each check uses a fresh
+// load() since MIDISync is stateful (enabled/running/bpm) singleton, like the
+// shared-modality checks above.
+console.log('\nMIDI Clock Sync:');
+check('usesMIDISync() only on step sequencers and mouse/EEG DAG individuals', () => {
+    const env = load();
+    for (const name of ['DrumMachineIndividual', 'MelodyIndividual', 'MouseMusicIndividual', 'EEGSonificationIndividual']) {
+        assert(new env.classes[name]().usesMIDISync() === true, `${name} should opt into MIDI sync`);
+    }
+    assert(new env.classes.GridIndividual().usesMIDISync() === false, 'a non-sound type should not opt in');
+});
+check('ignores Start/Clock messages while disabled (default)', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    sync.handleMessage([0xFA], 0);
+    sync.handleMessage([0xF8], 20);
+    assert(sync.running === false && sync.bpm === null, 'disabled sync should not track any state');
+    assert(sync.active === false, 'inactive while disabled');
+});
+check('estimates BPM from a run of Beat Clock pulses (24 ppqn)', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    sync.enabled = true;
+    sync.handleMessage([0xFA], 0); // Start
+    const tickMs = 60000 / 120 / 24; // 120 BPM
+    for (let i = 1; i <= 48; i++) sync.handleMessage([0xF8], i * tickMs);
+    assert(sync.running === true, 'Start should mark the transport running');
+    assert(Math.abs(sync.bpm - 120) < 0.5, `expected ~120 BPM, got ${sync.bpm}`);
+    assert(sync.active === true, 'active once enabled + running + a recent tick');
+});
+check('Stop clears running (and so active)', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    sync.enabled = true;
+    sync.handleMessage([0xFA], 0);
+    const tickMs = 60000 / 100 / 24;
+    for (let i = 1; i <= 30; i++) sync.handleMessage([0xF8], i * tickMs);
+    assert(sync.active === true, 'active while ticking');
+    sync.handleMessage([0xFC], 9999); // Stop
+    assert(sync.running === false, 'Stop should clear running');
+    assert(sync.active === false, 'inactive after Stop');
+});
+check('PerformanceControls.apply() overrides bpm from an active sync, bypassing a locked bpm dial', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    const pc = env.sandbox.window.PerformanceControls;
+    sync.enabled = true;
+    sync.handleMessage([0xFA], 0);
+    const tickMs = 60000 / 140 / 24;
+    for (let i = 1; i <= 30; i++) sync.handleMessage([0xF8], i * tickMs);
+    pc.dials.bpm.on = true; pc.dials.bpm.value = 90; // a manually-locked tempo dial
+    const out = pc.apply({ bpm: 70, swing: 0.1 });
+    assert(Math.abs(out.bpm - 140) < 0.5, `synced bpm should win over the locked dial (90), got ${out.bpm}`);
+});
+check('Transport.phase() locks to the sync epoch (last Start/Continue) while active', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    const transport = env.sandbox.window.Transport;
+    sync.enabled = true;
+    sync.handleMessage([0xFA], 1000); // Start at t=1000ms -> epoch = 1s
+    const tickMs = 60000 / 120 / 24;
+    for (let i = 1; i <= 30; i++) sync.handleMessage([0xF8], 1000 + i * tickMs);
+    assert(sync.active === true, 'sync should be active for the phase test');
+    // performance.now() is stubbed to 0, so phase = (0 - epoch) mod barLen, wrapped positive.
+    assert(transport.phase(4) === 3, `expected phase 3 (barLen 4, epoch 1s, now 0s), got ${transport.phase(4)}`);
+});
+check('MIDIModality.start() paces the DAG-callback loop to the synced BPM (16th-note interval)', () => {
+    const env = load();
+    const sync = env.sandbox.window.MIDISync;
+    sync.enabled = true;
+    sync.handleMessage([0xFA], 0);
+    const tickMs = 60000 / 120 / 24; // 120 BPM
+    for (let i = 1; i <= 30; i++) sync.handleMessage([0xF8], i * tickMs);
+    assert(sync.active === true, 'sync must be active for this test');
+
+    let capturedInterval = null;
+    env.sandbox.setTimeout = (fn, ms) => { capturedInterval = ms; return 0; };
+
+    const midi = new env.MIDIModality();
+    let calls = 0;
+    midi.start(() => { calls++; }, 100);
+    assert(calls === 1, 'the first tick should fire immediately');
+    assert(Math.abs(capturedInterval - (60000 / 120 / 4)) < 1e-6,
+        `expected a 16th-note interval at 120 BPM (125ms), got ${capturedInterval}`);
+    midi.stop();
+});
+
 // --- Summary ---
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {

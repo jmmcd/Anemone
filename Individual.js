@@ -52,6 +52,10 @@ class Individual {
     // Which Performance dials this type exposes (a subset of PerformanceControls.dials).
     // Step sequencers override: drum → all four, melody → tempo + swing.
     performanceDials() { return ['bpm', 'swing', 'humanize', 'drive']; }
+    // Whether the framework attaches the MIDI Clock Sync panel — a type whose sound
+    // has a tempo (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs)
+    // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
+    usesMIDISync() { return false; }
 
     // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
     // Play this individual's loop LIVE over MIDI when an output is available, else

@@ -209,6 +209,7 @@ class DrumMachineIndividual extends Individual {
     usesColorPalette() { return true; }        // rows are palette-coloured
     usesPerformanceControls() { return true; } // attaches the global Performance panel
     performanceDials() { return ['bpm', 'swing', 'humanize', 'drive', 'length']; }
+    usesMIDISync() { return true; }            // attaches the MIDI Clock Sync panel
 
     // Effective bar length in steps: the genome's `length` gene, unless the global
     // "Length" override is locked (the default, forcing 16). Shared concept with the

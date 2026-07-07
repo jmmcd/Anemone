@@ -91,6 +91,11 @@ class MouseMusicIndividual extends Individual {
         this.midiModality.setMidiOutput(midiOutput);
     }
 
+    // Attaches the MIDI Clock Sync panel: an active external clock (e.g. GarageBand)
+    // paces this DAG's evaluation loop to the DAW's tempo (see MIDIModality.start()),
+    // inherited by EEGSonificationIndividual too.
+    usesMIDISync() { return true; }
+
     setupMouseTracking(canvas) {
         const dag = this.dag;
         this.mouseListener = (event) => {

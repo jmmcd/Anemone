@@ -2,6 +2,7 @@ class InteractiveEAFramework {
     constructor(individualClass = GridIndividual) {
         this.individualClass = individualClass;
         this.midiOutput = null;
+        this.midiInput = null; // MIDI Clock input for window.MIDISync (see initializeMIDI)
         this.audioContext = null;
         this.currentIndividual = null; // Track the last clicked individual
 
@@ -100,13 +101,38 @@ class InteractiveEAFramework {
                     if (preferredOutput) {
                         this.midiOutput = preferredOutput;
                         console.log(`✓ Framework using MIDI output: ${preferredOutput.name}`);
-                        
+
                         // Open the MIDI port
                         if (preferredOutput.connection === 'closed') {
                             await preferredOutput.open();
                             console.log(`🔧 MIDI port opened: ${preferredOutput.state}, connection: ${preferredOutput.connection}`);
                         }
                     }
+                }
+
+                // MIDI input, for MIDI Clock sync (window.MIDISync): lets an external
+                // DAW (e.g. GarageBand/Logic sending Beat Clock over the same IAC bus
+                // our notes go out on) drive Anemone's tempo/phase — see MIDISync.js.
+                // Same preferred-name heuristic as the output, so it's the other end of
+                // the same virtual bus by default.
+                const inputs = Array.from(midiAccess.inputs.values());
+                console.log('🎹 MIDI access granted, found inputs:', inputs.length);
+
+                let preferredInput = inputs.find(input => input.name.includes('IAC Driver'));
+                if (!preferredInput) {
+                    preferredInput = inputs.find(input => input.name.includes('Logic Pro Virtual'));
+                }
+
+                if (preferredInput) {
+                    this.midiInput = preferredInput;
+                    console.log(`✓ Framework using MIDI input: ${preferredInput.name}`);
+
+                    if (preferredInput.connection === 'closed') {
+                        await preferredInput.open();
+                    }
+                    preferredInput.onmidimessage = (event) => {
+                        if (window.MIDISync) window.MIDISync.handleMessage(event.data, event.timeStamp);
+                    };
                 }
             } catch (error) {
                 console.error('❌ MIDI initialization failed:', error);
@@ -343,6 +369,13 @@ class InteractiveEAFramework {
         // chooses which dials to show via performanceDials().
         if (sample && typeof sample.usesPerformanceControls === 'function' && sample.usesPerformanceControls()) {
             this.uiExtensions.push(new PerformanceControlsUI(this, sample.performanceDials()));
+        }
+
+        // Attach the MIDI Clock Sync panel for individuals whose sound has a tempo
+        // (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs) that can
+        // lock to an external MIDI clock (e.g. GarageBand) — see usesMIDISync().
+        if (sample && typeof sample.usesMIDISync === 'function' && sample.usesMIDISync()) {
+            this.uiExtensions.push(new MIDISyncUI(this));
         }
 
         // Attach the code-editor panel for individuals that expose editable code
