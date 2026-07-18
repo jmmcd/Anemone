@@ -1489,6 +1489,7 @@ class InteractiveEAFramework {
             'PolarCurveIndividual': PolarCurveIndividual,
             'ShapesIndividual': ShapesIndividual,
             'PhotoFilterIndividual': PhotoFilterIndividual,
+            'AntRenderingIndividual': AntRenderingIndividual,
             'AudioFilterIndividual': AudioFilterIndividual,
             'DrumMachineIndividual': DrumMachineIndividual,
             'GridIndividual': GridIndividual,
