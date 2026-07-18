@@ -52,6 +52,7 @@ const SOURCES = [
     'PolarCurveIndividual.js',
     'AnemoneIndividual.js',
     'BranchIndividual.js',
+    'BlindWatchmakerIndividual.js',
     'SuperShapeIndividual.js',
     'RadialSurface3DIndividual.js',   // base for the 3D surface family
     'SuperShape3DIndividual.js',
@@ -82,6 +83,7 @@ const INDIVIDUAL_CLASSES = [
     'WarpedSurface3DIndividual',
     'AnemoneIndividual',
     'BranchIndividual',
+    'BlindWatchmakerIndividual',
     'RobotIndividual',
     'HoxCreatureIndividual',
     'SheepIndividual',
