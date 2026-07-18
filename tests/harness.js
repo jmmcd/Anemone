@@ -60,6 +60,7 @@ const SOURCES = [
     'RobotIndividual.js',
     'SheepIndividual.js',
     'PenroseIndividual.js',
+    'PSystemIndividual.js',
 ];
 
 // Every concrete individual class, in the order the UI lists them.
@@ -81,6 +82,7 @@ const INDIVIDUAL_CLASSES = [
     'RobotIndividual',
     'SheepIndividual',
     'PenroseIndividual',
+    'PSystemIndividual',
     'MelodyIndividual',
     'DrumMachineIndividual',
     'AudioFilterIndividual',
