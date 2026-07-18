@@ -58,6 +58,7 @@ const SOURCES = [
     'FreeSurface3DIndividual.js',
     'WarpedSurface3DIndividual.js',
     'RobotIndividual.js',
+    'HoxCreatureIndividual.js',
     'SheepIndividual.js',
     'PenroseIndividual.js',
 ];
@@ -79,6 +80,7 @@ const INDIVIDUAL_CLASSES = [
     'AnemoneIndividual',
     'BranchIndividual',
     'RobotIndividual',
+    'HoxCreatureIndividual',
     'SheepIndividual',
     'PenroseIndividual',
     'MelodyIndividual',

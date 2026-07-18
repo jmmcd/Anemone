@@ -1500,6 +1500,7 @@ class InteractiveEAFramework {
             'FreeSurface3DIndividual': FreeSurface3DIndividual,
             'WarpedSurface3DIndividual': WarpedSurface3DIndividual,
             'RobotIndividual': RobotIndividual,
+            'HoxCreatureIndividual': HoxCreatureIndividual,
             'PenroseIndividual': PenroseIndividual,
             'SheepIndividual': SheepIndividual,
             'MelodyIndividual': MelodyIndividual,

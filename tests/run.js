@@ -121,6 +121,7 @@ const expectedPalette = {
     SuperShapeIndividual: true, SuperShape3DIndividual: true,
     AnemoneIndividual: true,
     GridIndividual: true, RobotIndividual: false,
+    HoxCreatureIndividual: true,
     SheepIndividual: false, PenroseIndividual: false,
     MelodyIndividual: true, MouseMusicIndividual: false, EEGSonificationIndividual: false,
 };
