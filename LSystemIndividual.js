@@ -62,7 +62,7 @@ const lsystemGenerator = (rnd) => {
         const n = rnd.randint(3, 7);
         for (let i = 0; i < n; i++) {
             const r = rnd.random();
-            if (r < 0.18 && depth > 0) {
+            if (r < 0.05 && depth > 0) {
                 s += '[' + buildRhs(rnd, depth - 1) + ']';
             } else if (r < 0.30) {
                 s += rnd.choice(LSYS_TURNS);
