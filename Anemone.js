@@ -1495,6 +1495,7 @@ class InteractiveEAFramework {
             'GridIndividual': GridIndividual,
             'AnemoneIndividual': AnemoneIndividual,
             'BranchIndividual': BranchIndividual,
+            'LSystemIndividual': LSystemIndividual,
             'BlindWatchmakerIndividual': BlindWatchmakerIndividual,
             'SuperShapeIndividual': SuperShapeIndividual,
             'SuperShape3DIndividual': SuperShape3DIndividual,
