@@ -106,7 +106,7 @@ function makeContext() {
         createImageData: imageData,
         getImageData: (x, y, w, h) => imageData(w, h),
         putImageData: noop, clearRect: noop, fillRect: noop, strokeRect: noop,
-        beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop,
+        beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, rect: noop,
         arc: noop, arcTo: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
         fill: noop, stroke: noop, save: noop, restore: noop,
         translate: noop, scale: noop, rotate: noop, setLineDash: noop, fillText: noop,
