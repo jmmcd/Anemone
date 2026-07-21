@@ -51,15 +51,23 @@ class InteractiveEAFramework {
         // EEG data stream (for EEGSonificationIndividual)
         this.eegStream = null;
 
-        // Initialize MIDI first
+        // Build the UI and first generation immediately — nothing here needs MIDI,
+        // so the grid renders without waiting on MIDI access / port opening (which
+        // can be slow, or hang, on some systems). Sound only happens on user
+        // interaction, long after this.
+        this.ea = new EvolutionaryAlgorithm(individualClass, 16, this.midiOutput);
+        this.initializeShared3D();
+        this.loadExtensions();
+        this.setupUI();
+        this.distributeEEGStream();
+        this.render();
+
+        // Connect MIDI in the background: initializeMIDI() wires framework.sharedMIDI
+        // (every sound individual references it) when it resolves, and falls back to
+        // Web Audio otherwise — so it's ready well before anyone selects a music app.
         this.initializeMIDI().then(() => {
-            this.ea = new EvolutionaryAlgorithm(individualClass, 16, this.midiOutput);
-            this.initializeShared3D();
-            this.loadExtensions();
-            this.setupUI();
-            this.distributeEEGStream();
-            this.render();
-        });
+            if (this.ea) this.ea.midiOutput = this.midiOutput;
+        }).catch((err) => console.warn('⚠️ MIDI init failed (Web Audio fallback in use):', err));
     }
     
     async initializeMIDI() {
@@ -103,7 +111,10 @@ class InteractiveEAFramework {
                     this.midiOutput = preferredOutput;
                     console.log(`✓ Framework using MIDI output: ${preferredOutput.name}`);
                     if (preferredOutput.connection === 'closed') {
-                        await preferredOutput.open();
+                        // Guard: on some systems port.open() never resolves. Never let it
+                        // stall app init (the whole UI is chained off initializeMIDI) — race
+                        // it against a timeout. sendNote works regardless (ports auto-open).
+                        await this._openPortSafely(preferredOutput);
                         console.log(`🔧 MIDI port opened: state=${preferredOutput.state} conn=${preferredOutput.connection}`);
                     }
                 } else {
@@ -131,7 +142,7 @@ class InteractiveEAFramework {
 
                     this.midiInput = preferredInput;
                     console.log(`✓ Framework using MIDI input: ${preferredInput.name}`);
-                    if (preferredInput.connection === 'closed') await preferredInput.open();
+                    if (preferredInput.connection === 'closed') await this._openPortSafely(preferredInput);
                     preferredInput.onmidimessage = (event) => {
                         if (window.MIDISync) window.MIDISync.handleMessage(event.data, event.timeStamp);
                     };
@@ -148,6 +159,21 @@ class InteractiveEAFramework {
         // Wire the resolved output (or null → Web Audio fallback) into the
         // single shared modality that every sound individual references.
         this.sharedMIDI.setMidiOutput(this.midiOutput);
+    }
+
+    // Open a MIDI port without ever hanging app init: a port.open() that never
+    // resolves (seen on some macOS/IAC setups) would otherwise stall the whole
+    // initializeMIDI().then(...) chain and leave the grid unrendered. Resolve on
+    // whichever comes first — open() or a short timeout — and swallow errors.
+    async _openPortSafely(port, timeoutMs = 2000) {
+        try {
+            await Promise.race([
+                Promise.resolve(port.open()),
+                new Promise((resolve) => setTimeout(resolve, timeoutMs))
+            ]);
+        } catch (err) {
+            console.warn(`⚠️ MIDI port open() failed for "${port.name}":`, err);
+        }
     }
 
     initializeShared3D() {
