@@ -2,7 +2,7 @@
 
 Anemone is a library for interactive evolutionary computation (interactive EC or IEC), and a set of plug-in demos for the library.
 
-You can download this repo and double-click the html file, or you can [visit a hosted version at surge.sh](https://anemone.surge.sh/) (thanks!).
+You can download this repo and double-click the html file, or you can visit http://jmmcd.net/Anemone.
 
 ![Anemone logo](img/anemone.png)
 
