@@ -31,4 +31,4 @@
 
 * Several of the apps also allow you edit the Javascript code which generates the individuals, and the code which visualises them. This is advanced usage, but don't hesitate to try it -- you can't break anything! Take a look at the code that pops up when you click "Edit code" in the menu and you'll find yourself learning some Javascript.
 
-**Anemone** was created by James McDermott using Claude Code. Read more at https://github.com/jmmcd/Anemone. 
+**Anemone** was designed by James McDermott and almost entirely implemented by Claude Code. Read more at https://github.com/jmmcd/Anemone. 
