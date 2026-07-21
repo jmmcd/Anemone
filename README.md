@@ -18,7 +18,7 @@ You should see a grid of images. Click the ones you like, then click "Evolve", a
 
 If you select zero, then "Evolve" throws them all away to make totally new ones. If you select one, it makes new ones by mutating that good one. If you select two or more, it uses crossover to make children and mutation as well.
 
-You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Some of the best ones: Anemone, SuperShape3D, Pattern, Robot, Drum Machine.
+You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Some of the best ones: Anemone, SuperShape3D, Pattern, Robot, Drum Machine, L-System.
 
 # Program Trace Optimisation
 
