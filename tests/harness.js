@@ -60,6 +60,7 @@ const SOURCES = [
     'PetalSphere3DIndividual.js',
     'FreeSurface3DIndividual.js',
     'WarpedSurface3DIndividual.js',
+    'JennPolytopeIndividual.js',
     'RobotIndividual.js',
     'WonkyGuysIndividual.js',
     'HoxCreatureIndividual.js',
@@ -83,6 +84,7 @@ const INDIVIDUAL_CLASSES = [
     'PetalSphere3DIndividual',
     'FreeSurface3DIndividual',
     'WarpedSurface3DIndividual',
+    'JennPolytopeIndividual',
     'AnemoneIndividual',
     'BranchIndividual',
     'LSystemIndividual',
@@ -225,6 +227,7 @@ function load() {
     combined += `;globalThis.__EvolutionaryAlgorithm = EvolutionaryAlgorithm;\n`;
     combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
     combined += `;globalThis.__drumVoices = (typeof drumVoices === 'function') ? drumVoices : null;\n`;
+    combined += `;globalThis.__jennGeometry = jennGeometry; globalThis.__JENN_EDGE_COUNTS = JENN_EDGE_COUNTS; globalThis.__JENN_POLYTOPES = JENN_POLYTOPES;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
     // Mirror the app: single shared output modalities on the framework, which sound
@@ -242,6 +245,9 @@ function load() {
         EvolutionaryAlgorithm: sandbox.__EvolutionaryAlgorithm,
         TerminalNode: sandbox.__TerminalNode,
         drumVoices: sandbox.__drumVoices,
+        jennGeometry: sandbox.__jennGeometry,
+        JENN_EDGE_COUNTS: sandbox.__JENN_EDGE_COUNTS,
+        JENN_POLYTOPES: sandbox.__JENN_POLYTOPES,
     };
 }
 

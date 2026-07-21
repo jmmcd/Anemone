@@ -131,16 +131,45 @@ check('usesColorPalette() matches expectation', () => {
         assert(ind.usesColorPalette() === expect, `${name}.usesColorPalette() should be ${expect}`);
     }
 });
-check('only the RadialSurface3D family reports is3D()', () => {
-    // The 3D types are exactly the RadialSurface3DIndividual subclasses.
+check('only the 3D types report is3D()', () => {
+    // The 3D types are the RadialSurface3DIndividual subclasses plus the Jenn
+    // polytope visualiser (also rides the shared Three.js pipeline).
     const threeD = new Set([
         'SuperShape3DIndividual', 'PetalSphere3DIndividual',
         'FreeSurface3DIndividual', 'WarpedSurface3DIndividual',
+        'JennPolytopeIndividual',
     ]);
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
         const expect = threeD.has(name);
         assert(ind.is3D() === expect, `${name}.is3D() should be ${expect}`);
+    }
+});
+
+check('Jenn polytope vertex tables recover the known 1-skeletons', () => {
+    // The precomputed 4D vertex sets are validated by the edge count that
+    // nearest-neighbour recovery produces — the canonical invariant of each
+    // regular polychoron. A wrong coordinate set would shift these.
+    const { jennGeometry, JENN_EDGE_COUNTS, JENN_POLYTOPES } = load();
+    const expectVerts = { the_5_cell: 5, the_8_cell: 16, the_16_cell: 8, the_24_cell: 24, the_600_cell: 120 };
+    const expectFaces = { the_5_cell: 10, the_8_cell: 24, the_16_cell: 32, the_24_cell: 96, the_600_cell: 1200 };
+    for (const shape of JENN_POLYTOPES) {
+        const { verts, edges, faces } = jennGeometry(shape);
+        assert(verts.length === expectVerts[shape], `${shape}: ${verts.length} verts, expected ${expectVerts[shape]}`);
+        assert(edges.length === JENN_EDGE_COUNTS[shape], `${shape}: ${edges.length} edges, expected ${JENN_EDGE_COUNTS[shape]}`);
+        assert(faces.length === expectFaces[shape], `${shape}: ${faces.length} faces, expected ${expectFaces[shape]}`);
+        // Face polygons must close: consecutive vertices (cyclically) are edges.
+        const edgeSet = new Set(edges.map(([a, b]) => a < b ? `${a},${b}` : `${b},${a}`));
+        for (const f of faces)
+            for (let i = 0; i < f.length; i++) {
+                const a = f[i], b = f[(i + 1) % f.length];
+                assert(edgeSet.has(a < b ? `${a},${b}` : `${b},${a}`), `${shape}: face edge ${a}-${b} not in edge set`);
+            }
+        // Every vertex must sit on the unit 3-sphere.
+        for (const v of verts) {
+            const r = Math.hypot(v[0], v[1], v[2], v[3]);
+            assert(Math.abs(r - 1) < 1e-9, `${shape}: vertex off S³ (r=${r})`);
+        }
     }
 });
 

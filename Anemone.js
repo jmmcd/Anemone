@@ -1,5 +1,15 @@
 class InteractiveEAFramework {
     constructor(individualClass = GridIndividual) {
+        // Publish the instance immediately, before anything the constructor kicks
+        // off can look for it. main.js also assigns window.framework, but only
+        // AFTER `new` returns — too late for the constructor's own initializeShared3D
+        // + first render(). When a 3D type is the startup type (e.g. deep-linked via
+        // the #Type hash the app sets on use), that first render runs while
+        // window.framework is still undefined, so every 3D individual's visualize()
+        // fell back to the 2D path and never built a shared-scene mesh: tiles showed
+        // a static wireframe (no faces) and their rotation loop found no mesh, until
+        // a zoom rebuilt it. Setting it here closes that window.
+        if (typeof window !== 'undefined') window.framework = this;
         this.individualClass = individualClass;
         this.midiOutput = null;
         this.midiInput = null; // MIDI Clock input for window.MIDISync (see initializeMIDI)
@@ -25,6 +35,12 @@ class InteractiveEAFramework {
 
         // Shared 3D resources for WebGL context management
         this.shared3D = null;
+
+        // Supersampling factor for 3D tiles/zoom (see renderMeshToCanvas): the
+        // scene is rendered at ss× the target canvas and downsampled for cheap
+        // anti-aliasing. 2 is a big smoothness win at 4× the fragment cost (same
+        // geometry); raise for even smoother edges if the GPU has headroom.
+        this.superSample3D = 2;
 
         // User-adjustable multiplier on the 3D camera framing distance (see
         // renderMeshToCanvas). 1.0 = default framing; the [ and ] hotkeys step
@@ -258,19 +274,17 @@ class InteractiveEAFramework {
         const existingMesh = this.shared3D.meshes.get(individualId);
         if (existingMesh) {
             this.shared3D.scene.remove(existingMesh);
-            
-            // Dispose geometry and materials
-            if (existingMesh.geometry) {
-                existingMesh.geometry.dispose();
-            }
-            if (existingMesh.material) {
-                if (Array.isArray(existingMesh.material)) {
-                    existingMesh.material.forEach(material => material.dispose());
-                } else {
-                    existingMesh.material.dispose();
+
+            // Dispose geometry and materials. traverse() covers both a bare Mesh
+            // and a Group of meshes (e.g. Jenn's opaque-struts + transparent-faces
+            // pair), whose geometry/material live on the children, not the group.
+            existingMesh.traverse((obj) => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m => m.dispose());
                 }
-            }
-            
+            });
+
             this.shared3D.meshes.delete(individualId);
         }
     }
@@ -279,9 +293,13 @@ class InteractiveEAFramework {
     renderMeshToCanvas(canvas, individualId, mesh) {
         if (!this.shared3D || !this.shared3D.renderer) return;
         
-        // Create temporary scene for this individual mesh only
+        // Create temporary scene for this individual mesh only. Background is
+        // black by default, but an individual can request another (Jenn's glass
+        // faces read far better over a light background) by stashing a colour on
+        // its mesh/group userData in visualize().
         const tempScene = new THREE.Scene();
-        tempScene.background = new THREE.Color(0x000000);
+        const bg = (mesh.userData && mesh.userData.background3D != null) ? mesh.userData.background3D : 0x000000;
+        tempScene.background = new THREE.Color(bg);
         
         // Copy lighting from shared scene to temp scene (brighter)
         tempScene.add(new THREE.AmbientLight(0x404040, 1.2));
@@ -334,14 +352,22 @@ class InteractiveEAFramework {
         camera.position.z = center.z + Math.sin(time * 0.5) * rotationRadius;
         camera.lookAt(center);
         
-        // Set render target size to match canvas
-        this.shared3D.renderer.setSize(canvas.width, canvas.height, false);
-        
+        // Supersample: render at ss× the canvas resolution, then let the 2D
+        // drawImage below downscale it. This is cheap anti-aliasing (more
+        // fragments, same geometry) on top of the renderer's MSAA — it smooths the
+        // stair-stepped silhouettes of edge-heavy meshes (e.g. the Jenn polytopes),
+        // whose tiles otherwise rasterise at only 128px. Benefits every 3D type.
+        const ss = this.superSample3D || 2;
+        this.shared3D.renderer.setSize(canvas.width * ss, canvas.height * ss, false);
+
         // Render temp scene (with only this mesh) to shared renderer
         this.shared3D.renderer.render(tempScene, camera);
-        
-        // Copy rendered content to the individual's canvas
+
+        // Copy rendered content to the individual's canvas, downsampling the
+        // supersampled buffer (imageSmoothingEnabled makes the shrink anti-alias).
         const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(this.shared3D.renderer.domElement, 0, 0, canvas.width, canvas.height);
         
@@ -1090,11 +1116,23 @@ class InteractiveEAFramework {
         this._zoomAnimToken = token;
         if (!(individual.is3D && individual.is3D()) || !this.shared3D || !this.lightboxCanvas) return;
         const canvas = this.lightboxCanvas;
+        // Some 3D types animate their *geometry*, not just the camera (Jenn's 4D
+        // rotation continuously reprojects the mesh). For those, rebuild the mesh
+        // each frame from the current clock; otherwise reuse the cached mesh and
+        // only orbit the camera (far cheaper). Only the single zoomed object is
+        // rebuilt — doing this across the whole grid would be too heavy.
+        const animatesGeom = individual.animatesGeometry && individual.animatesGeometry()
+            && typeof individual.setAnimationTime === 'function';
         const animate = () => {
             if (this._zoomAnimToken !== token) return;                 // superseded / closed
             if (!this.lightbox.classList.contains('open')) return;      // closed
-            const mesh = this.shared3D.meshes.get(individual.id);
-            if (mesh) this.renderMeshToCanvas(canvas, individual.id, mesh);
+            if (animatesGeom) {
+                individual.setAnimationTime(this.rotationTime());       // pauses with the clock
+                try { individual.visualize(canvas); } catch (e) { /* keep the loop alive */ }
+            } else {
+                const mesh = this.shared3D.meshes.get(individual.id);
+                if (mesh) this.renderMeshToCanvas(canvas, individual.id, mesh);
+            }
             requestAnimationFrame(animate);
         };
         animate();
@@ -1165,6 +1203,14 @@ class InteractiveEAFramework {
 
     closeZoom() {
         this._zoomAnimToken = null; // stop the zoom rotation loop
+        // If the zoomed individual animated its geometry (Jenn 4D rotation), return
+        // it to the static genome pose and refresh its grid tile so it isn't left
+        // frozen mid-morph at reduced detail.
+        const ind = this.currentIndividual;
+        if (ind && typeof ind.resetAnimation === 'function') {
+            ind.resetAnimation();
+            if (ind._tileCanvas) { try { ind.visualize(ind._tileCanvas); } catch (e) { /* ignore */ } }
+        }
         this.teardownGridEditing();
         if (this.lightbox) this.lightbox.classList.remove('open');
     }
@@ -1528,6 +1574,7 @@ class InteractiveEAFramework {
             'PetalSphere3DIndividual': PetalSphere3DIndividual,
             'FreeSurface3DIndividual': FreeSurface3DIndividual,
             'WarpedSurface3DIndividual': WarpedSurface3DIndividual,
+            'JennPolytopeIndividual': JennPolytopeIndividual,
             'RobotIndividual': RobotIndividual,
             'WonkyGuysIndividual': WonkyGuysIndividual,
             'HoxCreatureIndividual': HoxCreatureIndividual,
