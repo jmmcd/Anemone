@@ -323,8 +323,20 @@ class InteractiveEAFramework {
         const boundingBox = new THREE.Box3().setFromObject(mesh);
         const center = boundingBox.getCenter(new THREE.Vector3());
         const size = boundingBox.getSize(new THREE.Vector3());
-        
-        const maxDim = Math.max(size.x, size.y, size.z);
+
+        let maxDim = Math.max(size.x, size.y, size.z);
+
+        // Robust framing override (currently the Jenn polytopes): a stereographic
+        // projection can fling a few vertices far out, so the true bounding box is
+        // dominated by outliers and the camera zooms out, shrinking the interesting
+        // core to a corner. An individual can instead publish a robust centre+radius
+        // (over its own inliers) via userData; we frame on that so the core fills the
+        // view and the outliers spill off-screen.
+        if (mesh.userData && mesh.userData.framingRadius) {
+            const fc = mesh.userData.framingCenter || [center.x, center.y, center.z];
+            center.set(fc[0], fc[1], fc[2]);
+            maxDim = mesh.userData.framingRadius * 2;
+        }
 
         // Create a copy of the camera for this individual, at the user's chosen
         // focal length. Lower FOV = less foreshortening.

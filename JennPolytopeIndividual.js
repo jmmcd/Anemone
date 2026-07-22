@@ -15,8 +15,8 @@
  * distance on S³ (validated against the known edge counts in the tests). The
  * genome (a small PTO parameter vector, in the spirit of the "64 bits" paper)
  * chooses the polytope, a full SO(4)-ish rotation (6 plane angles — rotations in
- * a w-plane are what "fly through" the projection), a projection scale, tube
- * thickness, and whether to draw vertex markers. Colour comes from the shared
+ * a w-plane are what "fly through" the projection), a projection scale, and tube
+ * thickness (ball nodes at every vertex are always drawn). Colour comes from the shared
  * palette, keyed on 4D w-depth so the stereographic depth reads as hue.
  *
  * Rendering rides the existing Three.js 3D pipeline: each curved edge is sampled
@@ -227,10 +227,13 @@ const jennGenerator = (rnd) => {
     for (let i = 0; i < 6; i++) rot.push(rnd.uniform(0, 2 * Math.PI)); // xy xz xw yz yw zw
     const projScale = rnd.uniform(0.6, 1.6);
     const tubeRadius = rnd.uniform(0.015, 0.06);
-    const showVertices = rnd.random() < 0.5;
     const colorReverse = rnd.random() < 0.5;   // flip inner/outer palette direction
     const renderStyle = rnd.choice(['wire', 'solid', 'both']); // rods / curved faces / both
-    return { shape, rot, projScale, tubeRadius, showVertices, colorReverse, renderStyle };
+    // Ball nodes at every vertex are always drawn (no on/off gene): they're
+    // essential to the Jenn look and, because stereographic projection is conformal,
+    // the polytope's real vertex corners can't be smoothed away — a ball is the only
+    // thing that caps them.
+    return { shape, rot, projScale, tubeRadius, colorReverse, renderStyle };
 };
 
 const jennRepresentation = new PTORepresentation(jennGenerator);
@@ -247,7 +250,14 @@ class JennPolytopeIndividual extends Individual {
         // — rotating in a w-plane sweeps vertices toward/through the projection
         // pole, the mesmerising Jenn "fly-through".
         this._anim4DAngles = [0, 0, 0];
-        this.maxProjRadius = 12;   // soft radial bound on projected points (tanh) — see _project
+        // Soft radial bound on projected points (tanh; see _project). Stereographic
+        // projection flings a near-pole vertex out toward infinity, dragging its
+        // faces into large flat "panels" that dominate the frame. This bound caps
+        // how far they reach; lowering it from 12→6 shrinks those panels toward the
+        // core (they're a projection-singularity artifact) while barely touching the
+        // core and mid-range edge loops, which sit well inside the bound. Kept a
+        // smooth tanh (not a hard clamp) so rods sweeping outward stay curved.
+        this.maxProjRadius = 6;
     }
 
     is3D() { return true; }
@@ -346,20 +356,33 @@ class JennPolytopeIndividual extends Individual {
     }
 
     // Append a thin tube of triangles following the R³ polyline `points`.
-    // colorTs[i] ∈ [0,1] gives each ring's palette colour. Uses a fixed-up frame;
-    // arcs are short enough that section twist is invisible.
+    // colorTs[i] ∈ [0,1] gives each ring's palette colour. Uses a rotation-
+    // minimizing (parallel-transport) frame: one normal is carried along the curve,
+    // re-orthogonalised against each successive tangent, instead of being recomputed
+    // independently per ring from a fixed up-vector. An independent per-ring frame
+    // flips orientation where the tangent crosses the up-vector switch threshold,
+    // abruptly twisting the low-poly cross-section and pinching the tube — the
+    // "strange thinning" on the long sweeping loops. Transport keeps it continuous.
     _emitTube(points, colorTs, radius, out, sides) {
         const S = sides || this.tubeSides;
         const baseIndex = out.vertices.length / 3;
         const n = points.length;
         if (n < 2) return;
+        const tangentAt = (i) => jennNorm3(
+            i === 0 ? jennSub(points[1], points[0])
+                : i === n - 1 ? jennSub(points[n - 1], points[n - 2])
+                    : jennSub(points[i + 1], points[i - 1]));
+        // Seed the carried normal from an arbitrary up-vector (only sets the tube's
+        // starting roll, which is invisible for a round section).
+        let t0 = tangentAt(0);
+        const seed = Math.abs(t0[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        let n1 = jennNorm3(jennCross(t0, seed));
         for (let i = 0; i < n; i++) {
-            const tangent = jennNorm3(
-                i === 0 ? jennSub(points[1], points[0])
-                    : i === n - 1 ? jennSub(points[n - 1], points[n - 2])
-                        : jennSub(points[i + 1], points[i - 1]));
-            const ref = Math.abs(tangent[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-            const n1 = jennNorm3(jennCross(tangent, ref));
+            const tangent = tangentAt(i);
+            // Re-orthogonalise the carried normal against the current tangent
+            // (project out the tangent component) — the transport step.
+            const d = n1[0] * tangent[0] + n1[1] * tangent[1] + n1[2] * tangent[2];
+            n1 = jennNorm3([n1[0] - tangent[0] * d, n1[1] - tangent[1] * d, n1[2] - tangent[2] * d]);
             const n2 = jennCross(tangent, n1);
             const col = window.Palette.color(colorTs[i]);
             for (let k = 0; k < S; k++) {
@@ -381,7 +404,7 @@ class JennPolytopeIndividual extends Individual {
             }
     }
 
-    // A small icosahedral ball at an R³ point (for the showVertices gene). Jenn
+    // A small icosahedral ball at an R³ point (drawn at every vertex). Jenn
     // draws nodes as balls a bit wider than the rods; radius is set accordingly.
     _emitVertexMarker(p, radius, colorT, out) {
         const base = out.vertices.length / 3;
@@ -423,7 +446,62 @@ class JennPolytopeIndividual extends Individual {
         // Same arc-length basis as the rods: a face's longest boundary arc decides
         // its boundary segment count (→ interior grid depth), so a big face near
         // the camera is finely meshed and a small dense 600-cell face stays cheap.
-        return Math.max(floor, Math.min(24, Math.round((5 + maxArc * 2.5) * lod)));
+        // Cap 40 (not 24): the static path is a one-shot render (paused zoom / tile /
+        // STL), so it can afford a fine limb on a large face without a per-frame cost.
+        return Math.max(floor, Math.min(40, Math.round((5 + maxArc * 2.5) * lod)));
+    }
+
+    // Face depth for the 4D morph. It must be *rotation-invariant* (constant across
+    // frames), because a face's silhouette (limb) is a polygon whose corner count
+    // otherwise pops as the projection changes — the "number of angles changes while
+    // rotating" artifact. A coarse curved surface has a coarse limb regardless, and
+    // even at fixed depth the silhouette re-forms from different mesh edges as it
+    // turns, so the ONLY cure is a fine enough mesh that the limb reads as round.
+    // So: spend a fixed per-frame triangle BUDGET, split evenly across the shape's
+    // faces (uniform → no flicker), giving each the highest depth that budget allows.
+    // Sparse big-face polytopes (few faces) get a fine mesh — their big limbs need
+    // it; the dense 600-cell (1200 tiny faces) gets a low depth, but its many small
+    // faces already give a smooth limb. `lod` (0.5 while the dense shapes morph)
+    // scales it down further. Independent of orientation, so nothing flickers.
+    _faceDepthStable(corners4, lod) {
+        const nFaces = jennGeometry(this.phenotype.shape).faces.length;
+        const trisPerUnit = corners4.length === 4 ? 2 : 1;   // quad patch = 2·D², tri = D²
+        const BUDGET = 60000;                                 // triangles/frame, all faces
+        const d = Math.round(Math.sqrt(BUDGET / (trisPerUnit * nFaces)) * lod);
+        return Math.max(6, Math.min(60, d));
+    }
+
+    // Robust camera-framing bounds over the projected polytope vertices, ignoring
+    // the near-pole outliers that stereographic projection flings far out. Median
+    // centre + ~80th-percentile radius: the bulk (core) fits the frame; the 1–2
+    // stretched vertices (and the big flat faces hanging off them) fall outside and
+    // get cropped by the frame rather than dominating it. Recomputed per frame but
+    // varies smoothly under the morph (percentile of a moving point cloud), so the
+    // camera drifts rather than jumping.
+    _framingHint() {
+        const p = this.phenotype;
+        const ea = this._anim4DAngles;
+        const gverts = jennGeometry(p.shape).verts;
+        const pv = gverts.map(v =>
+            this._project(this._rotate4Extra(this._rotate4(v, p.rot), ea), p.projScale));
+        const med = (axis) => {
+            const a = pv.map(q => q[axis]).sort((x, y) => x - y);
+            return a[a.length >> 1];
+        };
+        const center = [med(0), med(1), med(2)];
+        const radii = pv
+            .map(q => Math.hypot(q[0] - center[0], q[1] - center[1], q[2] - center[2]))
+            .sort((x, y) => x - y);
+        // Linearly-interpolated 80th percentile (not a strict index): with few
+        // vertices a strict index steps as radii reorder during the morph, jittering
+        // the zoom; interpolation is continuous as two adjacent radii cross.
+        const fi = (radii.length - 1) * 0.8;
+        const lo = Math.floor(fi);
+        const r80 = (radii[lo] + (radii[Math.min(lo + 1, radii.length - 1)] - radii[lo]) * (fi - lo)) || 1;
+        // Margin > 1 because the rendered surface bulges *past* its vertices (curved
+        // faces + rods sweeping outward), so vertex radius under-reads the on-screen
+        // extent; 1.45 keeps the core comfortably inside the frame.
+        return { center, radius: r80 * 1.45 };
     }
 
     // A curved triangular patch on S³ (corners A,B,C are rotated 4D unit vectors):
@@ -481,7 +559,9 @@ class JennPolytopeIndividual extends Individual {
     // seen *through* strongly-transparent faces. rotate in 4D first.
     // `lod` scales detail: 1 = full (zoom lightbox, STL export), <1 for the small
     // 128px grid tiles where a 600-cell would otherwise be ~120k triangles × 16.
-    _buildParts(lod = 1) {
+    // `stable` (set while 4D-morphing) uses a rotation-invariant face depth so the
+    // tessellation doesn't flicker as the projection changes each frame.
+    _buildParts(lod = 1, stable = false) {
         const p = this.phenotype;
         const { edges, faces } = jennGeometry(p.shape);
         const verts = jennGeometry(p.shape).verts;
@@ -494,13 +574,21 @@ class JennPolytopeIndividual extends Individual {
         if (p.renderStyle !== 'wire') {
             for (const f of faces) {
                 const c4 = f.map(vi => rverts[vi]);
-                const depth = this._faceDepth(c4, p, lod);
+                // While morphing, base depth on the intrinsic 4D edge angle (constant
+                // under rotation) so the tessellation doesn't pop frame-to-frame; when
+                // static, use the sharper projected-arc-length metric.
+                const depth = stable ? this._faceDepthStable(c4, lod) : this._faceDepth(c4, p, lod);
                 if (f.length === 3) this._emitTrianglePatch(c4[0], c4[1], c4[2], depth, p, glass);
                 else this._emitQuadPatch(c4[0], c4[1], c4[2], c4[3], depth, p, glass);
             }
         }
 
-        if (p.renderStyle !== 'solid') for (const [i, j] of edges) {
+        // Rods in EVERY mode. In 'solid' they're a little thinner than in wire mode
+        // but still clearly visible (0.75×, not hairline): the crisp curved edge
+        // rods + ball nodes are what carry the structure when a face's translucent
+        // fill is caught edge-on and reads flat, so they must not vanish.
+        const rodRadius = p.renderStyle === 'solid' ? p.tubeRadius * 0.75 : p.tubeRadius;
+        for (const [i, j] of edges) {
             const a = rverts[i], b = rverts[j];
             // Segment count scales with the projected arc *length*: a long rod
             // sweeping near the pole gets many samples (smooth), a short near-
@@ -514,15 +602,17 @@ class JennPolytopeIndividual extends Individual {
                 let t = (v4[3] + 1) / 2;              // colour by w-depth
                 colorTs.push(p.colorReverse ? 1 - t : t);
             }
-            this._emitTube(points, colorTs, p.tubeRadius, struts, sides);
+            this._emitTube(points, colorTs, rodRadius, struts, sides);
         }
 
-        if (p.showVertices) {
-            for (const v of rverts) {
-                let t = (v[3] + 1) / 2;
-                this._emitVertexMarker(this._project(v, p.projScale), p.tubeRadius * 2.0,
-                    p.colorReverse ? 1 - t : t, struts);
-            }
+        // Ball node at every vertex, always (see generator note). Clearly wider than
+        // the rods (3.4×), as in Jenn — a prominent node, and the cap for the
+        // conformal corners. (In 'solid' the rods are 0.75× thinner, so the ball is
+        // ~4.5× the rod there — even more distinct.)
+        for (const v of rverts) {
+            let t = (v[3] + 1) / 2;
+            this._emitVertexMarker(this._project(v, p.projScale), p.tubeRadius * 3.4,
+                p.colorReverse ? 1 - t : t, struts);
         }
         return { struts, glass };
     }
@@ -548,11 +638,14 @@ class JennPolytopeIndividual extends Individual {
         g.computeVertexNormals();
         const material = new THREE.MeshPhongMaterial(transparent
             // A specular highlight is the cue that reads a curved surface as curved
-            // — without it, at ~0.26 opacity a domed face and a flat face look
-            // identical, so a face seen edge-on to its curvature looks like a flat
-            // polygon. The broad highlight (low shininess) sweeps across the dome as
-            // it rotates, revealing the shape; opacity nudged up a little too.
-            ? { vertexColors: true, side: THREE.DoubleSide, shininess: 30, specular: 0x999999, transparent: true, opacity: 0.32, depthWrite: false }
+            // — without it a domed face and a flat face look identical, so a face
+            // seen edge-on to its curvature looks like a flat polygon. The broad
+            // highlight (low shininess) sweeps across the dome as it rotates,
+            // revealing the shape. Opacity is kept fairly low (0.24) so the crisp
+            // edge rods + ball nodes carry the structure and a face's coarse limb,
+            // when caught edge-on, recedes rather than presenting as a solid sheet —
+            // the edge-dominant Jenn balance.
+            ? { vertexColors: true, side: THREE.DoubleSide, shininess: 30, specular: 0x999999, transparent: true, opacity: 0.24, depthWrite: false }
             : { vertexColors: true, side: THREE.DoubleSide, shininess: 100 });
         return new THREE.Mesh(g, material);
     }
@@ -568,7 +661,13 @@ class JennPolytopeIndividual extends Individual {
             // motion masks it. (Pausing rotation returns to full detail.)
             const ea = this._anim4DAngles;
             const morphing = (ea[0] || ea[1] || ea[2]) && framework.rotationEnabled;
-            if (morphing) lod = Math.min(lod, 0.5);
+            if (morphing) {
+                // Per-frame CPU rebuild: throttle only the dense 600-cell (1200
+                // faces); the sparse big-face polytopes are cheap even at full
+                // detail, and they're the ones whose limb needs it to stay round.
+                const dense = jennGeometry(this.phenotype.shape).faces.length > 300;
+                lod = Math.min(lod, dense ? 0.5 : 1);
+            }
 
             // Skip the (expensive) rebuild when nothing that affects the geometry
             // has changed — e.g. a paused zoom re-rendering the same pose each
@@ -582,13 +681,26 @@ class JennPolytopeIndividual extends Individual {
             }
             this._lastBuiltKey = buildKey;
 
-            const { struts, glass } = this._buildParts(lod);
+            const { struts, glass } = this._buildParts(lod, morphing);
             const group = new THREE.Group();
             if (struts.indices.length) group.add(this._threeMesh(struts, false));
             if (glass.indices.length) group.add(this._threeMesh(glass, true));
             // A soft light background makes the transparent glass faces read as
             // bright coloured film (the Jenn look) instead of murky dark tint.
             group.userData.background3D = 0xe9ecf2;
+            // Robust framing hint (consumed by renderMeshToCanvas). Stereographic
+            // projection flings 1–2 vertices near the north pole out to a large
+            // radius, dragging a genuinely-flat 2-face into a big hard-cornered
+            // sheet. If the camera frames the full bounding box (its default), that
+            // outlier face fills the view and the compact core shrinks into a corner.
+            // Instead we hand the framer a robust centre+radius over the *polytope
+            // vertices* (median centre, ~80th-percentile radius), so the core fills
+            // the frame and the rare stretched face's ugly corners spill off-screen
+            // (cropped, not popped — this is continuous under the 4D morph). This is
+            // what keeps the look compact and Jenn-like.
+            const fh = this._framingHint();
+            group.userData.framingCenter = fh.center;
+            group.userData.framingRadius = fh.radius;
             framework.addMeshToScene(this.id, group);
             framework.renderMeshToCanvas(canvas, this.id, group);
             return;
@@ -640,7 +752,7 @@ class JennPolytopeIndividual extends Individual {
 
     renderKey() {
         const p = this.phenotype;
-        return `${p.shape}|${p.rot.map(a => a.toFixed(3)).join(',')}|${p.projScale.toFixed(3)}|${p.tubeRadius.toFixed(3)}|${p.showVertices ? 1 : 0}|${p.colorReverse ? 1 : 0}|${p.renderStyle}`;
+        return `${p.shape}|${p.rot.map(a => a.toFixed(3)).join(',')}|${p.projScale.toFixed(3)}|${p.tubeRadius.toFixed(3)}|${p.colorReverse ? 1 : 0}|${p.renderStyle}`;
     }
 
     describeExtra() {
@@ -653,7 +765,7 @@ class JennPolytopeIndividual extends Individual {
         s += `\n<span class="genome-label">4D rotation (rad):</span>\n`;
         s += `  ${p.rot.map(a => a.toFixed(2)).join(', ')}\n`;
         s += `  proj scale ${p.projScale.toFixed(2)}, tube ${p.tubeRadius.toFixed(3)}, `;
-        s += `markers ${p.showVertices ? 'on' : 'off'}, palette ${p.colorReverse ? 'reversed' : 'normal'}\n`;
+        s += `palette ${p.colorReverse ? 'reversed' : 'normal'}\n`;
         return s;
     }
 }
