@@ -8,6 +8,13 @@
  *
  * Same self-contained, plain-data form as mouseMusicGenerator (see that file and
  * DAGRepresentation.js), differing only in the input/output counts.
+ *
+ * Input comes live from window.OSCInput (OSC-over-WebSocket) — the 5 feature values
+ * of the latest received /eeg message drive the DAG's input nodes. It reads that
+ * app-level service directly (the way palette/photo individuals read window.Palette /
+ * window.Photo); the OSC Input drawer panel (attached via usesOSCInput()) connects it.
+ * Feed it by replaying an EEG CSV with scripts/eeg-osc-sender.js, or from any live
+ * OSC source. (This replaced the earlier in-browser CSV loader / EEGDataStream.)
  */
 const eegSonificationGenerator = (rnd) => {
     const numInputs = 5, numOutputs = 2;
@@ -37,21 +44,13 @@ const eegSonificationGenerator = (rnd) => {
 const eegRepresentation = new PTORepresentation(eegSonificationGenerator);
 
 class EEGSonificationIndividual extends MouseMusicIndividual {
-    constructor(genome = null) {
-        super(genome);
-        this.eegStream = null;
-    }
-
     makeRepresentation() {
         return eegRepresentation;
     }
 
-    /**
-     * Set the EEG data stream (called by framework).
-     */
-    setEEGDataStream(stream) {
-        this.eegStream = stream;
-    }
+    // Attaches the OSC Input drawer panel (OSCInputUI), through which the user connects
+    // window.OSCInput to an OSC-over-WebSocket sender feeding /eeg feature messages.
+    usesOSCInput() { return true; }
 
     evaluateEEGDAG() {
         try {
@@ -59,10 +58,10 @@ class EEGSonificationIndividual extends MouseMusicIndividual {
             if (!dag.allNodes.length) return;
             dag.allNodes.forEach(node => node.reset());
 
-            if (!this.eegStream || !this.eegStream.data || this.eegStream.data.length === 0) return;
-
-            const sample = this.eegStream.getCurrentSample();
-            if (sample && sample.features && Array.isArray(sample.features)) {
+            // Latest EEG features from the live OSC stream (null until data arrives).
+            const osc = (typeof window !== 'undefined') ? window.OSCInput : null;
+            const sample = osc && osc.sample();
+            if (sample && Array.isArray(sample.features)) {
                 for (let i = 0; i < dag.inputNodes.length; i++) {
                     const val = sample.features[i] !== undefined ? sample.features[i] : 0;
                     dag.inputNodes[i].setValue(val);

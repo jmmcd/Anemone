@@ -44,7 +44,7 @@ const SOURCES = [
     'DrumMachineIndividual.js',
     'MelodyIndividual.js',
     'MouseMusicIndividual.js',
-    'EEGPreprocessing.js',
+    'OSCInput.js',                // window.OSCInput (live OSC-over-WebSocket EEG feed)
     'EEGSonificationIndividual.js',
     'PatternIndividual.js',
     'PatternGrammarIndividual.js',
