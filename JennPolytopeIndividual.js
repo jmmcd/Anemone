@@ -55,8 +55,13 @@ const JENN_EVEN_PERMS = (() => {
     return perms.filter(isEven);
 })();
 
-// The polytopes this version offers, with their known edge counts (a self-check
-// the tests assert against the nearest-neighbour edge recovery).
+// The *regular* polychora this version offers, with their known edge counts (a
+// self-check the tests assert against the nearest-neighbour edge recovery). Two
+// more shape families (below) sit outside this list because they aren't the
+// single-edge-length regular polytopes: the grand antiprism (a semiregular
+// polychoron, validated separately at 100 verts / 500 edges) and the parametric
+// duoprisms {p}×{q} (whose two edge families have different lengths, so they
+// carry explicit edges/faces rather than distance-recovered ones).
 const JENN_POLYTOPES = ['the_5_cell', 'the_8_cell', 'the_16_cell', 'the_24_cell', 'the_600_cell'];
 const JENN_EDGE_COUNTS = { the_5_cell: 10, the_8_cell: 32, the_16_cell: 24, the_24_cell: 96, the_600_cell: 720 };
 
@@ -67,6 +72,7 @@ function jennNormalize4(v) {
 }
 
 function jennVertices(shape) {
+    if (shape === 'the_grand_antiprism') return jennGrandAntiprismVertices();
     const verts = [];
     if (shape === 'the_5_cell') {
         // Regular tetrahedron in the w = -1/√5 hyperplane + apex on the w-axis.
@@ -177,15 +183,120 @@ function jennFaces(verts, edges) {
     return quads;
 }
 
-// Memoise geometry per shape (constant per polytope).
-const JENN_GEOMETRY_CACHE = {};
-function jennGeometry(shape) {
-    if (!JENN_GEOMETRY_CACHE[shape]) {
-        const verts = jennVertices(shape);
-        const edges = jennEdges(verts);
-        JENN_GEOMETRY_CACHE[shape] = { verts, edges, faces: jennFaces(verts, edges) };
+// --- grand antiprism (semiregular, 100 verts / 500 edges) --------------------
+// Built by carving two completely-orthogonal decagonal rings out of the 600-cell
+// (the standard construction: 600-cell minus a decagon–decagon = grand antiprism,
+// whose surviving cells are 20 pentagonal antiprisms + 300 tetrahedra — the source
+// of the zig-zag antiprismatic bands). Because every 600-cell edge subtends the
+// same 36° arc (dot = φ/2), a great-circle decagon of vertices is a 10-cycle whose
+// points obey the three-term recurrence pₖ₊₁ = φ·pₖ − pₖ₋₁ (2cos36° = φ). We walk
+// every such ring, then remove one orthogonal disjoint pair; the survivors keep a
+// single edge length, so ordinary nearest-neighbour recovery gives all 500 edges.
+// Computed once, lazily (only if a grand antiprism is ever evolved), and memoised.
+let JENN_GA_VERTS = null;
+function jennGrandAntiprismVertices() {
+    if (JENN_GA_VERTS) return JENN_GA_VERTS;
+    const verts = jennVertices('the_600_cell');           // 120 unit vectors on S³
+    const N = verts.length;
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+    const findVert = (v) => {
+        let best = -1, bd = 1e-6;
+        for (let i = 0; i < N; i++) {
+            const d = (verts[i][0] - v[0]) ** 2 + (verts[i][1] - v[1]) ** 2
+                + (verts[i][2] - v[2]) ** 2 + (verts[i][3] - v[3]) ** 2;
+            if (d < bd) { bd = d; best = i; }
+        }
+        return best;
+    };
+    // 36°-neighbours (a 600-cell edge): dot == φ/2.
+    const adj = Array.from({ length: N }, () => []);
+    for (let i = 0; i < N; i++)
+        for (let j = 0; j < N; j++)
+            if (i !== j && Math.abs(dot(verts[i], verts[j]) - JENN_PHI / 2) < 1e-6) adj[i].push(j);
+    // Walk the great-circle decagon seeded by the directed edge i0→i1.
+    const decagon = (i0, i1) => {
+        const ring = [i0, i1];
+        let a = verts[i0], b = verts[i1];
+        for (let s = 0; s < 9; s++) {
+            const nx = [JENN_PHI * b[0] - a[0], JENN_PHI * b[1] - a[1],
+                        JENN_PHI * b[2] - a[2], JENN_PHI * b[3] - a[3]];
+            const n = Math.hypot(nx[0], nx[1], nx[2], nx[3]);
+            const idx = findVert([nx[0] / n, nx[1] / n, nx[2] / n, nx[3] / n]);
+            if (idx < 0) return null;
+            ring.push(idx);
+            a = b; b = verts[idx];
+        }
+        return ring[10] === i0 ? ring.slice(0, 10) : null;   // closed 10-cycle
+    };
+    const rings = new Map();
+    for (let i = 0; i < N; i++)
+        for (const j of adj[i]) {
+            const r = decagon(i, j);
+            if (r) { const k = [...r].sort((x, y) => x - y).join(','); if (!rings.has(k)) rings.set(k, r); }
+        }
+    const list = [...rings.values()];
+    // Orthogonal planes ⇒ every pairwise vertex dot is 0.
+    const orthogonal = (A, B) => {
+        for (const a of A) for (const b of B) if (Math.abs(dot(verts[a], verts[b])) > 1e-6) return false;
+        return true;
+    };
+    let pair = null;
+    outer:
+    for (let i = 0; i < list.length; i++)
+        for (let j = i + 1; j < list.length; j++) {
+            const A = list[i], B = list[j];
+            if (A.some(x => B.includes(x))) continue;
+            if (orthogonal(A, B)) { pair = [A, B]; break outer; }
+        }
+    const removed = new Set(pair ? [...pair[0], ...pair[1]] : []);
+    const kept = [];
+    for (let i = 0; i < N; i++) if (!removed.has(i)) kept.push(verts[i]);
+    JENN_GA_VERTS = kept;
+    return kept;
+}
+
+// --- duoprisms {p}×{q} (parametric) ------------------------------------------
+// The Cartesian product of a p-gon and a q-gon: vertices (cos a, sin a, cos b,
+// sin b)/√2 laid on the Clifford torus of S³, edges in two families (step around
+// the p-ring, step around the q-ring), square 2-faces. Stereographically this is
+// the iconic "two concentric rings joined by a zig-zag lattice" — the look the
+// regular polychora can't make. Edges are given EXPLICITLY (not distance-recovered)
+// because for p≠q the two edge families have different lengths, so a single
+// nearest-neighbour threshold would drop the longer family.
+function jennDuoprismGeometry(p, q) {
+    const verts = [], edges = [], faces = [];
+    const idx = (i, j) => i * q + j;
+    const inv = Math.SQRT1_2;                              // 1/√2, keeps verts on S³
+    for (let i = 0; i < p; i++) {
+        const a = 2 * Math.PI * i / p;
+        for (let j = 0; j < q; j++) {
+            const b = 2 * Math.PI * j / q;
+            verts.push([Math.cos(a) * inv, Math.sin(a) * inv, Math.cos(b) * inv, Math.sin(b) * inv]);
+        }
     }
-    return JENN_GEOMETRY_CACHE[shape];
+    for (let i = 0; i < p; i++)
+        for (let j = 0; j < q; j++) {
+            edges.push([idx(i, j), idx((i + 1) % p, j)]);   // step the p-ring
+            edges.push([idx(i, j), idx(i, (j + 1) % q)]);   // step the q-ring
+            faces.push([idx(i, j), idx((i + 1) % p, j), idx((i + 1) % p, (j + 1) % q), idx(i, (j + 1) % q)]);
+        }
+    return { verts, edges, faces };
+}
+
+// Memoise geometry per shape (constant per polytope; duoprisms keyed by p,q).
+const JENN_GEOMETRY_CACHE = {};
+function jennGeometry(shape, p, q) {
+    const cacheKey = shape === 'the_duoprism' ? `duoprism_${p}_${q}` : shape;
+    if (!JENN_GEOMETRY_CACHE[cacheKey]) {
+        if (shape === 'the_duoprism') {
+            JENN_GEOMETRY_CACHE[cacheKey] = jennDuoprismGeometry(p, q);
+        } else {
+            const verts = jennVertices(shape);
+            const edges = jennEdges(verts);
+            JENN_GEOMETRY_CACHE[cacheKey] = { verts, edges, faces: jennFaces(verts, edges) };
+        }
+    }
+    return JENN_GEOMETRY_CACHE[cacheKey];
 }
 
 // Unit icosahedron (12 verts, 20 faces) for smooth-ish ball nodes — rounder than
@@ -221,8 +332,18 @@ function jennNorm3(a) {
 // `for` loops for repeated genes. Returns a plain params object; the polytope
 // geometry itself is built in the individual (like the tree/DAG types).
 const jennGenerator = (rnd) => {
-    const shapes = ['the_5_cell', 'the_8_cell', 'the_16_cell', 'the_24_cell', 'the_600_cell'];
+    // The five regular polychora, plus the semiregular grand antiprism and the
+    // parametric duoprisms — the last two supply the concentric-ring / zig-zag
+    // ("antiprismatic") stereographic look the regular set can't make (à la the
+    // Nicolau & Costelloe Jenn3d figures).
+    const shapes = ['the_5_cell', 'the_8_cell', 'the_16_cell', 'the_24_cell',
+        'the_600_cell', 'the_grand_antiprism', 'the_duoprism'];
     const shape = rnd.choice(shapes);
+    // Conditional genes: a duoprism carries its two ring orders p,q (3..12). PTO's
+    // structural naming handles the dependent search space (as RobotIndividual does),
+    // so these genes only exist in a duoprism's trace. Zero otherwise (unused).
+    let duoP = 0, duoQ = 0;
+    if (shape === 'the_duoprism') { duoP = rnd.randint(3, 12); duoQ = rnd.randint(3, 12); }
     const rot = [];
     for (let i = 0; i < 6; i++) rot.push(rnd.uniform(0, 2 * Math.PI)); // xy xz xw yz yw zw
     const projScale = rnd.uniform(0.6, 1.6);
@@ -233,7 +354,7 @@ const jennGenerator = (rnd) => {
     // essential to the Jenn look and, because stereographic projection is conformal,
     // the polytope's real vertex corners can't be smoothed away — a ball is the only
     // thing that caps them.
-    return { shape, rot, projScale, tubeRadius, colorReverse, renderStyle };
+    return { shape, duoP, duoQ, rot, projScale, tubeRadius, colorReverse, renderStyle };
 };
 
 const jennRepresentation = new PTORepresentation(jennGenerator);
@@ -262,6 +383,12 @@ class JennPolytopeIndividual extends Individual {
 
     is3D() { return true; }
     usesColorPalette() { return true; }
+
+    // Geometry for this individual's phenotype (routes the duoprism's p,q through).
+    _geom() {
+        const p = this.phenotype;
+        return jennGeometry(p.shape, p.duoP, p.duoQ);
+    }
 
     // Rotate a 4D point through the 6 evolved plane angles (applied in sequence).
     _rotate4(v, rot) {
@@ -464,7 +591,7 @@ class JennPolytopeIndividual extends Individual {
     // faces already give a smooth limb. `lod` (0.5 while the dense shapes morph)
     // scales it down further. Independent of orientation, so nothing flickers.
     _faceDepthStable(corners4, lod) {
-        const nFaces = jennGeometry(this.phenotype.shape).faces.length;
+        const nFaces = this._geom().faces.length;
         const trisPerUnit = corners4.length === 4 ? 2 : 1;   // quad patch = 2·D², tri = D²
         const BUDGET = 60000;                                 // triangles/frame, all faces
         const d = Math.round(Math.sqrt(BUDGET / (trisPerUnit * nFaces)) * lod);
@@ -481,7 +608,7 @@ class JennPolytopeIndividual extends Individual {
     _framingHint() {
         const p = this.phenotype;
         const ea = this._anim4DAngles;
-        const gverts = jennGeometry(p.shape).verts;
+        const gverts = this._geom().verts;
         const pv = gverts.map(v =>
             this._project(this._rotate4Extra(this._rotate4(v, p.rot), ea), p.projScale));
         const med = (axis) => {
@@ -563,8 +690,7 @@ class JennPolytopeIndividual extends Individual {
     // tessellation doesn't flicker as the projection changes each frame.
     _buildParts(lod = 1, stable = false) {
         const p = this.phenotype;
-        const { edges, faces } = jennGeometry(p.shape);
-        const verts = jennGeometry(p.shape).verts;
+        const { verts, edges, faces } = this._geom();
         const ea = this._anim4DAngles;
         const rverts = verts.map(v => this._rotate4Extra(this._rotate4(v, p.rot), ea));
         const struts = { vertices: [], indices: [], colors: [] };
@@ -665,7 +791,7 @@ class JennPolytopeIndividual extends Individual {
                 // Per-frame CPU rebuild: throttle only the dense 600-cell (1200
                 // faces); the sparse big-face polytopes are cheap even at full
                 // detail, and they're the ones whose limb needs it to stay round.
-                const dense = jennGeometry(this.phenotype.shape).faces.length > 300;
+                const dense = this._geom().faces.length > 300;
                 lod = Math.min(lod, dense ? 0.5 : 1);
             }
 
@@ -718,7 +844,7 @@ class JennPolytopeIndividual extends Individual {
         ctx.fillRect(0, 0, w, h);
 
         const p = this.phenotype;
-        const { verts, edges } = jennGeometry(p.shape);
+        const { verts, edges } = this._geom();
         const rverts = verts.map(v => this._rotate4(v, p.rot));
         const proj = rverts.map(v => this._project(v, p.projScale));
         const scale = Math.min(w, h) / (this.maxProjRadius * 2.2);
@@ -743,21 +869,23 @@ class JennPolytopeIndividual extends Individual {
 
     getPhenotype() {
         const p = this.phenotype;
+        if (p.shape === 'the_duoprism') return `${p.duoP}×${p.duoQ} duoprism`;
         const names = {
             the_5_cell: '5-cell (4-simplex)', the_8_cell: '8-cell (tesseract)',
             the_16_cell: '16-cell (4-orthoplex)', the_24_cell: '24-cell', the_600_cell: '600-cell',
+            the_grand_antiprism: 'grand antiprism',
         };
         return names[p.shape] || p.shape;
     }
 
     renderKey() {
         const p = this.phenotype;
-        return `${p.shape}|${p.rot.map(a => a.toFixed(3)).join(',')}|${p.projScale.toFixed(3)}|${p.tubeRadius.toFixed(3)}|${p.colorReverse ? 1 : 0}|${p.renderStyle}`;
+        return `${p.shape}|${p.duoP}x${p.duoQ}|${p.rot.map(a => a.toFixed(3)).join(',')}|${p.projScale.toFixed(3)}|${p.tubeRadius.toFixed(3)}|${p.colorReverse ? 1 : 0}|${p.renderStyle}`;
     }
 
     describeExtra() {
         const p = this.phenotype;
-        const { verts, edges, faces } = jennGeometry(p.shape);
+        const { verts, edges, faces } = this._geom();
         let s = `\n<span class="genome-label">Polytope:</span> ${this.getPhenotype()}\n`;
         s += `  ${verts.length} vertices, ${edges.length} edges, ${faces.length} faces on S³\n`;
         s += `  stereographic projection to R³ (curved edges/surfaces)\n`;

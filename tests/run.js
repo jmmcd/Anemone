@@ -173,6 +173,46 @@ check('Jenn polytope vertex tables recover the known 1-skeletons', () => {
     }
 });
 
+check('Jenn grand antiprism carves two orthogonal decagons out of the 600-cell', () => {
+    // Semiregular polychoron = 600-cell minus a decagon–decagon (20 verts). The
+    // survivors keep the single 600-cell edge length, so nearest-neighbour
+    // recovery must land on exactly 100 verts / 500 edges (its known 1-skeleton),
+    // and its recovered faces (antiprism/tetrahedron triangles) must all close.
+    const { jennGeometry } = load();
+    const { verts, edges, faces } = jennGeometry('the_grand_antiprism');
+    assert(verts.length === 100, `grand antiprism: ${verts.length} verts, expected 100`);
+    assert(edges.length === 500, `grand antiprism: ${edges.length} edges, expected 500`);
+    const edgeSet = new Set(edges.map(([a, b]) => a < b ? `${a},${b}` : `${b},${a}`));
+    for (const f of faces)
+        for (let i = 0; i < f.length; i++) {
+            const a = f[i], b = f[(i + 1) % f.length];
+            assert(edgeSet.has(a < b ? `${a},${b}` : `${b},${a}`), `grand antiprism: face edge ${a}-${b} not in edge set`);
+        }
+    for (const v of verts) assert(Math.abs(Math.hypot(v[0], v[1], v[2], v[3]) - 1) < 1e-9, 'grand antiprism: vertex off S³');
+});
+
+check('Jenn duoprisms {p}×{q} build p·q verts, 2p·q edges, p·q square faces', () => {
+    // Parametric family: the Cartesian product of a p-gon and a q-gon. Explicit
+    // (not distance-recovered) edges/faces, so the p≠q case (two edge lengths)
+    // keeps both edge families. Faces are squares in cyclic (closing) order.
+    const { jennGeometry } = load();
+    for (const [p, q] of [[3, 3], [10, 4], [6, 12], [5, 8]]) {
+        const { verts, edges, faces } = jennGeometry('the_duoprism', p, q);
+        assert(verts.length === p * q, `${p}×${q}: ${verts.length} verts, expected ${p * q}`);
+        assert(edges.length === 2 * p * q, `${p}×${q}: ${edges.length} edges, expected ${2 * p * q}`);
+        assert(faces.length === p * q, `${p}×${q}: ${faces.length} faces, expected ${p * q}`);
+        const edgeSet = new Set(edges.map(([a, b]) => a < b ? `${a},${b}` : `${b},${a}`));
+        for (const f of faces) {
+            assert(f.length === 4, `${p}×${q}: non-square face`);
+            for (let i = 0; i < 4; i++) {
+                const a = f[i], b = f[(i + 1) % 4];
+                assert(edgeSet.has(a < b ? `${a},${b}` : `${b},${a}`), `${p}×${q}: face edge ${a}-${b} not in edge set`);
+            }
+        }
+        for (const v of verts) assert(Math.abs(Math.hypot(v[0], v[1], v[2], v[3]) - 1) < 1e-9, `${p}×${q}: vertex off S³`);
+    }
+});
+
 // --- Self-description ---
 // Each individual owns its display: toString() (concise summary) and describe()
 // (rich HTML panel) live on the individual, not the framework.
