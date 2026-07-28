@@ -1466,6 +1466,8 @@ class InteractiveEAFramework {
             'LSystemIndividual': LSystemIndividual,
             'StructuralInformationIndividual': StructuralInformationIndividual,
             'StructuralInformationContinuousIndividual': StructuralInformationContinuousIndividual,
+            'SITCodeIndividual': SITCodeIndividual,
+            'SITCode3DIndividual': SITCode3DIndividual,
             'BlindWatchmakerIndividual': BlindWatchmakerIndividual,
             'SuperShapeIndividual': SuperShapeIndividual,
             'SuperShape3DIndividual': SuperShape3DIndividual,

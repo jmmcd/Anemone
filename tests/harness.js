@@ -55,6 +55,9 @@ const SOURCES = [
     'LSystemIndividual.js',
     'StructuralInformationIndividual.js',
     'StructuralInformationContinuousIndividual.js',
+    'SITLanguage.js',                 // window.SITLanguage (Leeuwenberg 1971 coding language engine)
+    'SITCodeIndividual.js',           // base for the Leeuwenberg-code family
+    'SITCode3DIndividual.js',
     'BlindWatchmakerIndividual.js',
     'SuperShapeIndividual.js',
     'RadialSurface3DIndividual.js',   // base for the 3D surface family
@@ -92,6 +95,8 @@ const INDIVIDUAL_CLASSES = [
     'LSystemIndividual',
     'StructuralInformationIndividual',
     'StructuralInformationContinuousIndividual',
+    'SITCodeIndividual',
+    'SITCode3DIndividual',
     'BlindWatchmakerIndividual',
     'RobotIndividual',
     'WonkyGuysIndividual',
@@ -231,6 +236,7 @@ function load() {
     combined += `;globalThis.__EvolutionaryAlgorithm = EvolutionaryAlgorithm;\n`;
     combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
     combined += `;globalThis.__drumVoices = (typeof drumVoices === 'function') ? drumVoices : null;\n`;
+    combined += `;globalThis.__SITLanguage = SITLanguage;\n`;
     combined += `;globalThis.__jennGeometry = jennGeometry; globalThis.__JENN_EDGE_COUNTS = JENN_EDGE_COUNTS; globalThis.__JENN_POLYTOPES = JENN_POLYTOPES;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
@@ -249,6 +255,7 @@ function load() {
         EvolutionaryAlgorithm: sandbox.__EvolutionaryAlgorithm,
         TerminalNode: sandbox.__TerminalNode,
         drumVoices: sandbox.__drumVoices,
+        SITLanguage: sandbox.__SITLanguage,
         jennGeometry: sandbox.__jennGeometry,
         JENN_EDGE_COUNTS: sandbox.__JENN_EDGE_COUNTS,
         JENN_POLYTOPES: sandbox.__JENN_POLYTOPES,

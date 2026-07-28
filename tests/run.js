@@ -31,7 +31,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas } = load();
+const { classes, makeCanvas, SITLanguage } = load();
 
 // --- Genetic operators ---
 console.log('\nGenetic operators (construct / mutate / crossover / clone):');
@@ -133,11 +133,12 @@ check('usesColorPalette() matches expectation', () => {
 });
 check('only the 3D types report is3D()', () => {
     // The 3D types are the RadialSurface3DIndividual subclasses plus the Jenn
-    // polytope visualiser (also rides the shared Three.js pipeline).
+    // polytope visualiser and the 3D Leeuwenberg code (all ride the shared
+    // Three.js pipeline).
     const threeD = new Set([
         'SuperShape3DIndividual', 'PetalSphere3DIndividual',
         'FreeSurface3DIndividual', 'WarpedSurface3DIndividual',
-        'JennPolytopeIndividual',
+        'JennPolytopeIndividual', 'SITCode3DIndividual',
     ]);
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
@@ -211,6 +212,190 @@ check('Jenn duoprisms {p}×{q} build p·q verts, 2p·q edges, p·q square faces'
         }
         for (const v of verts) assert(Math.abs(Math.hypot(v[0], v[1], v[2], v[3]) - 1) < 1e-9, `${p}×${q}: vertex off S³`);
     }
+});
+
+// --- Leeuwenberg 1971 coding language (SITLanguage.js) ---
+// The paper states the value of almost every rule as a worked example, so those
+// examples ARE the regression suite: each assertion below is a literal quote
+// from Leeuwenberg (1971), pp. 312-317. If one of these fails, the language has
+// drifted from the paper — which is the whole claim of the two SITCode types.
+console.log('\nLeeuwenberg coding language (worked examples from the paper):');
+{
+    // Letters stand for distinct values, as in the paper: a=1 b=2 c=3 d=4 e=5.
+    const num = (a) => ({ k: 'num', a });
+    const seq = (...items) => ({ k: 'seq', items });
+    const chunk = (child) => ({ k: 'chunk', child });
+    const A = num(1), B = num(2), C = num(3), D = num(4), E = num(5);
+    // Serialise an item stream the way the paper writes it: chunks in braces.
+    const show = (items) => items.map(function f(it) {
+        return it.chunk ? '{' + it.chunk.map(f).join(',') + '}' : String(it.v);
+    }).join(',');
+    const ev = (node) => show(SITLanguage.evaluate(node));
+    const paper = (label, node, expected) => check(label, () => {
+        const got = ev(node);
+        assert(got === expected, `got ${got}, paper says ${expected}`);
+    });
+
+    // Information units (p. 312).
+    paper('∫  (3,2,5)∫ = 0,3,5,10',
+        { k: 'int', child: seq(num(3), num(2), num(5)) }, '0,3,5,10');
+    paper('R  R{3,2,5} = 3,2,5,5,2,3',
+        { k: 'rev', child: seq(num(3), num(2), num(5)) }, '3,2,5,5,2,3');
+    paper('±  ±(90) = 90,-90',
+        { k: 'pm', child: num(90) }, '90,-90');
+
+    // Combination (p. 316) — one interleave rule covers all three forms.
+    paper('(a,b)(c,d) = a,c,b,d',
+        { k: 'comb', a: seq(A, B), b: seq(C, D) }, '1,3,2,4');
+    paper('(a,b){c,d} = a,{c,d},b,{c,d}',
+        { k: 'comb', a: seq(A, B), b: chunk(seq(C, D)) }, '1,{3,4},2,{3,4}');
+    paper('{a,b}(c,d) = {a,b},c,{a,b},d',
+        { k: 'comb', a: chunk(seq(A, B)), b: seq(C, D) }, '{1,2},3,{1,2},4');
+
+    // Operations and their distribution rules (p. 316).
+    paper('(a,b)+(c,d) = a+c,b+d',
+        { k: 'op', op: '+', a: seq(A, B), b: seq(C, D) }, '4,6');
+    paper('(a,b)+{c,d} = a+{c,d},b+{c,d}  (and a+{b,c} = {a+b,c})',
+        { k: 'op', op: '+', a: seq(A, B), b: chunk(seq(C, D)) }, '{4,4},{5,4}');
+    paper('/a,b/+(c,d) = {a+c,a+d},{b+c,b+d}   (reprisal)',
+        { k: 'op', op: '+', cross: true, a: seq(A, B), b: seq(C, D) }, '{4,5},{5,6}');
+
+    // Iteration (p. 316).
+    paper('3·(a,b) = a,a,a,b,b,b',
+        { k: 'iter', ns: [3], child: seq(A, B) }, '1,1,1,2,2,2');
+    paper('2·{a,b} = {a,b},{a,b}',
+        { k: 'iter', ns: [2], child: chunk(seq(A, B)) }, '{1,2},{1,2}');
+    paper('(2,3)·(a,b) = 2·(a),3·(b)',
+        { k: 'iter', ns: [2, 3], child: seq(A, B) }, '1,1,2,2,2');
+    paper('/2,3/·(a,b) = 2·(a),2·(b),3·(a),3·(b)   (reprisal)',
+        { k: 'iter', ns: [2, 3], cross: true, child: seq(A, B) }, '1,1,2,2,1,1,1,2,2,2');
+
+    // One-sided iteration (p. 316) — the fiddliest rule in the paper, and the
+    // one whose three examples pin the definition down completely.
+    paper('3;(a,b)(c,d) = a,b,a,c,b,a,b,d',
+        { k: 'osi', side: 'l', ns: [3], a: seq(A, B), b: seq(C, D) }, '1,2,1,3,2,1,2,4');
+    paper('2ᐟ(a,b)(c,d,e) = a,c,d,b,e,c,a,d,e,b,c,d,a,e,c,b,d,e',
+        { k: 'osi', side: 'r', ns: [2], a: seq(A, B), b: seq(C, D, E) },
+        '1,3,4,2,5,3,1,4,5,2,3,4,1,5,3,2,4,5');
+    paper('(1,2)ᐟ(a)(b) = a,b,a,b,b',
+        { k: 'osi', side: 'r', ns: [1, 2], a: seq(A), b: seq(B) }, '1,2,1,2,2');
+
+    // "the rules for iteration and for one-sided iteration can also be applied
+    // to left-right variation" (p. 316).
+    paper('3;(±) = +,+,+,-', { k: 'osi', side: 'l', ns: [3], a: { k: 'pm' } }, '1,1,1,-1');
+    paper('3ᐟ(±) = +,-,-,-', { k: 'osi', side: 'r', ns: [3], a: { k: 'pm' } }, '1,-1,-1,-1');
+    paper('3·(±) = +,+,+,-,-,-', { k: 'iter', ns: [3], child: { k: 'pm' } }, '1,1,1,-1,-1,-1');
+    paper('3·{±} = {+,-}{+,-}{+,-}',
+        { k: 'iter', ns: [3], child: chunk({ k: 'pm' }) }, '{1,-1},{1,-1},{1,-1}');
+
+    // Breakdown indicators (pp. 313-314).
+    const nested = chunk(seq(chunk(seq(A, B)), chunk(seq(C, D))));
+    paper('[{{a,b},{c,d}}] = {a,b},{c,d}   (one step only)',
+        { k: 'brk', child: nested }, '{1,2},{3,4}');
+    paper('⟦{{a,b},{c,d}}⟧ = a,b,c,d   (complete breakdown)',
+        { k: 'brkall', child: nested }, '1,2,3,4');
+
+    // Continuation, resolved geometrically (see SITLanguage's header).
+    check('⦃a,4·(0)⦄ closes into a hexagon when a = 60° (fig. 10a)', () => {
+        const motif = seq(num(60), { k: 'iter', ns: [4], child: num(0) });
+        const items = SITLanguage.evaluate({ k: 'cont', child: motif });
+        assert(items.length === 6 * 5, `expected 6 sides × 5 angles, got ${items.length}`);
+        const marks = SITLanguage.interpret2D(items, 1);
+        const last = marks[marks.length - 1];
+        assert(Math.hypot(last.x2, last.y2) < 1e-9, 'the contour should return to its start');
+    });
+
+    // The outerproduct, i.e. all of the paper's 3D machinery (pp. 314-315).
+    check('⟨90⟩ leaves the plane; a plain angle stays in it', () => {
+        const flat = SITLanguage.interpret3D(
+            SITLanguage.evaluate(seq(num(0), num(90), num(90))), 1);
+        for (const s of flat) assert(Math.abs(s.b[2]) < 1e-9, 'a relative angle must stay in z = 0');
+        const spatial = SITLanguage.interpret3D(
+            SITLanguage.evaluate(seq(num(0), { k: 'out', child: num(90) })), 1);
+        const tip = spatial[spatial.length - 1].b;
+        assert(Math.abs(tip[2]) > 0.5, '⟨90⟩ must take the contour out of the plane');
+    });
+    check('⟨0⟩ is a straight continuation and does not roll the reference plane', () => {
+        // A straight run inside an out-of-plane branch is a ⟨…⟩ over n·(0). Two
+        // collinear segments determine no surface, so ⟨0⟩ must leave the
+        // reference plane alone — otherwise every such run would corkscrew and
+        // the following ⟨90⟩ would tip in an arbitrary direction.
+        const dir = (child) => {
+            const segs = SITLanguage.interpret3D(SITLanguage.evaluate({ k: 'out', child }), 1);
+            const s = segs[segs.length - 1];
+            return [s.b[0] - s.a[0], s.b[1] - s.a[1], s.b[2] - s.a[2]];
+        };
+        const plain = dir(seq(num(90)));
+        const afterRun = dir(seq(num(0), num(0), num(0), num(90)));
+        for (let i = 0; i < 3; i++) {
+            assert(Math.abs(plain[i] - afterRun[i]) < 1e-9,
+                `⟨0⟩ rolled the frame: ⟨90⟩ went ${plain} alone but ${afterRun} after a run`);
+        }
+        assert(Math.abs(plain[2]) > 0.9, '⟨90⟩ should tip fully out of the start plane');
+    });
+
+    // Structural information I (pp. 331-332).
+    check('I counts values and operations, and 0 is not information', () => {
+        // "n·(0) conveys one unit of information"; "the value 0, and therefore
+        // 0̄ and (0), are not information".
+        const straight = { k: 'iter', ns: [4], child: num(0) };
+        let l = SITLanguage.load(straight);
+        assert(l.values === 0 && l.ops === 1, `n·(0) should be 1 unit, got ${JSON.stringify(l)}`);
+        // Indicators are not information units either.
+        l = SITLanguage.load(chunk({ k: 'abs', child: { k: 'hide', child: straight } }));
+        assert(l.values === 0 && l.ops === 1, `indicators must be free, got ${JSON.stringify(l)}`);
+        // "3 × ( ) [is] one given entity — one information unit", plus its argument.
+        l = SITLanguage.load({ k: 'iter', ns: [3], child: seq(A, B) });
+        assert(l.values === 2 && l.ops === 1, `3·(a,b) should be 1 op + 2 values, got ${JSON.stringify(l)}`);
+    });
+}
+
+console.log('\nLeeuwenberg code individuals:');
+check('both types draw a figure, and the 3D one goes spatial', () => {
+    const flat = new classes.SITCodeIndividual();
+    assert(flat.marks().length > 0, '2D code drew nothing');
+    assert(flat.unitDegrees() > 0, 'no angular unit');
+
+    // Over a sample, the 3D generator must actually produce out-of-plane codes
+    // (a code with no ⟨ ⟩ anywhere is planar, and legal, but not all of them).
+    let spatial = 0;
+    for (let i = 0; i < 30; i++) {
+        const ind = new classes.SITCode3DIndividual();
+        const zs = [];
+        for (const l of ind.polylines()) for (const p of l.pts) zs.push(p[2]);
+        if (zs.length && Math.max(...zs) - Math.min(...zs) > 1e-6) spatial++;
+    }
+    assert(spatial > 5, `only ${spatial}/30 3D codes left the plane`);
+});
+check('3D codes build a mesh that STL export can consume', () => {
+    let built = 0;
+    for (let i = 0; i < 10; i++) {
+        const ind = new classes.SITCode3DIndividual();
+        if (!ind.validate()) continue;
+        const { vertices, indices, colors } = ind.generate3DPoints();
+        assert(vertices.length % 3 === 0 && colors.length === vertices.length, 'malformed mesh arrays');
+        assert(indices.length % 3 === 0, 'indices must be triangles');
+        for (const v of vertices) assert(Number.isFinite(v), 'non-finite vertex');
+        const maxIndex = vertices.length / 3;
+        for (const ix of indices) assert(ix >= 0 && ix < maxIndex, 'index out of range');
+        if (indices.length) built++;
+    }
+    assert(built > 0, 'no 3D code produced geometry');
+});
+check('the rotational family gene spans discrete-to-continuous in one type', () => {
+    // Angle literals are integer multiples of 360/family, and the multiple is
+    // capped, so a small family is coarse and closing while a large one is fine
+    // and gentle. This is what replaced the old discrete/continuous type pair.
+    const seen = new Set();
+    for (let i = 0; i < 60; i++) seen.add(new classes.SITCodeIndividual().phenotype.family);
+    assert(seen.size > 3, `family gene barely varies (${[...seen].join(',')})`);
+    const small = Math.min(...seen), large = Math.max(...seen);
+    assert(360 / small > 360 / large, 'family must set the angular unit');
+});
+check('validate() rejects empty and effectively-collinear figures', () => {
+    const ind = new classes.SITCodeIndividual();
+    Object.defineProperty(ind, 'phenotype', { value: { family: 4, root: { k: 'num', a: 0 } } });
+    assert(!ind.validate(), 'a bare straight run should be rejected');
 });
 
 // --- Self-description ---
