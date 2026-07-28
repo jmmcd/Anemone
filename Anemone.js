@@ -1464,6 +1464,8 @@ class InteractiveEAFramework {
             'AnemoneIndividual': AnemoneIndividual,
             'BranchIndividual': BranchIndividual,
             'LSystemIndividual': LSystemIndividual,
+            'StructuralInformationIndividual': StructuralInformationIndividual,
+            'StructuralInformationContinuousIndividual': StructuralInformationContinuousIndividual,
             'BlindWatchmakerIndividual': BlindWatchmakerIndividual,
             'SuperShapeIndividual': SuperShapeIndividual,
             'SuperShape3DIndividual': SuperShape3DIndividual,
