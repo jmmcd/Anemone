@@ -32,6 +32,11 @@
 
 const JENN_PHI = (1 + Math.sqrt(5)) / 2;
 
+// Max static rotation (radians) allowed in each of the grand antiprism's three
+// w-planes, so it stays near its canonical decagon axis where the zig-zag bands
+// read (see the generator). ~0.3 rad ≈ 17°. The one knob for "how near-axis".
+const JENN_GA_WCAP = 0.3;
+
 // The 12 even permutations of [0,1,2,3] (used for the 600-cell's 96 icosian
 // vertices). Computed once from all 24 permutations, filtered by parity.
 const JENN_EVEN_PERMS = (() => {
@@ -251,6 +256,27 @@ function jennGrandAntiprismVertices() {
     const removed = new Set(pair ? [...pair[0], ...pair[1]] : []);
     const kept = [];
     for (let i = 0; i < N; i++) if (!removed.has(i)) kept.push(verts[i]);
+    // Canonically orient: rotate so the two removed decagons' planes become the
+    // coordinate 2-planes x₀x₁ and x₂x₃ (the shape's natural "gyro" frame). Carving
+    // the 600-cell leaves the grand antiprism in an *arbitrary* pose, unlike the
+    // coordinate-aligned regular tables — and its zig-zag antiprism bands only read
+    // cleanly viewed down this axis (from a generic angle the 20 antiprisms + 300
+    // tetrahedra tangle). Aligning here makes the natural/near-identity pose and the
+    // w-plane 4D-morph sweep show the bands, matching how the other shapes have a
+    // recognisable canonical pose. Basis = Gram–Schmidt of two vectors from each
+    // decagon; new coords are the projections onto it (a pure 4D rotation, so every
+    // vertex stays on S³ and all edge lengths — hence the 500-edge recovery — hold).
+    if (pair) {
+        const basis = [];
+        for (const seed of [verts[pair[0][0]], verts[pair[0][1]], verts[pair[1][0]], verts[pair[1][1]]]) {
+            let w = seed.slice();
+            for (const e of basis) { const d = dot(w, e); w = [w[0] - d * e[0], w[1] - d * e[1], w[2] - d * e[2], w[3] - d * e[3]]; }
+            const n = Math.hypot(w[0], w[1], w[2], w[3]);
+            if (n > 1e-6) basis.push([w[0] / n, w[1] / n, w[2] / n, w[3] / n]);
+        }
+        if (basis.length === 4)
+            for (let i = 0; i < kept.length; i++) kept[i] = basis.map(e => dot(kept[i], e));
+    }
     JENN_GA_VERTS = kept;
     return kept;
 }
@@ -344,8 +370,25 @@ const jennGenerator = (rnd) => {
     // so these genes only exist in a duoprism's trace. Zero otherwise (unused).
     let duoP = 0, duoQ = 0;
     if (shape === 'the_duoprism') { duoP = rnd.randint(3, 12); duoQ = rnd.randint(3, 12); }
+    // 4D orientation, one angle per plane: xy xz xw yz yw zw. The three **w-planes**
+    // (xw/yw/zw — indices 2,4,5) rotate vertices through the stereographic pole
+    // (axis 3), which is what tangles a shape's projection; the other three just spin
+    // the projected structure benignly. The grand antiprism reads cleanly (its
+    // zig-zag antiprism bands) only *near* its canonical decagon axis (see the
+    // builder's alignment) — even a modest static w-tilt buries the bands — so we cap
+    // its w-plane angles to a small range. Because PTO 'fine' mutation clamps a
+    // `uniform(0,X)` gene to [0,X], this keeps every grand antiprism near-axis for
+    // good, not just at init, while the pole-preserving planes stay full-range for
+    // orientation variety (and the zoom's 4D-morph still sweeps w *dynamically*, so
+    // the fly-through/curved-face cue is unaffected). Other shapes look good from any
+    // angle → full 0..2π. `JENN_GA_WCAP` is the one knob: lower it for cleaner-still
+    // static tiles, raise it toward 2π to let the grand antiprism tumble freely.
+    const wCap = shape === 'the_grand_antiprism' ? JENN_GA_WCAP : 2 * Math.PI;
     const rot = [];
-    for (let i = 0; i < 6; i++) rot.push(rnd.uniform(0, 2 * Math.PI)); // xy xz xw yz yw zw
+    for (let i = 0; i < 6; i++) {
+        const isWPlane = (i === 2 || i === 4 || i === 5);
+        rot.push(rnd.uniform(0, isWPlane ? wCap : 2 * Math.PI));
+    }
     const projScale = rnd.uniform(0.6, 1.6);
     const tubeRadius = rnd.uniform(0.015, 0.06);
     const colorReverse = rnd.random() < 0.5;   // flip inner/outer palette direction

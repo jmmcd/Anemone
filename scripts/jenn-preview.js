@@ -18,6 +18,11 @@
  * Examples:
  *   node scripts/jenn-preview.js duoprism:10x4 /tmp/duo.png --rot 0,0,0.5,0,0,0
  *   node scripts/jenn-preview.js the_grand_antiprism /tmp/ga.png --scale 0.8
+ *
+ * Depth cueing is on: each edge segment is shaded by its camera-facing depth (near
+ * = dark/opaque, far = pale) and drawn back-to-front, so overlapping structure reads
+ * the way the real 3D render does — essential for busy shapes (600-cell, grand
+ * antiprism) where a flat single-tone wireframe just tangles. `--flat` disables it.
  */
 const path = require('path');
 const { Raster } = require('./lib/png');
@@ -64,21 +69,42 @@ function rotate4(v, r) {
     return o;
 }
 
-// --- render edge-only, orthographic down z ---
+// --- render edge-only, orthographic down z, depth-cued back-to-front ---
 const W = 500, H = 500;
 const img = new Raster(W, H);
 const rv = verts.map(v => rotate4(v, rot));
 const cx = W / 2, cy = H / 2, sc = Math.min(W, H) / (2 * 3.4);
+const flat = args.includes('--flat');
+
+// Collect every edge sub-segment with its mid-depth (projected z: +toward camera),
+// then paint far → near so nearer rods sit on top. Depth maps to grey + alpha, so
+// the front structure reads dark and the back recedes — the cue the flat wireframe
+// throws away (and what lets the antiprism zig-zag bands separate from the tangle).
+const segs = [];
+let zmin = Infinity, zmax = -Infinity;
 for (const [i, j] of edges) {
     const a = rv[i], b = rv[j];
     const K = 24;
     let prev = null;
     for (let s = 0; s <= K; s++) {
-        const pt = project(slerp(a, b, s / K), scale);
-        const X = cx + pt[0] * sc, Y = cy - pt[1] * sc;
-        if (prev) img.line(prev[0], prev[1], X, Y, [30, 30, 30], 0.55);
-        prev = [X, Y];
+        const p3 = project(slerp(a, b, s / K), scale);
+        const cur = { X: cx + p3[0] * sc, Y: cy - p3[1] * sc, z: p3[2] };
+        if (prev) {
+            const z = (prev.z + cur.z) / 2;
+            segs.push({ x0: prev.X, y0: prev.Y, x1: cur.X, y1: cur.Y, z });
+            if (z < zmin) zmin = z; if (z > zmax) zmax = z;
+        }
+        prev = cur;
     }
+}
+segs.sort((p, q) => p.z - q.z);   // far first
+const span = (zmax - zmin) || 1;
+for (const s of segs) {
+    const t = flat ? 0.5 : (s.z - zmin) / span;   // 0 far … 1 near
+    const grey = flat ? 30 : Math.round(200 - 185 * t);   // far pale → near dark
+    const alpha = flat ? 0.55 : 0.35 + 0.6 * t;
+    img.line(s.x0, s.y0, s.x1, s.y1, [grey, grey, grey], alpha);
+    if (!flat && t > 0.6) img.line(s.x0, s.y0 + 1, s.x1, s.y1 + 1, [grey, grey, grey], alpha * 0.7); // thicken near rods
 }
 img.save(out);
 console.log(`wrote ${out}  (${shapeArg}: ${verts.length} verts, ${edges.length} edges)`);
