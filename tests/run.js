@@ -308,10 +308,10 @@ console.log('\nLeeuwenberg coding language (worked examples from the paper):');
     // The outerproduct, i.e. all of the paper's 3D machinery (pp. 314-315).
     check('⟨90⟩ leaves the plane; a plain angle stays in it', () => {
         const flat = SITLanguage.interpret3D(
-            SITLanguage.evaluate(seq(num(0), num(90), num(90))), 1);
+            SITLanguage.evaluate(seq(num(0), num(90), num(90))), 1).segments;
         for (const s of flat) assert(Math.abs(s.b[2]) < 1e-9, 'a relative angle must stay in z = 0');
         const spatial = SITLanguage.interpret3D(
-            SITLanguage.evaluate(seq(num(0), { k: 'out', child: num(90) })), 1);
+            SITLanguage.evaluate(seq(num(0), { k: 'out', child: num(90) })), 1).segments;
         const tip = spatial[spatial.length - 1].b;
         assert(Math.abs(tip[2]) > 0.5, '⟨90⟩ must take the contour out of the plane');
     });
@@ -321,7 +321,7 @@ console.log('\nLeeuwenberg coding language (worked examples from the paper):');
         // reference plane alone — otherwise every such run would corkscrew and
         // the following ⟨90⟩ would tip in an arbitrary direction.
         const dir = (child) => {
-            const segs = SITLanguage.interpret3D(SITLanguage.evaluate({ k: 'out', child }), 1);
+            const segs = SITLanguage.interpret3D(SITLanguage.evaluate({ k: 'out', child }), 1).segments;
             const s = segs[segs.length - 1];
             return [s.b[0] - s.a[0], s.b[1] - s.a[1], s.b[2] - s.a[2]];
         };
@@ -362,10 +362,51 @@ check('both types draw a figure, and the 3D one goes spatial', () => {
     for (let i = 0; i < 30; i++) {
         const ind = new classes.SITCode3DIndividual();
         const zs = [];
-        for (const l of ind.polylines()) for (const p of l.pts) zs.push(p[2]);
+        for (const l of ind.polylines(true)) for (const p of l.pts) zs.push(p[2]);
         if (zs.length && Math.max(...zs) - Math.min(...zs) > 1e-6) spatial++;
     }
     assert(spatial > 5, `only ${spatial}/30 3D codes left the plane`);
+});
+check('a skinned parallel structure lofts into a closed surface of revolution', () => {
+    // The paper's generalised cylinder: a ring ⦃90⦄ carrying, at each node, a
+    // profile tipped out of the ring's plane. Because the branch code is
+    // generated once and replicated, the copies form a regular grid — which is
+    // what makes them loftable into a skin rather than a bundle of rods.
+    const ind = new classes.SITCode3DIndividual();
+    const profile = { k: 'seq', items: [{ k: 'num', a: 0 }, { k: 'num', a: 0 }, { k: 'num', a: 1 }, { k: 'num', a: 0 }] };
+    Object.defineProperty(ind, 'phenotype', {
+        value: {
+            family: 4,
+            root: {
+                k: 'par',
+                rows: [{ k: 'cont', child: { k: 'num', a: 1 } },
+                { k: 'seq', items: [{ k: 'out', child: { k: 'num', a: 1 } }, profile] }],
+                indep: [false, false], every: [false, true], skin: [false, true],
+            },
+        },
+    });
+    const skins = ind.skins();
+    assert(skins.length === 1, `expected one skinned family, got ${skins.length}`);
+    const strands = skins[0].strands;
+    assert(strands.length === 4, `a ⦃90⦄ ring has 4 nodes, got ${strands.length}`);
+    const width = strands[0].length;
+    for (const s of strands) assert(s.length === width, 'replicated branches must be the same length');
+
+    // The loop closes, so a 4-node ring gives 4 quad bands round the sweep, not
+    // 3 — the surface joins up instead of leaving a seam.
+    const skin = { vertices: [], indices: [], colors: [] };
+    ind._emitSkin(skins[0], (p) => p, skin);
+    const quads = (width - 1) * 4;
+    assert(skin.indices.length === quads * 6,
+        `expected ${quads} closed-loop quads, got ${skin.indices.length / 6}`);
+    for (const v of skin.vertices) assert(Number.isFinite(v), 'non-finite surface vertex');
+
+    // The whole mesh carries the skin plus the ring's own rods, and nothing in
+    // it may index off the end.
+    const { vertices, indices } = ind.generate3DPoints();
+    assert(indices.length > skin.indices.length, 'the trunk should still be tubed');
+    const maxIndex = vertices.length / 3;
+    for (const ix of indices) assert(ix >= 0 && ix < maxIndex, 'index out of range');
 });
 check('3D codes build a mesh that STL export can consume', () => {
     let built = 0;

@@ -193,7 +193,7 @@ class SITCodeIndividual extends Individual {
         const p = this.phenotype;
         if (this._itemsFor !== p) {
             this._itemsFor = p;
-            this._items = SITLanguage.evaluate(p && p.root);
+            this._items = SITLanguage.evaluate(p && p.root, this.unitDegrees());
         }
         return this._items;
     }

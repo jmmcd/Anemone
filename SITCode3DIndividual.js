@@ -3,7 +3,8 @@
 // "Leeuwenberg Code 3D" in the UI. The three-dimensional half of Leeuwenberg's
 // 1971 coding language, sharing the whole engine (`SITLanguage.js`) and code
 // vocabulary with `SITCodeIndividual`; the only additions are the paper's
-// *outerproduct* indicator ⟨ ⟩ and a wireframe-tube renderer.
+// *outerproduct* indicator ⟨ ⟩ and a renderer that turns branch families into
+// surfaces.
 //
 // The paper's account of 3D is strikingly economical (pp. 314-315). In 2D each
 // angle is measured against the previous straight length — one past segment is
@@ -22,6 +23,22 @@
 // which is why its Table 1 can write a cube as a square with a square hanging
 // off each of its nodes (shape S), or a sphere as a circle ⊛ a circle turned
 // out of plane (shape S-1).
+//
+// SOLIDS, NOT JUST RODS. The paper's 3D figures are mostly *surfaces* —
+// generalised cylinders, cones, and vases with extrusions and hairs (Table 1,
+// S-3 and U-1…W). Its construction for them is parallel structure: a closed
+// contour with a profile hanging off each node. Since a parallel structure
+// generates its branch code ONCE and replicates it, every copy of the profile
+// is structurally identical, so the family of copies is already a regular grid
+// of points — a parametric surface waiting to be lofted. `SITLanguage` returns
+// those grids alongside the drawn segments, and a `skin` gene on each parallel
+// row decides whether the family becomes a lofted surface or stays a bundle of
+// rods. Both readings are in the paper: the skinned family is the vessel, the
+// unskinned one is the hairs and struts those same figures carry.
+//
+// The `lathe` finish assembles the classic case directly — see the note there
+// on why the tip has to be *two* quarter-turns for the profile to sweep in the
+// radial-vertical plane rather than tangentially.
 //
 // Everything else — the discrete/continuous unification via an evolvable
 // rotational family, the structural-information-load report, the live-editable
@@ -112,15 +129,20 @@ const leeGenerator3D = (rnd) => {
         // the branch leaves the trunk's plane — the paper's square-of-squares
         // cube (Table 1, shape S) is exactly this.
         const nRows = rnd.randint(2, 3);
-        const rows = [], indep = [], every = [];
+        const rows = [], indep = [], every = [], skin = [];
         for (let i = 0; i < nRows; i++) {
             const row = build(depth - 1, family);
             const tip = { k: 'out', child: { k: 'num', a: rnd.randint(-half, half) } };
             rows.push(i > 0 && rnd.random() < 0.6 ? { k: 'seq', items: [tip, row] } : row);
             indep.push(rnd.random() < 0.3);
             every.push(rnd.random() < 0.3);
+            // `skin`: loft this branch family into a surface instead of leaving
+            // it as separate rods. Both readings are in the paper — a skinned
+            // family is a generalised cylinder or vase (S-3, U-1…W), an
+            // unskinned one is the hairs and struts those figures also carry.
+            skin.push(rnd.random() < 0.45);
         }
-        return { k: 'par', rows, indep, every };
+        return { k: 'par', rows, indep, every, skin };
     };
 
     const family = rnd.choice(LEE_FAMILIES);
@@ -132,7 +154,7 @@ const leeGenerator3D = (rnd) => {
     // finish that only makes sense here: hanging the whole motif off a trunk
     // *out of plane* — the paper's own recipe for a solid (Table 1, shape S,
     // where a square carrying a square at each node is a cube).
-    const finish = rnd.choice(['cont', 'cont', 'iter', 'rev', 'par', 'solid', 'plain']);
+    const finish = rnd.choice(['cont', 'iter', 'rev', 'par', 'solid', 'lathe', 'lathe', 'plain']);
     if (finish === 'cont') return { family, root: { k: 'cont', child: body } };
     if (finish === 'iter') {
         return { family, root: { k: 'iter', ns: [rnd.randint(3, 8)], child: { k: 'chunk', child: body } } };
@@ -141,7 +163,11 @@ const leeGenerator3D = (rnd) => {
     if (finish === 'par') {
         return {
             family,
-            root: { k: 'par', rows: [body, build(3, family)], indep: [false, rnd.random() < 0.3], every: [false, rnd.random() < 0.4] },
+            root: {
+                k: 'par', rows: [body, build(3, family)],
+                indep: [false, rnd.random() < 0.3], every: [false, rnd.random() < 0.4],
+                skin: [false, rnd.random() < 0.5],
+            },
         };
     }
     if (finish === 'solid') {
@@ -157,7 +183,36 @@ const leeGenerator3D = (rnd) => {
                     { k: 'cont', child: body },
                     { k: 'seq', items: [quarter, { k: 'cont', child: build(3, family) }] },
                 ],
-                indep: [false, false], every: [false, false],
+                indep: [false, false], every: [false, false], skin: [false, rnd.random() < 0.5],
+            },
+        };
+    }
+    if (finish === 'lathe') {
+        // The paper's solid of revolution, written the paper's way: a ring
+        // ⦃r⦄ (a continuation whose net turn closes it) carrying, at each of its
+        // nodes, one profile tipped out of the ring's plane. Skinned, the family
+        // of profile copies lofts into a generalised cylinder / cone / vase
+        // (Table 1, S-3 and U-1…U-5). Unskinned it is the same figure drawn as
+        // meridian wires — which is how the paper prints them.
+        const sides = rnd.randint(6, 16);
+        const ring = { k: 'cont', child: { k: 'num', a: Math.max(1, Math.round(family / sides)) } };
+        // 2·⟨quarter⟩ — the tip must be TWO quarter-turns, not one. The first
+        // takes the branch out of the ring's plane, leaving the reference plane
+        // normal pointing along the radius, so a following plain angle would
+        // still bend tangentially (a fin, not a profile). The second turns out
+        // along the radius and leaves the normal tangential, after which every
+        // plain angle bends in the radial-vertical plane — which is exactly what
+        // a lathe profile is.
+        const tip = {
+            k: 'iter', ns: [2],
+            child: { k: 'out', child: { k: 'num', a: Math.max(1, Math.round(family / 4)) } },
+        };
+        return {
+            family,
+            root: {
+                k: 'par',
+                rows: [ring, { k: 'seq', items: [tip, body] }],
+                indep: [false, false], every: [false, true], skin: [false, rnd.random() < 0.8],
             },
         };
     }
@@ -176,14 +231,39 @@ class SITCode3DIndividual extends SITCodeIndividual {
 
     is3D() { return true; }
 
-    /** Contour segments in 3-space, capped, chained into polylines. */
-    polylines() {
-        const segs = SITLanguage.interpret3D(this.items(), this.unitDegrees());
+    /** The interpreted figure: drawn segments plus the branch grids. Cached. */
+    figure() {
+        const items = this.items();
+        if (this._figFor !== items) {
+            this._figFor = items;
+            this._fig = SITLanguage.interpret3D(items, this.unitDegrees());
+            // A family can only be lofted if it has at least two strands of at
+            // least two points; anything thinner falls back to rods.
+            for (const f of this._fig.families) {
+                if (f.skin && !(f.strands.length >= 2 && f.strands[0].length >= 2)) f.skin = false;
+            }
+        }
+        return this._fig;
+    }
+
+    /** The families that become skin — the surfaces of revolution / sweeps. */
+    skins() { return this.figure().families.filter(f => f.skin); }
+
+    /**
+     * Contour segments chained into polylines for tubing. `all = true` returns
+     * every strand (used for bounds, validation and the 2D fallback); otherwise
+     * the segments belonging to a skinned family are dropped, since the surface
+     * already renders them and tubing them too just crawls the skin with wires.
+     */
+    polylines(all = false) {
+        const fig = this.figure();
+        const fams = fig.families;
         const lines = [];
         let cur = null;
         let count = 0;
-        for (const s of segs) {
+        for (const s of fig.segments) {
             if (++count > LEE_MAX_3D_SEGMENTS) break;
+            if (!all && s.fam >= 0 && fams[s.fam] && fams[s.fam].skin) { cur = null; continue; }
             // Segments produced back-to-back share the joint point object, so
             // reference equality chains a run into one tube. A vanished value or
             // a branch push/pop breaks the chain.
@@ -198,51 +278,97 @@ class SITCode3DIndividual extends SITCodeIndividual {
         return lines;
     }
 
+    /** Every point in the figure — contour and skin alike. */
+    _allPoints() {
+        const pts = [];
+        for (const l of this.polylines(true)) for (const p of l.pts) pts.push(p);
+        for (const f of this.skins()) for (const s of f.strands) for (const p of s) pts.push(p);
+        return pts;
+    }
+
     // As in 2D: enough contour to be worth a tile, and not so nearly-collinear
     // that it renders as one stroke. Extent is measured over all three axes and
     // the two largest are compared, so a genuinely *planar* figure (a legal and
     // common outcome — a code with no ⟨ ⟩ never leaves its plane) still passes.
     validate() {
-        const lines = this.polylines();
-        let n = 0;
+        const pts = this._allPoints();
+        if (pts.length < 8) return false;
         const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-        for (const l of lines) for (const p of l.pts) {
-            n++;
+        for (const p of pts) {
             for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i]); hi[i] = Math.max(hi[i], p[i]); }
         }
-        if (n < 8) return false;
         const ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]].sort((a, b) => b - a);
         return ext[1] > 0.08 * ext[0];
     }
 
     /**
-     * Sweep every contour polyline into a tube. Uses a carried (parallel
-     * transport) normal so the tube does not twist; the figure is centred and
-     * normalised to a unit-ish radius so the shared camera frames it sensibly
-     * and STL exports come out at a printable scale.
+     * Build the mesh: skinned branch families become lofted surfaces, everything
+     * else becomes a tube. The figure is centred and normalised to a unit-ish
+     * radius so the shared camera frames it sensibly and STL exports come out at
+     * a printable scale.
      */
     generate3DPoints(lod = 1) {
-        const lines = this.polylines();
-        const sides = Math.max(4, Math.round(LEE_TUBE_SIDES * lod));
         const out = { vertices: [], indices: [], colors: [] };
-        if (!lines.length) return out;
+        const pts = this._allPoints();
+        if (!pts.length) return out;
 
-        // Centre + scale over the contour points (not the tube shell).
-        let cx = 0, cy = 0, cz = 0, n = 0;
-        for (const l of lines) for (const p of l.pts) { cx += p[0]; cy += p[1]; cz += p[2]; n++; }
-        cx /= n; cy /= n; cz /= n;
+        let cx = 0, cy = 0, cz = 0;
+        for (const p of pts) { cx += p[0]; cy += p[1]; cz += p[2]; }
+        cx /= pts.length; cy /= pts.length; cz /= pts.length;
         let maxR = 1e-6;
-        for (const l of lines) for (const p of l.pts) {
-            maxR = Math.max(maxR, Math.hypot(p[0] - cx, p[1] - cy, p[2] - cz));
-        }
+        for (const p of pts) maxR = Math.max(maxR, Math.hypot(p[0] - cx, p[1] - cy, p[2] - cz));
         const k = 1 / maxR;
-        const radius = Math.max(LEE_TUBE_RADIUS * k, 0.006);
+        const fit = (p) => [(p[0] - cx) * k, (p[1] - cy) * k, (p[2] - cz) * k];
 
-        for (const l of lines) {
-            const pts = l.pts.map(p => [(p[0] - cx) * k, (p[1] - cy) * k, (p[2] - cz) * k]);
-            this._emitTube(pts, l.ts, radius, sides, out);
-        }
+        for (const f of this.skins()) this._emitSkin(f, fit, out);
+
+        const sides = Math.max(4, Math.round(LEE_TUBE_SIDES * lod));
+        const radius = Math.max(LEE_TUBE_RADIUS * k, 0.006);
+        for (const l of this.polylines()) this._emitTube(l.pts.map(fit), l.ts, radius, sides, out);
         return out;
+    }
+
+    /**
+     * Loft one branch family into a surface. The strands are the branch code
+     * replicated at successive trunk nodes, so strand i and strand i+1 are
+     * adjacent rows of a quad grid; the loop is closed when the trunk itself
+     * closed (its last node came back within a grain of its first), which is
+     * what turns a profile swept round a `⦃ ⦄` polygon into a solid of
+     * revolution — the paper's generalised cylinders and vases.
+     */
+    _emitSkin(family, fit, out) {
+        const strands = family.strands;
+        const rows = strands.length;
+        // Cheapest possible closure test, and the right one: a continuation
+        // repeats until the contour meets itself, so a closed trunk leaves its
+        // last node about one grain length from its first.
+        const gap = Math.hypot(
+            strands[0][0][0] - strands[rows - 1][0][0],
+            strands[0][0][1] - strands[rows - 1][0][1],
+            strands[0][0][2] - strands[rows - 1][0][2]);
+        const closed = rows > 2 && gap < 1.5;
+        const loops = closed ? rows : rows - 1;
+
+        for (let i = 0; i < loops; i++) {
+            const a = strands[i], b = strands[(i + 1) % rows];
+            const m = Math.min(a.length, b.length);
+            if (m < 2) continue;
+            const base = out.vertices.length / 3;
+            for (let j = 0; j < m; j++) {
+                for (const p of [a[j], b[j]]) {
+                    const q = fit(p);
+                    out.vertices.push(q[0], q[1], q[2]);
+                }
+                // Colour runs along the branch, so every copy of the motif is
+                // shaded alike and the sweep reads as one surface.
+                const c = window.Palette.color(0.15 + 0.85 * (j / Math.max(1, m - 1)));
+                for (let s = 0; s < 2; s++) out.colors.push(c.r / 255, c.g / 255, c.b / 255);
+            }
+            for (let j = 0; j < m - 1; j++) {
+                const p0 = base + j * 2, p1 = p0 + 1, p2 = p0 + 2, p3 = p0 + 3;
+                out.indices.push(p0, p2, p1, p1, p2, p3);
+            }
+        }
     }
 
     _emitTube(points, ts, radius, sides, out) {
@@ -306,7 +432,9 @@ class SITCode3DIndividual extends SITCodeIndividual {
             for (let i = 0; i < data.length; i += 4) {
                 data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
             }
-            const lines = this.polylines();
+            // The fallback has no shading, so draw skinned families as their
+            // meridian wires (polylines(true) keeps them) rather than losing them.
+            const lines = this.polylines(true);
             if (!lines.length) return imageData;
 
             const s = Math.min(width, height) / 128;
@@ -351,8 +479,10 @@ class SITCode3DIndividual extends SITCodeIndividual {
     getPhenotype() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);
+        const skins = this.skins().length;
         return `Leeuwenberg 3D code — I = ${values + ops} (${values} values + ${ops} operators)`
-            + `, family ${(p && p.family) || '?'} → ${this.polylines().length} contour strands`;
+            + `, family ${(p && p.family) || '?'} → ${this.polylines(true).length} contour strands`
+            + (skins ? `, ${skins} lofted surface${skins > 1 ? 's' : ''}` : '');
     }
 }
 
