@@ -116,9 +116,18 @@ const SITLanguage = {
     // EVALUATION:  code tree -> item stream
     // =======================================================================
 
-    /** Evaluate a code tree to a flat item stream. */
-    evaluate(node) {
-        return this._ev(node, { n: 0 });
+    /**
+     * Evaluate a code tree to a flat item stream.
+     *
+     * @param {object} node   the code
+     * @param {number} [unit] degrees per angle unit (360 / rotational family).
+     *   Only continuation needs it — it has to know the *real* net turn of its
+     *   operand to work out how many repeats close the contour. Everything else
+     *   in the algebra is unit-agnostic, so this defaults to 1 (values already
+     *   in degrees), which is how the paper's own worked examples read.
+     */
+    evaluate(node, unit = 1) {
+        return this._ev(node, { n: 0, unit });
     },
 
     _ev(node, st) {
@@ -158,7 +167,7 @@ const SITLanguage = {
             case 'cont': {
                 const s = this._ev(node.child, st);
                 if (!s.length) return s;
-                const k = this._closureCount(s);
+                const k = this._closureCount(s, st.unit || 1);
                 return this._repeatWhole(s, k, st);
             }
             // · Iteration: each item of the operand, n times over.
@@ -319,11 +328,14 @@ const SITLanguage = {
      * round(360/Δ) times — `⦃a,4·(0)⦄` with a = 60 gives the hexagon of fig. 10a.
      * A pass with no net turn (a straight run) gets a fixed default.
      */
-    _closureCount(items) {
+    _closureCount(items, unit) {
         const vals = this._flatten(items);
         let h = 0;
         for (const it of vals) {
-            if (it.abs) h = it.v; else h += it.v;
+            // In degrees, not raw units: a family-6 code turning by one unit
+            // turns by 60°, so it closes in 6 repeats, not 360.
+            const deg = it.v * (unit || 1);
+            if (it.abs) h = deg; else h += deg;
         }
         const d = Math.abs(h);
         if (d < 1e-9) return LEE_CONT_STRAIGHT;
@@ -464,17 +476,24 @@ const SITLanguage = {
         if (!rows.length) return [];
         const trunk = this._ev(rows[0], st);
         if (rows.length === 1) return trunk;
-        const rest = { k: 'par', rows: rows.slice(1), indep: (node.indep || []).slice(1), every: (node.every || []).slice(1) };
+        const rest = {
+            k: 'par', rows: rows.slice(1),
+            indep: (node.indep || []).slice(1),
+            every: (node.every || []).slice(1),
+            skin: (node.skin || []).slice(1),
+        };
         const sub = this._ev(rest, st);
         if (!sub.length) return trunk;
         const indep = !!(node.indep && node.indep[1]);
         const every = !!(node.every && node.every[1]);
+        const skin = !!(node.skin && node.skin[1]);
         const attach = (items) => items.map(it => {
             if (it.chunk) return { chunk: attach(it.chunk) };
             if (!every && it.v === 0) return it;
             const copy = Object.assign({}, it);
             copy.sub = sub;
             copy.indep = indep;
+            copy.skin = skin;
             return copy;
         });
         return attach(trunk);
@@ -534,23 +553,38 @@ const SITLanguage = {
      * "a surface determined by two angles is used as reference base for every
      * following angle".
      *
-     * @returns {Array} polylines [{pts:[[x,y,z],…], t0, t1}]
+     * SURFACES. A parallel structure generates its branch code ONCE and hangs
+     * the same item stream off every node of the trunk, so the branch copies
+     * are structurally identical — a regular grid of points, one row per node.
+     * That grid is a parametric surface, and it is how the paper draws its
+     * generalised cylinders, cones and vases (Table 1, S-3 and U-1…W): "take an
+     * element of the polygon and attach to it…". So besides the drawn segments
+     * we return, for each attachment site, the FAMILY of branch strands in trunk
+     * order, ready to be lofted into a skin. Reference identity of the shared
+     * `sub` array is what groups them, which is exactly the reuse that makes a
+     * regularity a regularity in SIT.
+     *
+     * @returns {{segments: Array, families: Array}}
+     *   segments  [{a, b, t, fam}]  drawn grain steps; `fam` indexes families
+     *   families  [{skin, strands: [[[x,y,z],…], …]}]  branch grids in trunk order
      */
     interpret3D(items, unit) {
-        const lines = [];
+        const out = { segments: [], families: [], _bySub: new Map() };
         const st = {
             p: [0, 0, 0], d: [1, 0, 0], n: [0, 0, 1],
             baseD: [1, 0, 0], baseN: [0, 0, 1], n_: 0,
         };
         const total = Math.max(1, this._countValues(items));
-        this._walk3D(items, st, unit, lines, total, 0);
-        return lines;
+        this._walk3D(items, st, unit, out, total, 0, null, -1);
+        delete out._bySub;
+        return out;
     },
 
-    _walk3D(items, st, unit, segs, total, depth) {
+    _walk3D(items, st, unit, out, total, depth, collect, fam) {
+        const segs = out.segments;
         for (const it of items) {
             if (st.n_ > LEE_MAX_MARKS) return;
-            if (it.chunk) { this._walk3D(it.chunk, st, unit, segs, total, depth); continue; }
+            if (it.chunk) { this._walk3D(it.chunk, st, unit, out, total, depth, collect, fam); continue; }
             const deg = it.v * unit;
             if (it.out) {
                 // ⟨v⟩ — leave the current plane about its in-plane perpendicular.
@@ -582,13 +616,25 @@ const SITLanguage = {
             }
             const q = [st.p[0] + st.d[0], st.p[1] + st.d[1], st.p[2] + st.d[2]];
             if (!it.hide) {
-                segs.push({ a: st.p, b: q, t: 0.15 + 0.85 * (st.n_ / total) });
+                segs.push({ a: st.p, b: q, t: 0.15 + 0.85 * (st.n_ / total), fam });
             }
             st.p = q; st.n_++;
+            // A vanished step still "functions as an existing element", so it
+            // contributes its point to the surface grid even though it draws no
+            // segment — a hidden run is a smooth stretch of skin, not a hole.
+            if (collect) collect.push(q);
             if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
                 const saved = { p: st.p, d: st.d, n: st.n };
                 if (it.indep) { st.d = st.baseD.slice(); st.n = st.baseN.slice(); }
-                this._walk3D(it.sub, st, unit, segs, total, depth + 1);
+                let f = out._bySub.get(it.sub);
+                if (!f) {
+                    f = { skin: !!it.skin, strands: [], idx: out.families.length };
+                    out._bySub.set(it.sub, f);
+                    out.families.push(f);
+                }
+                const strand = [st.p];
+                this._walk3D(it.sub, st, unit, out, total, depth + 1, strand, f.idx);
+                if (strand.length > 1) f.strands.push(strand);
                 st.p = saved.p; st.d = saved.d; st.n = saved.n;
             }
         }
