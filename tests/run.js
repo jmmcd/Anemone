@@ -434,6 +434,81 @@ console.log('\nLeeuwenberg coding language (worked examples from the paper):');
     });
 }
 
+// --- The paper's own figures ---
+// tests/paper-figures.js holds hand-written transcriptions of Leeuwenberg's
+// figure 10 and Table 1, shared with scripts/sit-figures.js (which renders them
+// as a contact sheet). Every figure must evaluate, interpret and draw; those
+// carrying `checks` are asserted against the shape the paper prints. Figures
+// whose `status` names a discrepancy are still exercised — they must not throw
+// or go blank — but are not held to a shape they are known to miss.
+console.log('\nThe paper\'s figures (tests/paper-figures.js):');
+{
+    const { FIGURES } = require('./paper-figures');
+    const ids = new Set();
+    check('the figure table is well formed', () => {
+        assert(FIGURES.length >= 25, `expected the bulk of the paper's figures, got ${FIGURES.length}`);
+        for (const f of FIGURES) {
+            assert(f.id && f.label && f.code && f.family, `figure ${f.id || '?'} is missing fields`);
+            assert(!ids.has(f.id), `duplicate figure id ${f.id}`);
+            ids.add(f.id);
+            assert(f.status, `figure ${f.id} must state whether it matches the paper`);
+        }
+    });
+    for (const f of FIGURES) {
+        const differs = /^DIFFERS/.test(f.status);
+        check(`${f.id} — ${f.label}${differs ? ' (known to differ)' : ''}`, () => {
+            const unit = 360 / f.family;
+            const items = SITLanguage.evaluate(f.code, unit);
+            assert(items.length > 0, 'code evaluated to nothing');
+            if (f.mode === 'solid') {
+                const fig = SITLanguage.interpret3D(items, unit);
+                assert(fig.segments.length > 0 || fig.families.length > 0, 'figure is empty');
+                if (f.checks && f.checks.skins) {
+                    const err = f.checks.skins(fig.families.filter(x => x.skin));
+                    assert(!err, err);
+                }
+            } else {
+                const marks = SITLanguage.interpret2D(items, unit);
+                assert(marks.length > 0, 'figure drew nothing');
+                for (const m of marks) {
+                    assert(Number.isFinite(m.x1) && Number.isFinite(m.y2), 'non-finite mark');
+                }
+                if (f.checks && f.checks.marks) {
+                    const err = f.checks.marks(marks);
+                    assert(!err, err);
+                }
+            }
+        });
+    }
+    // The two engine features the figures forced out into the open.
+    check('a lone grain is flagged as a dot; a joined one is not', () => {
+        const dots = SITLanguage.interpret2D(
+            SITLanguage.evaluate({ k: 'comb', a: { k: 'iter', ns: [5], child: { k: 'num', a: 0 } },
+                b: { k: 'chunk', child: { k: 'hide', child: { k: 'iter', ns: [5], child: { k: 'num', a: 0 } } } } }, 1), 1);
+        assert(dots.length === 5 && dots.every(m => m.dot), 'Table 1 C should be five dots');
+        const line = SITLanguage.interpret2D(
+            SITLanguage.evaluate({ k: 'iter', ns: [5], child: { k: 'num', a: 0 } }, 1), 1);
+        assert(line.length === 5 && line.every(m => !m.dot), 'Table 1 B is a line, not five dots');
+    });
+    check('parallel continuation fans about one point; serial extends a contour', () => {
+        const fan = SITLanguage.interpret2D(SITLanguage.evaluate({ k: 'parcont', child: { k: 'num', a: 45 } }, 1), 1);
+        assert(fan.length === 8, `≈45≈ should fan into 8 spokes, got ${fan.length}`);
+        // All eight start at the origin — that is what "common starting points" means.
+        for (const m of fan) assert(Math.hypot(m.x1, m.y1) < 1e-9, 'a fan copy did not start at the shared point');
+        const chain = SITLanguage.interpret2D(SITLanguage.evaluate({ k: 'cont', child: { k: 'num', a: 45 } }, 1), 1);
+        assert(chain.length === 8, `⦃45⦄ should close into 8 sides, got ${chain.length}`);
+        // ...whereas a serial continuation walks away from it.
+        assert(chain.some(m => Math.hypot(m.x1, m.y1) > 1), 'a serial continuation should not stay at the origin');
+    });
+    check('the vanishing sign does not infect what is computed from it (fig. 10h)', () => {
+        const code = { k: 'op', op: '@', a: { k: 'hide', child: { k: 'parcont', child: { k: 'num', a: 30 } } },
+            b: { k: 'brkall', child: { k: 'abs', child: { k: 'iter', ns: [6], child: { k: 'num', a: 70 } } } } };
+        const marks = SITLanguage.interpret2D(SITLanguage.evaluate(code, 1), 1);
+        assert(marks.length === 6, `expected the induced figure to survive, got ${marks.length} marks`);
+        assert(marks.every(m => !m.dot), 'the induced figure should be a contour, not dots');
+    });
+}
+
 console.log('\nLeeuwenberg code individuals:');
 check('both types draw a figure, and the 3D one goes spatial', () => {
     const flat = new classes.SITCodeIndividual();

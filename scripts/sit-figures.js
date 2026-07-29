@@ -27,89 +27,9 @@ const size = sizeFlag >= 0 ? Number(args[sizeFlag + 1]) : 300;
 
 const { classes } = load();
 
-// --- code-building shorthand, close to the paper's notation ------------------
-const n = (a) => ({ k: 'num', a });
-const seq = (...items) => ({ k: 'seq', items });
-const chunk = (child) => ({ k: 'chunk', child });
-const cont = (child) => ({ k: 'cont', child });                    // ⦃ … ⦄
-const iter = (count, child) => ({ k: 'iter', ns: [count], child }); // n·( )
-const rep = (count, child) => iter(count, chunk(child));            // n·{ } whole
-const rev = (child) => ({ k: 'rev', child });                       // R
-const integ = (child) => ({ k: 'int', child });                     // ∫
-const abs = (child) => ({ k: 'abs', child });                       // | |
-const hide = (child) => ({ k: 'hide', child });                     // ‾ ‾
-const outer = (child) => ({ k: 'out', child });                     // ⟨ ⟩
-const comb = (a, b) => ({ k: 'comb', a, b });                       // (a)(b)
-const par = (rows, opts = {}) => ({
-    k: 'par', rows,
-    indep: opts.indep || rows.map(() => false),
-    every: opts.every || rows.map(() => false),
-    skin: opts.skin || rows.map(() => false),
-});
-// A straight edge of n grains is n·(0) — length is never a primitive.
-const run = (len) => iter(len, n(0));
-const edge = (angle, len) => seq(n(angle), run(len));
-
-// --- the figures ------------------------------------------------------------
-// Each entry: label, family, code, and '2d' | 'solid'.
-const FIGURES = [
-    // The paper's opening worked example (pp. 310-311), derived step by step
-    // from a 64-dot figure down to five information units. Angles are absolute
-    // after the ∫, which is what makes the shape a smooth closed blob.
-    {
-        label: 'FIG 3', mode: '2d', family: 360,
-        code: iter(4, integ(seq(n(46), iter(4, rev(seq(n(-23), n(23))))))),
-    },
-    // Fig. 10a / Table 1 B: a continuation closes the contour into a polygon.
-    { label: '10A HEXAGON', mode: '2d', family: 360, code: cont(edge(60, 4)) },
-    { label: 'B PENTAGON', mode: '2d', family: 360, code: cont(edge(72, 5)) },
-    // Fig. 10c: the same hexagon with its straight runs vanished. The corners
-    // still draw, so a dot pattern falls out of one unbroken contour trace.
-    { label: '10C DOTS', mode: '2d', family: 360, code: cont(seq(n(60), hide(run(4)))) },
-    // Fig. 10f: alternating visible and vanished arcs — a dashed circle.
-    { label: '10F DASHES', mode: '2d', family: 360, code: cont(seq(edge(15, 2), hide(edge(15, 2)))) },
-    // Fig. 10e: parallel structure. A ring carrying a spoke at every element —
-    // "take an element (angle) of the polygon and attach to it a straight line".
-    {
-        label: '10E HATCH', mode: '2d', family: 360,
-        code: par([cont(edge(20, 2)), edge(90, 4)], { every: [false, true] }),
-    },
-    // Fig. 10i: the castellated line. Combination interleaves the two operands,
-    // (0,180)(90) = 0,90,180,90, read as absolute angles.
-    {
-        label: '10I WAVE', mode: '2d', family: 360,
-        code: rep(6, iter(3, abs(comb(seq(n(0), n(180)), seq(n(90)))))),
-    },
-    // Reversal: the motif then its reverse. SIT's symmetry regularity.
-    { label: 'R REVERSAL', mode: '2d', family: 360, code: rep(5, rev(seq(edge(40, 3), edge(-70, 2), edge(30, 4)))) },
-    // Table 1 shape S, the cube: a square carrying, at each of its nodes, a
-    // square tipped a quarter turn out of the plane.
-    {
-        label: 'S CUBE', mode: 'solid', family: 4,
-        code: par([cont(seq(run(3), n(1))), seq(outer(n(1)), cont(seq(run(3), n(1))))]),
-    },
-    // Table 1 S-2: the same construction with everything vanished but the
-    // corners — a three-dimensional dot pattern.
-    {
-        label: 'S-2 3D DOTS', mode: 'solid', family: 4,
-        code: par([cont(seq(n(1), hide(run(3)))), seq(outer(n(1)), cont(seq(n(1), hide(run(3)))))]),
-    },
-    // Fig. 10m: the generalised cylinder. A ring carrying a straight profile at
-    // every node, the family of profiles lofted into a skin.
-    {
-        label: '10M CYLINDER', mode: 'solid', family: 360,
-        code: par([cont(n(30)), seq(iter(2, outer(n(90))), edge(-90, 6))],
-            { every: [false, true], skin: [false, true] }),
-    },
-    // Table 1 S-3 and U-1…W: a vase. Same construction, but the profile now has
-    // a shape, so the sweep is a solid of revolution with a waist.
-    {
-        label: 'S-3 VASE', mode: 'solid', family: 360,
-        code: par([cont(n(30)), seq(iter(2, outer(n(90))),
-            edge(-90, 3), edge(35, 2), edge(-45, 3), edge(55, 2), edge(-30, 2))],
-            { every: [false, true], skin: [false, true] }),
-    },
-];
+// The figures themselves live in tests/paper-figures.js, shared with the test
+// suite so the sheet and the assertions can never drift apart.
+const { FIGURES } = require(path.join(__dirname, '..', 'tests', 'paper-figures.js'));
 
 // --- a 3x5 bitmap font, so the sheet is self-labelling -----------------------
 const GLYPHS = {
@@ -212,7 +132,7 @@ function fillTri(raster, a, b, c, col, ox, oy, box) {
 }
 
 // --- render the sheet -------------------------------------------------------
-const cols = 4;
+const cols = 5;
 const rows = Math.ceil(FIGURES.length / cols);
 const TOP = Math.round(size * 0.09);
 const raster = new Raster(cols * size, rows * size);
@@ -238,7 +158,20 @@ FIGURES.forEach((fig, i) => {
         for (const m of marks) { pts.push([m.x1, -m.y1]); pts.push([m.x2, -m.y2]); }
         if (!pts.length) return;
         const f = frame(pts, ox, oy, size, TOP);
+        // Same relative rule as the app: a lone grain reads as a point only when
+        // the figure spans many grains (see SITCodeIndividual.visualize).
+        const asDots = (size / Math.max(1e-6, f.sc)) > 8;
+        const dotR = Math.max(1.5, size / 110);
         for (const m of marks) {
+            if (m.dot && asDots) {
+                const cx = m.x2 * f.sc + f.px, cy = -m.y2 * f.sc + f.py;
+                for (let dy = -dotR; dy <= dotR; dy++) {
+                    for (let dx = -dotR; dx <= dotR; dx++) {
+                        if (dx * dx + dy * dy <= dotR * dotR) raster.setPixel(Math.round(cx + dx), Math.round(cy + dy), INK);
+                    }
+                }
+                continue;
+            }
             raster.line(m.x1 * f.sc + f.px, -m.y1 * f.sc + f.py,
                 m.x2 * f.sc + f.px, -m.y2 * f.sc + f.py, INK, 0.9);
         }

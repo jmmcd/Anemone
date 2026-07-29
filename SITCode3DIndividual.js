@@ -350,7 +350,19 @@ class SITCode3DIndividual extends SITCodeIndividual {
 
         const sides = Math.max(4, Math.round(LEE_TUBE_SIDES * lod));
         const radius = Math.max(LEE_TUBE_RADIUS * k, 0.006);
-        for (const l of this.polylines()) this._emitTube(l.pts.map(fit), l.ts, radius, sides, out);
+        for (const l of this.polylines()) {
+            const pts = l.pts.map(fit);
+            // A lone grain is a point, not a stub of rod (see
+            // SITLanguage._markDots): the paper's 3D dot patterns (Table 1 S-2)
+            // are traces whose runs have all vanished, leaving isolated angles.
+            // Same relative test as the 2D dot rule: a lone grain is a point
+            // only when the figure spans many grains (here maxR, in grains).
+            // Size a dot against a GRAIN (k units after fitting), not against
+            // the rod radius — otherwise a dot pattern spanning many grains
+            // renders as invisible specks.
+            if (pts.length === 2 && maxR > 4) this._emitBall(pts, l.ts[0], Math.max(radius * 2.2, k * 0.22), out);
+            else this._emitTube(pts, l.ts, radius, sides, out);
+        }
 
         // Final safety net. The band and segment keys above catch whole repeats
         // cheaply (without building them), but a surface that folds back onto
@@ -472,6 +484,22 @@ class SITCode3DIndividual extends SITCodeIndividual {
         const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         const n = SITLanguage._cross(u, v);
         return Math.hypot(n[0], n[1], n[2]) < 1e-9;
+    }
+
+    /** A small octahedral ball at the midpoint of a lone grain — a 3D dot. */
+    _emitBall(pts, t, radius, out) {
+        const c = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2, (pts[0][2] + pts[1][2]) / 2];
+        const base = out.vertices.length / 3;
+        const col = window.Palette.color(t);
+        const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+        for (const d of dirs) {
+            out.vertices.push(c[0] + d[0] * radius, c[1] + d[1] * radius, c[2] + d[2] * radius);
+            out.colors.push(col.r / 255, col.g / 255, col.b / 255);
+        }
+        // The eight faces of an octahedron over ±x, ±y, ±z (indices 0..5).
+        const faces = [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
+        [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]];
+        for (const f of faces) out.indices.push(base + f[0], base + f[1], base + f[2]);
     }
 
     _emitTube(points, ts, radius, sides, out) {

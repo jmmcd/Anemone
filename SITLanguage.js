@@ -55,6 +55,10 @@
 //
 // INDICATORS (9-10, pp. 313-315)
 //   ⦃ ⦄ Continuation      {k:'cont'}   repeat "until it meets something"
+//       (parallel form)   {k:'parcont'} the same braces written VERTICALLY:
+//                                      replicate a branch about a common point,
+//                                      each copy referenced to the last — a
+//                                      rosette (fig. 10b, Table 1 shape I)
 //   { } Chunking          {k:'chunk'}  one unbroken unit in every context
 //   ( ) Border            {k:'seq'}    common fate, members function separately
 //   [ ] Breakdown         {k:'brk'}    strip one level of chunking
@@ -93,6 +97,10 @@
 //  * The vanishing sign's exception clause ("unless there would be no
 //    difference between the situations with and without signs", p. 315) is not
 //    modelled; a vanished value is always invisible.
+//  * A lone visible grain renders as a POINT, not a short dash (see _markDots):
+//    the grain length is notional, so an angle with nothing joined to it is a
+//    dot. This is what makes Table 1's C and G dot patterns rather than dashed
+//    figures, and the paper distinguishes those from its dashed ones.
 //  * Auditory patterns (Table 2) are out of scope, as are the paper's
 //    *measures* (preferred dimensionality, hierarchy, substructural order);
 //    only structural information load I is reported.
@@ -163,6 +171,43 @@ const SITLanguage = {
             // ⟦ ⟧ Complete breakdown: strip all chunking.
             case 'brkall':
                 return this._flatten(this._ev(node.child, st));
+            /**
+             * PARALLEL continuation — the paper's *vertical* wavy braces, as
+             * distinct from the horizontal `⦃ ⦄` of a serial continuation
+             * (p. 318: "just as the ⦃ ⦄ symbols are used both in the serial
+             * formula for figure 10a and in the parallel formula for figure
+             * 10b"). Serial continuation extends a contour; parallel
+             * continuation replicates a branch about a COMMON STARTING POINT,
+             * each copy taking the previous as its reference base — so the
+             * copies fan out at equal angles. That is Table 1's shape I (`~a~`,
+             * one information unit: an asterisk), figure 10b's eight-spoke star,
+             * and the radial star that figure 10g superimposes a line on.
+             *
+             * The between-copy angle is the child's own first angle, which is
+             * what "the upper angles form the reference bases for the lower"
+             * means when there is no trunk above; the count is whatever closes
+             * the fan, 360/a.
+             */
+            case 'parcont': {
+                const sub = this._ev(node.child, st);
+                if (!sub.length) return [];
+                const head = this._flatten(sub)[0];
+                const stepUnits = head ? head.v : 0;
+                const stepDeg = stepUnits * (st.unit || 1);
+                let count = node.n;
+                if (!count) {
+                    const d = Math.abs(stepDeg);
+                    count = d < 1e-9 ? LEE_CONT_STRAIGHT
+                        : Math.max(2, Math.min(LEE_CONT_MAX, Math.round(360 / d)));
+                }
+                st.n += count;
+                // A structural marker, not a contour element: it draws nothing
+                // and advances nothing (`nostep`), it only fans its child.
+                return [{
+                    v: 0, hide: true, nostep: true,
+                    fan: { sub, count, step: stepUnits, skin: !!node.skin },
+                }];
+            }
             // ⦃ ⦄ Continuation: repeat until the contour closes.
             case 'cont': {
                 const s = this._ev(node.child, st);
@@ -229,12 +274,19 @@ const SITLanguage = {
 
     // --- item-stream helpers -------------------------------------------------
 
-    /** Strip every chunk wrapper, leaving only value items. */
+    /**
+     * Strip every chunk wrapper, leaving only value items. A parallel
+     * continuation expands to the sequence of directions its copies take — that
+     * is what an operation on it sees, and it is what makes figure 10g work: the
+     * star's radials are the reference axes the line's constant 70° is added to.
+     */
     _flatten(items) {
         const out = [];
         for (const it of items) {
             if (it.chunk) { for (const c of this._flatten(it.chunk)) out.push(c); }
-            else out.push(it);
+            else if (it.fan) {
+                for (let i = 0; i < it.fan.count; i++) out.push({ v: (i + 1) * it.fan.step, abs: true });
+            } else out.push(it);
         }
         return out;
     },
@@ -447,7 +499,11 @@ const SITLanguage = {
             return { chunk: row };
         }
         const merged = Object.assign({}, x);
-        if (y.hide) merged.hide = true;
+        // NB: `y.hide` is deliberately NOT propagated. The vanishing sign hides
+        // an operand's own contour, not whatever is computed from it — figure
+        // 10h is precisely that case, a spiral that survives the star which
+        // gave it its directions ("Once the star pattern has transferred its
+        // directional function on the line, the star as such can vanish").
         if (op === 'x') merged.v = x.v * y.v;
         else if (op === '*') {
             // Vector addition: an in-plane angle composed with an out-of-plane
@@ -489,6 +545,13 @@ const SITLanguage = {
         const skin = !!(node.skin && node.skin[1]);
         const attach = (items) => items.map(it => {
             if (it.chunk) return { chunk: attach(it.chunk) };
+            // A fan is a structural marker, not a node: hang the branch off the
+            // nodes *inside* its copies instead.
+            if (it.fan) {
+                return Object.assign({}, it, {
+                    fan: Object.assign({}, it.fan, { sub: attach(it.fan.sub) }),
+                });
+            }
             if (!every && it.v === 0) return it;
             const copy = Object.assign({}, it);
             copy.sub = sub;
@@ -515,9 +578,34 @@ const SITLanguage = {
      */
     interpret2D(items, unit) {
         const marks = [];
-        const st = { x: 0, y: 0, h: 0, n: 0 };
+        const st = { x: 0, y: 0, h: 0, n: 0, chain: 0, nextChain: 0 };
         const total = Math.max(1, this._countValues(items));
         this._walk2D(items, st, unit, marks, total, 0);
+        return this._markDots(marks);
+    },
+
+    /**
+     * A grain of contour with nothing joined to it is a POINT, not a dash.
+     *
+     * This is what makes the paper's dot patterns dot patterns. Length is never
+     * a primitive here — an edge is `n·(0)`, n repetitions of the angle 0 — and
+     * the grain length is a notional infinitesimal, so a lone visible angle
+     * between vanished runs shrinks to a point in the limit. Table 1 makes the
+     * reading explicit: C is `(n·(0)){‾n·(0)‾}`, five dots in a row, and G is
+     * `⦃a⦄{‾n·(0)‾}`, a circle of dots, both drawn from one unbroken trace whose
+     * straight runs have vanished. Rendering those as short dashes instead
+     * (which is what we did before) turns C into a dashed line and G into a
+     * dashed circle — the paper's figures D and 10f respectively, which it
+     * distinguishes from C and G.
+     *
+     * A chain id is carried through the walk and bumped at every gap — a
+     * vanished value, a branch boundary, a fan copy — so a singleton chain is
+     * exactly a mark with no neighbour.
+     */
+    _markDots(marks) {
+        const runs = new Map();
+        for (const m of marks) runs.set(m.chain, (runs.get(m.chain) || 0) + 1);
+        for (const m of marks) if (runs.get(m.chain) === 1) m.dot = true;
         return marks;
     },
 
@@ -525,20 +613,45 @@ const SITLanguage = {
         for (const it of items) {
             if (st.n > LEE_MAX_MARKS) return;
             if (it.chunk) { this._walk2D(it.chunk, st, unit, marks, total, depth); continue; }
+            // Parallel continuation: fan the child about this point.
+            if (it.fan) {
+                if (depth < LEE_MAX_BRANCH_DEPTH) {
+                    const saved = { x: st.x, y: st.y, h: st.h };
+                    const outerChain = st.chain;
+                    for (let i = 0; i < it.fan.count; i++) {
+                        st.x = saved.x; st.y = saved.y;
+                        st.h = saved.h + i * it.fan.step * unit;
+                        st.chain = ++st.nextChain;   // each copy is its own run
+                        this._walk2D(it.fan.sub, st, unit, marks, total, depth + 1);
+                    }
+                    st.x = saved.x; st.y = saved.y; st.h = saved.h;
+                    st.chain = outerChain;
+                }
+                continue;
+            }
             const deg = it.v * unit;
             if (it.abs) st.h = deg; else st.h += deg;
-            const rad = st.h * Math.PI / 180;
-            const nx = st.x + Math.cos(rad);
-            const ny = st.y + Math.sin(rad);
-            if (!it.hide) {
-                marks.push({ x1: st.x, y1: st.y, x2: nx, y2: ny, t: 0.15 + 0.85 * (st.n / total) });
+            if (!it.nostep) {
+                const rad = st.h * Math.PI / 180;
+                const nx = st.x + Math.cos(rad);
+                const ny = st.y + Math.sin(rad);
+                // A vanished grain ends the current run; what follows starts a new one.
+                if (it.hide) st.chain = ++st.nextChain;
+                else marks.push({ x1: st.x, y1: st.y, x2: nx, y2: ny, chain: st.chain, t: 0.15 + 0.85 * (st.n / total) });
+                st.x = nx; st.y = ny; st.n++;
             }
-            st.x = nx; st.y = ny; st.n++;
             if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
                 const saved = { x: st.x, y: st.y, h: st.h };
                 if (it.indep) st.h = 0;
+                // The branch is a separate run, but the TRUNK keeps its own —
+                // otherwise every trunk step with a branch on it would be
+                // isolated, and a hatched polygon (fig. 10e) would decay into a
+                // ring of dots.
+                const outerChain = st.chain;
+                st.chain = ++st.nextChain;
                 this._walk2D(it.sub, st, unit, marks, total, depth + 1);
                 st.x = saved.x; st.y = saved.y; st.h = saved.h;
+                st.chain = outerChain;
             }
         }
     },
@@ -585,6 +698,30 @@ const SITLanguage = {
         for (const it of items) {
             if (st.n_ > LEE_MAX_MARKS) return;
             if (it.chunk) { this._walk3D(it.chunk, st, unit, out, total, depth, collect, fam); continue; }
+            // Parallel continuation: fan the child about this point, in the
+            // current plane. The copies are structurally identical, so they form
+            // a loftable family exactly as a parallel structure's branches do.
+            if (it.fan) {
+                if (depth < LEE_MAX_BRANCH_DEPTH) {
+                    const saved = { p: st.p, d: st.d, n: st.n };
+                    let f = out._bySub.get(it.fan.sub);
+                    if (!f) {
+                        f = { skin: !!it.fan.skin, strands: [], idx: out.families.length };
+                        out._bySub.set(it.fan.sub, f);
+                        out.families.push(f);
+                    }
+                    for (let i = 0; i < it.fan.count; i++) {
+                        st.p = saved.p;
+                        st.n = saved.n;
+                        st.d = this._rot3(saved.d, saved.n, i * it.fan.step * unit);
+                        const strand = [st.p];
+                        this._walk3D(it.fan.sub, st, unit, out, total, depth + 1, strand, f.idx);
+                        if (strand.length > 1) f.strands.push(strand);
+                    }
+                    st.p = saved.p; st.d = saved.d; st.n = saved.n;
+                }
+                continue;
+            }
             const deg = it.v * unit;
             if (it.out) {
                 // ⟨v⟩ — leave the current plane about its in-plane perpendicular.
@@ -614,6 +751,7 @@ const SITLanguage = {
                     st.n = axis;
                 }
             }
+            if (it.nostep) continue;
             const q = [st.p[0] + st.d[0], st.p[1] + st.d[1], st.p[2] + st.d[2]];
             if (!it.hide) {
                 segs.push({ a: st.p, b: q, t: 0.15 + 0.85 * (st.n_ / total), fam });
@@ -686,6 +824,7 @@ const SITLanguage = {
             case 'brk': return '[' + N(node.child) + ']';
             case 'brkall': return '⟦' + N(node.child) + '⟧';
             case 'cont': return '⦃' + N(node.child) + '⦄';
+            case 'parcont': return '≈' + N(node.child) + '≈';   // the vertical wavy braces
             case 'iter': {
                 const ns = (node.ns || []).map(num).join(',');
                 const m = node.cross ? '/' + ns + '/' : (node.ns && node.ns.length > 1 ? '(' + ns + ')' : ns);
@@ -736,7 +875,7 @@ const SITLanguage = {
         switch (node.k) {
             case 'num': if (node.a !== 0) acc.values++; break;
             case 'seq': (node.items || []).forEach(c => this.load(c, acc)); break;
-            case 'chunk': case 'brk': case 'brkall': case 'cont':
+            case 'chunk': case 'brk': case 'brkall': case 'cont': case 'parcont':
             case 'abs': case 'out': case 'hide':
                 this.load(node.child, acc); break;
             case 'iter': acc.ops++; this.load(node.child, acc); break;
@@ -761,7 +900,8 @@ const SITLanguage = {
             case 'chunk': mark('{ } chunking'); this.vocabulary(node.child, seen); break;
             case 'brk': mark('[ ] breakdown'); this.vocabulary(node.child, seen); break;
             case 'brkall': mark('⟦ ⟧ full breakdown'); this.vocabulary(node.child, seen); break;
-            case 'cont': mark('⦃ ⦄ continuation'); this.vocabulary(node.child, seen); break;
+            case 'cont': mark('⦃ ⦄ serial continuation'); this.vocabulary(node.child, seen); break;
+            case 'parcont': mark('parallel continuation (rosette)'); this.vocabulary(node.child, seen); break;
             case 'abs': mark('| | absolute angles'); this.vocabulary(node.child, seen); break;
             case 'out': mark('⟨ ⟩ outerproduct'); this.vocabulary(node.child, seen); break;
             case 'hide': mark('‾ vanishing'); this.vocabulary(node.child, seen); break;
