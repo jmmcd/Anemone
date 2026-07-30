@@ -62,11 +62,28 @@ const closes = (marks, tol = 1e-6) => {
     const a = marks[0], z = marks[marks.length - 1];
     if (Math.hypot(z.x2 - a.x1, z.y2 - a.y1) > tol) return 'contour does not close';
 };
-const dotCount = (marks) => marks.filter(m => m.dot).length;
+// Dots are counted by DISTINCT POSITION, which is what "the paper shows k dots"
+// means: a parallel continuation's copies all leave the same point, so their
+// leading grains stack there and read as one (Table 1 J is five dots, drawn by
+// eight coincident marks).
+const dotCount = (marks) => new Set(
+    marks.filter(m => m.dot).map(m => `${m.x1.toFixed(3)},${m.y1.toFixed(3)}`)).size;
 const lineCount = (marks) => marks.filter(m => !m.dot).length;
 const wantDots = (k) => (marks) => {
     const d = dotCount(marks);
     if (d !== k) return `expected ${k} dots, got ${d} (and ${lineCount(marks)} strokes)`;
+};
+// Greedy spatial clustering of the dots, for the hierarchical figures (P, Q):
+// returns groups of dot positions within `tol` of one another.
+const clusters = (marks, tol) => {
+    const pts = [...new Set(marks.filter(m => m.dot).map(m => `${m.x1.toFixed(2)},${m.y1.toFixed(2)}`))]
+        .map(k => k.split(',').map(Number));
+    const out = [];
+    for (const p of pts) {
+        const hit = out.find(c => c.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < tol));
+        if (hit) hit.push(p); else out.push([p]);
+    }
+    return out;
 };
 // Distinct segment directions, rounded to the degree.
 const dirs = (marks) => new Set(marks.filter(m => !m.dot)
@@ -296,8 +313,8 @@ const FIGURES = [
         status: 'match',
         checks: {
             marks: (m) => {
-                // Four arms, each contributing a dot at the hub and one at the tip.
-                if (dotCount(m) !== 8) return `expected 8 dots (4 coincident at the hub), got ${dotCount(m)}`;
+                // Four arms: their leading grains coincide at the hub, so five dots.
+                if (dotCount(m) !== 5) return `J is a centre plus four arms, got ${dotCount(m)} dots`;
             },
         },
     },
@@ -333,27 +350,37 @@ const FIGURES = [
     },
     {
         id: 'P', label: 'P DOTS OF DOTS', page: 323, family: 360, mode: '2d',
-        note: 'G over J — a circle of dots in which every dot is itself a dot-cross. I = 4',
-        code: par([comb(cont(n(45)), chunk(hide(run(6)))),
-        parcont(seq(n(90), hide(run(1)), n(0)))]),
+        note: 'G ‖ J — a circle of dots in which every dot is itself a dot-cross. I = 4',
+        // The printed formula carries a DOUBLE LINE between its two rows: the ‖
+        // independence-of-angles indicator. It is why all six crosses in the
+        // figure point the same way instead of rotating with the circle.
+        code: par([comb(cont(n(60)), chunk(hide(run(12)))),
+        parcont(seq(n(90), hide(run(2)), n(0)))], { indep: [false, true] }),
         status: 'match',
         checks: {
             marks: (m) => {
-                if (dotCount(m) < 30) return `expected a hierarchy of dots, got ${dotCount(m)}`;
                 if (lineCount(m) !== 0) return `P is all dots, got ${lineCount(m)} strokes`;
+                if (dotCount(m) !== 30) return `expected 6 crosses of 5 dots, got ${dotCount(m)}`;
+                if (clusters(m, 4).length !== 6) return `expected 6 clusters, got ${clusters(m, 4).length}`;
             },
         },
     },
     {
         id: 'Q', label: 'Q DOTS OF DOTS 2', page: 323, family: 360, mode: '2d',
-        note: 'J over G — the same two shapes with the hierarchy inverted. I = 4',
-        code: par([parcont(seq(n(90), hide(run(9)), n(0))),
-        comb(cont(n(60)), chunk(hide(run(2))))]),
+        note: 'J ‖ G — the same two shapes with the hierarchy inverted. I = 4',
+        // Q's printed formula does NOT show the double line that P's carries,
+        // but its figure needs it twice over: every cluster is drawn at the same
+        // orientation (they would rotate with the trunk's 90° copies), and the
+        // centre shows ONE hexagon where four rotated copies would pile up into
+        // a 24-dot rosette. Read with ‖, as P is.
+        code: par([parcont(seq(n(90), hide(run(14)), n(0))),
+        comb(cont(n(60)), chunk(hide(run(1))))], { indep: [false, true] }),
         status: 'match',
         checks: {
             marks: (m) => {
                 if (lineCount(m) !== 0) return `Q is all dots, got ${lineCount(m)} strokes`;
-                if (dotCount(m) < 20) return `expected a cross of dot-clusters, got ${dotCount(m)} dots`;
+                if (dotCount(m) !== 30) return `expected 5 rings of 6 dots, got ${dotCount(m)}`;
+                if (clusters(m, 4).length !== 5) return `expected 5 clusters, got ${clusters(m, 4).length}`;
             },
         },
     },
@@ -374,10 +401,33 @@ const FIGURES = [
         status: 'match (literal reading: the paper prints an idealised cube)',
     },
     {
-        id: 'S-2', label: 'S-2 3D DOTS', page: 324, family: 4, mode: 'solid',
-        note: 'the same construction with the runs vanished — a three-dimensional dot pattern',
-        code: par([cont(seq(n(1), hide(run(6)))), seq(outer(n(1)), cont(seq(n(1), hide(run(6)))))]),
+        id: 'S-2', label: 'S-2 3D DOTS', page: 324, family: 360, mode: 'solid',
+        note: 'J and its outerproduct twin from the same point — a centre and six axis arms, all vanished but their tips',
+        // The table writes this "J over ⟨J⟩". We spell the two out-of-plane arms
+        // out because our parallel continuation fans WITHIN a plane, so it
+        // cannot produce the ±z pair on its own; everything else is J's code
+        // unchanged, once with a plain leading angle and once with ⟨ ⟩.
+        code: seq(
+            parcont(seq(n(90), hide(run(6)), n(0))),
+            parcont(seq(outer(n(90)), hide(run(6)), n(0)), { n: 1 }),
+            parcont(seq(outer(n(-90)), hide(run(6)), n(0)), { n: 1 })),
         status: 'match',
+        checks: {
+            segments: (segs) => {
+                const pts = [...new Set(segs.map(g => g.a.map(v => v.toFixed(2)).join(',')))]
+                    .map(k => k.split(',').map(Number));
+                if (pts.length !== 7) return `expected a centre and six arms, got ${pts.length} dots`;
+                // One at the origin, six on the axes at equal distance.
+                const r = pts.map(p => Math.hypot(p[0], p[1], p[2])).sort((a, b) => a - b);
+                if (r[0] > 1e-6) return 'expected a dot at the centre';
+                for (let i = 1; i < 7; i++) {
+                    if (Math.abs(r[i] - r[1]) > 1e-6) return 'the six arms should be the same length';
+                    // Axis-aligned: exactly one coordinate non-zero.
+                    const nz = pts[i].filter(v => Math.abs(v) > 1e-6).length;
+                    if (nz > 1) return 'each arm should run along one axis';
+                }
+            },
+        },
     },
     {
         id: '10m', label: '10M CYLINDER', page: 320, family: 360, mode: 'solid',

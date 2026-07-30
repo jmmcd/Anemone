@@ -281,7 +281,7 @@ class SITCodeIndividual extends Individual {
                 if (m.dot && asDots) {
                     Canvas2DModality.drawCircle(
                         data, width, height,
-                        m.x2 * scale + offsetX, m.y2 * scale + offsetY,
+                        m.x1 * scale + offsetX, m.y1 * scale + offsetY,
                         dotRadius, color
                     );
                     continue;

@@ -594,6 +594,17 @@ const SITLanguage = {
         const indep = !!(node.indep && node.indep[1]);
         const every = !!(node.every && node.every[1]);
         const skin = !!(node.skin && node.skin[1]);
+        // A branch hanging off a VANISHED element vanishes with it. This is the
+        // paper's own rule, stated of figure 10d (p. 319): "not only n·(0)
+        // itself vanishes but also its further function, this being revealed by
+        // the fact that where n·(0) has disappeared, p·(0) has also disappeared.
+        // If this had not been so, the formula would have also applied to figure
+        // 10e." So the branch density is decided by the trunk's own visibility,
+        // not by any heuristic — 10d gets a stroke at each surviving vertex,
+        // 10e (nothing vanished) gets one at every element, and Table 1's P and
+        // Q get a cluster at each of their trunk's dots. `every` overrides it,
+        // giving the non-propagating reading the paper contrasts against.
+        const hiddenSub = every ? sub : this._setFlag(sub, 'hide');
         const attach = (items) => items.map(it => {
             if (it.chunk) return { chunk: attach(it.chunk) };
             // A fan is a structural marker, not a node: hang the branch off the
@@ -603,9 +614,8 @@ const SITLanguage = {
                     fan: Object.assign({}, it.fan, { sub: attach(it.fan.sub) }),
                 });
             }
-            if (!every && it.v === 0) return it;
             const copy = Object.assign({}, it);
-            copy.sub = sub;
+            copy.sub = it.hide ? hiddenSub : sub;
             copy.indep = indep;
             copy.skin = skin;
             return copy;
@@ -652,6 +662,17 @@ const SITLanguage = {
      * A chain id is carried through the walk and bumped at every gap — a
      * vanished value, a branch boundary, a fan copy — so a singleton chain is
      * exactly a mark with no neighbour.
+     *
+     * The dot sits at the grain's START, not its end. The paper's own account of
+     * figure 3 fixes this: it reads a figure as "the series of angles formed AT
+     * EACH DOT, the angles between the dot's connections with the previous dot
+     * and the base axis" (p. 310) — so an angle is located at the point the
+     * grain leaves from. Two figures turn on it. In Table 1 J the copies of a
+     * parallel continuation all leave the same point, so their leading angles
+     * coincide there and draw ONE dot rather than four around it (the paper's J
+     * is five dots, a centre and four arms). In figure 10e the dot for grain i
+     * lands on the attachment point of grain i-1's branch, so a closed polygon
+     * still shows a dot at the base of every stroke — which is what it prints.
      */
     _markDots(marks) {
         const runs = new Map();
@@ -705,17 +726,12 @@ const SITLanguage = {
             // `| |` is measured from the base axis — which ⊛ replaces by a field.
             if (it.abs) st.h = (st.field ? st.field.at(st.x, st.y) : 0) + deg;
             else st.h += deg;
-            if (!it.nostep) {
-                const rad = st.h * Math.PI / 180;
-                const nx = st.x + Math.cos(rad);
-                const ny = st.y + Math.sin(rad);
-                // Collect for a ⊛ field: vanished steps count too.
-                if (st.collect) st.collect.push([st.x, st.y, nx, ny]);
-                // A vanished grain ends the current run; what follows starts a new one.
-                if (it.hide) st.chain = ++st.nextChain;
-                else marks.push({ x1: st.x, y1: st.y, x2: nx, y2: ny, chain: st.chain, t: 0.15 + 0.85 * (st.n / total) });
-                st.x = nx; st.y = ny; st.n++;
-            }
+            // The branch hangs off the point the angle is AT — the grain's start,
+            // the same point its dot marks (see _markDots) — so it is walked
+            // before the grain steps away. In figure 10e that puts the dot
+            // exactly at the base of its stroke, and in Table 1 P and Q it makes
+            // each trunk dot the centre of its cluster rather than a stray
+            // neighbour of it.
             if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
                 const saved = { x: st.x, y: st.y, h: st.h };
                 if (it.indep) st.h = 0;
@@ -736,6 +752,17 @@ const SITLanguage = {
                 this._walk2D(it.sub, st, unit, marks, total, depth + 1);
                 st.x = saved.x; st.y = saved.y; st.h = saved.h;
                 st.chain = ++st.nextChain;
+            }
+            if (!it.nostep) {
+                const rad = st.h * Math.PI / 180;
+                const nx = st.x + Math.cos(rad);
+                const ny = st.y + Math.sin(rad);
+                // Collect for a ⊛ field: vanished steps count too.
+                if (st.collect) st.collect.push([st.x, st.y, nx, ny]);
+                // A vanished grain ends the current run; what follows starts a new one.
+                if (it.hide) st.chain = ++st.nextChain;
+                else marks.push({ x1: st.x, y1: st.y, x2: nx, y2: ny, chain: st.chain, t: 0.15 + 0.85 * (st.n / total) });
+                st.x = nx; st.y = ny; st.n++;
             }
         }
     },
@@ -835,16 +862,6 @@ const SITLanguage = {
                     st.n = axis;
                 }
             }
-            if (it.nostep) continue;
-            const q = [st.p[0] + st.d[0], st.p[1] + st.d[1], st.p[2] + st.d[2]];
-            if (!it.hide) {
-                segs.push({ a: st.p, b: q, t: 0.15 + 0.85 * (st.n_ / total), fam });
-            }
-            st.p = q; st.n_++;
-            // A vanished step still "functions as an existing element", so it
-            // contributes its point to the surface grid even though it draws no
-            // segment — a hidden run is a smooth stretch of skin, not a hole.
-            if (collect) collect.push(q);
             if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
                 const saved = { p: st.p, d: st.d, n: st.n };
                 if (it.indep) { st.d = st.baseD.slice(); st.n = st.baseN.slice(); }
@@ -859,6 +876,16 @@ const SITLanguage = {
                 if (strand.length > 1) f.strands.push(strand);
                 st.p = saved.p; st.d = saved.d; st.n = saved.n;
             }
+            if (it.nostep) continue;
+            const q = [st.p[0] + st.d[0], st.p[1] + st.d[1], st.p[2] + st.d[2]];
+            if (!it.hide) {
+                segs.push({ a: st.p, b: q, t: 0.15 + 0.85 * (st.n_ / total), fam });
+            }
+            st.p = q; st.n_++;
+            // A vanished step still "functions as an existing element", so it
+            // contributes its point to the surface grid even though it draws no
+            // segment — a hidden run is a smooth stretch of skin, not a hole.
+            if (collect) collect.push(q);
         }
     },
 

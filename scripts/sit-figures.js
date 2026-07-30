@@ -164,7 +164,7 @@ FIGURES.forEach((fig, i) => {
         const dotR = Math.max(1.5, size / 110);
         for (const m of marks) {
             if (m.dot && asDots) {
-                const cx = m.x2 * f.sc + f.px, cy = -m.y2 * f.sc + f.py;
+                const cx = m.x1 * f.sc + f.px, cy = -m.y1 * f.sc + f.py;
                 for (let dy = -dotR; dy <= dotR; dy++) {
                     for (let dx = -dotR; dx <= dotR; dx++) {
                         if (dx * dx + dy * dy <= dotR * dotR) raster.setPixel(Math.round(cx + dx), Math.round(cy + dy), INK);

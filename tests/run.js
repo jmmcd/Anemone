@@ -467,6 +467,10 @@ console.log('\nThe paper\'s figures (tests/paper-figures.js):');
                     const err = f.checks.skins(fig.families.filter(x => x.skin));
                     assert(!err, err);
                 }
+                if (f.checks && f.checks.segments) {
+                    const err = f.checks.segments(fig.segments);
+                    assert(!err, err);
+                }
             } else {
                 const marks = SITLanguage.interpret2D(items, unit);
                 assert(marks.length > 0, 'figure drew nothing');

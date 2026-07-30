@@ -488,7 +488,8 @@ class SITCode3DIndividual extends SITCodeIndividual {
 
     /** A small octahedral ball at the midpoint of a lone grain — a 3D dot. */
     _emitBall(pts, t, radius, out) {
-        const c = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2, (pts[0][2] + pts[1][2]) / 2];
+        // At the grain's start, matching the 2D dot rule (SITLanguage._markDots).
+        const c = pts[0];
         const base = out.vertices.length / 3;
         const col = window.Palette.color(t);
         const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
