@@ -49,7 +49,13 @@
 //   ⊛   Addition of       {k:'op', op:'@'}        superimposes one figure's
 //       coincident angles                         angles on another (fig. 5) —
 //                                                 how a flat figure is drawn
-//                                                 onto a curved surface
+//                                                 onto a curved surface.
+//       The paper's glyph is an INTERSECTION SIGN WITH AN ASTERISK INSIDE
+//       (∩ over *) — i.e. "intersect, then add" — and p. 319 glosses the two
+//       halves separately: "at every point (⟦ ⟧) where it intersects (∩) the
+//       radials of the star, a constant absolute angle (|70 deg|) is made with
+//       (⊛) these radials". So the geometric reading is in the notation itself,
+//       not just in the prose. ⊛ is written here for want of the real glyph.
 //   plus ONE-SIDED ITERATION (p. 316) {k:'osi', side:'l'|'r'} — n elements of
 //   the left operand per 1 of the right (`;`) or vice versa (`ᐟ`).
 //
