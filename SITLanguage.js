@@ -719,15 +719,23 @@ const SITLanguage = {
             if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
                 const saved = { x: st.x, y: st.y, h: st.h };
                 if (it.indep) st.h = 0;
-                // The branch is a separate run, but the TRUNK keeps its own —
-                // otherwise every trunk step with a branch on it would be
-                // isolated, and a hatched polygon (fig. 10e) would decay into a
-                // ring of dots.
-                const outerChain = st.chain;
+                // A branch is a side excursion in the TRACE, so it separates the
+                // trunk grain before it from the one after: the branch gets its
+                // own run, and the trunk resumes on a fresh one.
+                //
+                // The consequence is the whole point of figure 10e. When every
+                // element of a polygon carries a branch, every trunk grain is
+                // left alone in its run and therefore draws as a dot — so 10e is
+                // an *implicit* polygon, a ring of dots each with a stroke
+                // radiating from it, which is exactly what the paper prints. A
+                // polygon with a branch at only one vertex keeps its outline,
+                // because only that one grain ends up isolated. The rule is
+                // emergent rather than a special case, and it is why 10e's
+                // literal code (an unvanished polygon) gives 10e's figure.
                 st.chain = ++st.nextChain;
                 this._walk2D(it.sub, st, unit, marks, total, depth + 1);
                 st.x = saved.x; st.y = saved.y; st.h = saved.h;
-                st.chain = outerChain;
+                st.chain = ++st.nextChain;
             }
         }
     },
