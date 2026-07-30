@@ -151,25 +151,46 @@ const FIGURES = [
     },
     {
         id: '10g', label: '10G STAR+SPIRAL', page: 319, family: 360, mode: '2d',
-        note: '⟦≈a,n·(0)≈⟧ ⊛ ⟦|k·(70)|⟧ — a line making a constant 70° with a star\'s radials',
-        // Drawn as star-then-superimposition so both parts appear; ⊛ alone
-        // consumes its left operand into the right's angles.
-        code: seq(parcont(edge(30, 3)),
-            op('@', parcont(edge(30, 3)), brkall(abs(iter(24, n(70)))))),
-        status: 'DIFFERS: the star is right, but the superimposed line is a rosette rather than a spiral. '
-            + 'The paper\'s ⊛ means "construct the star, then walk the line and take 70° from whichever radial it '
-            + 'currently crosses" — a two-pass geometric construction with intersection detection. Ours is cycling '
-            + 'elementwise addition, so the line turns by a constant amount per grain instead of by however far it '
-            + 'has travelled outward. Noted in SITLanguage\'s header as a deliberate simplification.',
+        note: '⟦≈a,n·(0)≈⟧ ⊛ ⟦|k·(70)|⟧ — a line holding a constant 70° to a star\'s radials',
+        code: op('@', parcont(edge(15, 3)), brkall(abs(iter(60, n(70))))),
+        status: 'match',
+        checks: {
+            marks: (m) => {
+                // The star (24 radials × 4 grains) plus the 60-grain line.
+                if (m.length !== 24 * 4 + 60) return `expected star + line, got ${m.length} marks`;
+                const line = m.slice(24 * 4);
+                const r0 = Math.hypot(line[0].x2, line[0].y2);
+                const r1 = Math.hypot(line[line.length - 1].x2, line[line.length - 1].y2);
+                if (r1 <= r0 * 3) return `the line should spiral outward (r ${r0.toFixed(1)} → ${r1.toFixed(1)})`;
+            },
+        },
     },
     {
         id: '10h', label: '10H SPIRAL', page: 319, family: 360, mode: '2d',
-        note: 'as 10g with the star vanished — only the figure it induced remains',
-        code: op('@', hide(parcont(edge(30, 3))), brkall(abs(iter(24, n(70))))),
-        status: 'DIFFERS: same cause as 10g — should be a spiral, comes out a closed rosette. '
-            + 'What this figure DOES verify is that the vanishing sign does not infect a result: the star is hidden '
-            + 'and the figure it gave its directions to still draws (the paper: "once the star pattern has '
-            + 'transferred its directional function on the line, the star as such can vanish").',
+        note: 'as 10g with the star vanished — "once the star pattern has transferred its '
+            + 'directional function on the line, the star as such can vanish"',
+        code: op('@', hide(parcont(edge(15, 3))), brkall(abs(iter(60, n(70))))),
+        status: 'match',
+        checks: {
+            marks: (m) => {
+                if (m.length !== 60) return `the star should not draw; got ${m.length} marks`;
+                const r = m.map(k => Math.hypot(k.x2, k.y2));
+                for (let i = 1; i < r.length; i++) {
+                    if (r[i] <= r[i - 1]) return `radius should grow monotonically (step ${i})`;
+                }
+                // A curve holding a constant angle to the radius vector is the
+                // equiangular spiral, whose defining property is dr/ds = cos(angle).
+                // The spread comes from the field being quantised to the nearest
+                // radial (24 of them, so ±7.5°), and shrinks as the star densifies.
+                const d = [];
+                for (let i = 6; i < r.length; i++) d.push(r[i] - r[i - 1]);
+                const mean = d.reduce((x, y) => x + y, 0) / d.length;
+                const want = Math.cos(70 * Math.PI / 180);
+                if (Math.abs(mean - want) > 0.08) {
+                    return `dr/ds should be cos(70°) = ${want.toFixed(3)}, got ${mean.toFixed(3)}`;
+                }
+            },
+        },
     },
     {
         id: '10i', label: '10I SQUARE WAVE', page: 320, family: 360, mode: '2d',

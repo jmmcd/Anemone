@@ -95,11 +95,14 @@
 //    one that closes the contour, round(360 / net turn), clamped. This is what
 //    turns `⦃a, n·(0)⦄` into a polygon of the right order (fig. 10a) and what
 //    the paper's own examples always mean in practice.
-//  * ⊛ (addition of coincident angles) is implemented as cycling elementwise
-//    addition onto absolute angles. The paper's worked example has an
-//    off-by-one against that reading which its prose does not explain; the
-//    geometric effect it is used for (a figure re-drawn on a curved base, so a
-//    straight line becomes a spiral — figs. 10g/10j/10l) is reproduced.
+//  * ⊛ is implemented as the two-stage construction the paper describes (build
+//    the left figure, then trace the right one with its absolute angles taken
+//    against the left's local direction rather than the fixed base axis) — see
+//    _binary. What is NOT modelled is intersection as such: the field is the
+//    direction of the nearest segment, so the superimposed figure is steered
+//    everywhere rather than only where it genuinely crosses. For the paper's
+//    own uses the two coincide. The rule's worked example on p. 313 also has an
+//    off-by-one its prose never explains, and is not reproduced.
 //  * The vanishing sign's exception clause ("unless there would be no
 //    difference between the situations with and without signs", p. 315) is not
 //    modelled; a vanished value is always invisible.
@@ -123,6 +126,7 @@ const LEE_MAX_MARKS = 6000;      // drawn segments produced by one interpretatio
 const LEE_CONT_MAX = 24;         // largest repeat count a continuation may take
 const LEE_CONT_STRAIGHT = 6;     // repeats for a continuation with no net turn
 const LEE_MAX_BRANCH_DEPTH = 4;  // nesting depth of parallel-structure branches
+const LEE_FIELD_SAMPLES = 256;   // segments sampled when building a ⊛ direction field
 
 const SITLanguage = {
 
@@ -292,6 +296,8 @@ const SITLanguage = {
             if (it.chunk) { for (const c of this._flatten(it.chunk)) out.push(c); }
             else if (it.fan) {
                 for (let i = 0; i < it.fan.count; i++) out.push({ v: (i + 1) * it.fan.step, abs: true });
+            } else if (it.field) {
+                for (const c of this._flatten(it.field.sub)) out.push(c);
             } else out.push(it);
         }
         return out;
@@ -306,12 +312,25 @@ const SITLanguage = {
         return copy;
     },
 
-    /** Deep-copy an item stream, setting one boolean flag on every value. */
+    /**
+     * Deep-copy an item stream, setting one boolean flag on every value.
+     * Descends into the structural markers too — a vanishing sign over a
+     * parallel continuation must hide the copies it fans, not merely the marker
+     * (figure 10h vanishes a whole star this way).
+     */
     _setFlag(items, flag) {
         return items.map(it => {
             if (it.chunk) return { chunk: this._setFlag(it.chunk, flag) };
             const copy = Object.assign({}, it);
             copy[flag] = true;
+            if (it.fan) copy.fan = Object.assign({}, it.fan, { sub: this._setFlag(it.fan.sub, flag) });
+            if (it.field) {
+                copy.field = {
+                    base: this._setFlag(it.field.base, flag),
+                    sub: this._setFlag(it.field.sub, flag),
+                };
+            }
+            if (it.sub) copy.sub = this._setFlag(it.sub, flag);
             return copy;
         });
     },
@@ -453,16 +472,42 @@ const SITLanguage = {
         if (!b.length) return a;
         const op = node.op;
         if (op === '@') {
-            // Coincident-angle addition: cycle the base figure `a` onto `b`,
-            // keeping b's length, and read the result as absolute angles.
-            const out = [];
-            const av = this._flatten(a);
-            for (let i = 0; i < b.length && st.n <= LEE_MAX_ITEMS; i++) {
-                const base = av[i % av.length];
-                out.push(this._apply(b[i], base, op));
-                st.n++;
-            }
-            return this._setFlag(out, 'abs');
+            /**
+             * ⊛ — addition of coincident angles. Unlike the other four
+             * operations this is not arithmetic on two value streams: the paper
+             * is explicit that it is a two-stage *construction* (p. 319: "the
+             * left-hand pattern must first be constructed before the right-hand
+             * pattern can be superimposed on it"; p. 321: "superimposed on it
+             * step by step … it is not possible to construct the shape directly
+             * from the two substructures"). Its glyph says so too — an
+             * intersection sign with an asterisk inside.
+             *
+             * The generalisation that makes it a rule rather than a special
+             * case is in the paper's own gloss: the superimposed figure's
+             * angles "form a constant 70 deg with THE ABSOLUTE REFERENCE AXES
+             * FORMED BY THE RADIALS of the star". So `| |` — normally "measured
+             * from the one fixed base axis" — has its base axis replaced by a
+             * *field* derived from the left operand: at each point, the local
+             * direction of that figure. Hence:
+             *
+             *     A ⊛ B  =  build A; trace B with its absolute angles taken
+             *               against A's local direction rather than the axis.
+             *
+             * Nothing here knows about stars. A star's nearest radial to a point
+             * is essentially its polar angle, so "constant angle to the local
+             * field" becomes "constant angle to the radius vector" — the
+             * equiangular spiral, which is exactly what figures 10g/10h draw. A
+             * curved contour gives its tangent (figs. 5, 10k/10l — the case the
+             * operation was introduced for), and a straight line degenerates to
+             * an ordinary constant base axis.
+             *
+             * Geometry is not available during evaluation, so this emits a
+             * structural marker and the turtle does the work. `base` keeps its
+             * own vanishing signs: a hidden star still draws nothing but still
+             * supplies the field, which is what figure 10h asks for.
+             */
+            st.n += 2;
+            return [{ v: 0, hide: true, nostep: true, field: { base: a, sub: b } }];
         }
         if (node.cross) {
             const out = [];
@@ -584,7 +629,7 @@ const SITLanguage = {
      */
     interpret2D(items, unit) {
         const marks = [];
-        const st = { x: 0, y: 0, h: 0, n: 0, chain: 0, nextChain: 0 };
+        const st = { x: 0, y: 0, h: 0, n: 0, chain: 0, nextChain: 0, field: null, collect: null };
         const total = Math.max(1, this._countValues(items));
         this._walk2D(items, st, unit, marks, total, 0);
         return this._markDots(marks);
@@ -619,6 +664,27 @@ const SITLanguage = {
         for (const it of items) {
             if (st.n > LEE_MAX_MARKS) return;
             if (it.chunk) { this._walk2D(it.chunk, st, unit, marks, total, depth); continue; }
+            // ⊛ — build the base figure, then trace the superimposed one in
+            // the direction field it induces (see _binary).
+            if (it.field) {
+                if (depth < LEE_MAX_BRANCH_DEPTH) {
+                    const saved = { x: st.x, y: st.y, h: st.h, chain: st.chain };
+                    const segs = [];
+                    st.collect = segs;
+                    st.chain = ++st.nextChain;
+                    this._walk2D(it.field.base, st, unit, marks, total, depth + 1);
+                    st.collect = null;
+                    // The superimposed figure starts where the base did.
+                    st.x = saved.x; st.y = saved.y; st.h = saved.h;
+                    const outerField = st.field;
+                    st.field = this._directionField(segs) || outerField;
+                    st.chain = ++st.nextChain;
+                    this._walk2D(it.field.sub, st, unit, marks, total, depth + 1);
+                    st.field = outerField;
+                    st.x = saved.x; st.y = saved.y; st.h = saved.h; st.chain = saved.chain;
+                }
+                continue;
+            }
             // Parallel continuation: fan the child about this point.
             if (it.fan) {
                 if (depth < LEE_MAX_BRANCH_DEPTH) {
@@ -636,11 +702,15 @@ const SITLanguage = {
                 continue;
             }
             const deg = it.v * unit;
-            if (it.abs) st.h = deg; else st.h += deg;
+            // `| |` is measured from the base axis — which ⊛ replaces by a field.
+            if (it.abs) st.h = (st.field ? st.field.at(st.x, st.y) : 0) + deg;
+            else st.h += deg;
             if (!it.nostep) {
                 const rad = st.h * Math.PI / 180;
                 const nx = st.x + Math.cos(rad);
                 const ny = st.y + Math.sin(rad);
+                // Collect for a ⊛ field: vanished steps count too.
+                if (st.collect) st.collect.push([st.x, st.y, nx, ny]);
                 // A vanished grain ends the current run; what follows starts a new one.
                 if (it.hide) st.chain = ++st.nextChain;
                 else marks.push({ x1: st.x, y1: st.y, x2: nx, y2: ny, chain: st.chain, t: 0.15 + 0.85 * (st.n / total) });
@@ -782,6 +852,40 @@ const SITLanguage = {
                 st.p = saved.p; st.d = saved.d; st.n = saved.n;
             }
         }
+    },
+
+    /**
+     * A direction field over a figure's drawn segments: at any point, the
+     * direction of the nearest one. This is the reference frame `⊛` substitutes
+     * for the fixed base axis (see _binary). Vanished segments are included —
+     * the paper's figure 10h keeps the field after the star itself has gone.
+     *
+     * Sampled down to a bounded number of segments so the per-step nearest query
+     * stays cheap; the field is a smooth-ish quantity, so a subsample of a dense
+     * figure gives essentially the same directions.
+     */
+    _directionField(segs) {
+        if (!segs || !segs.length) return null;
+        const stride = Math.max(1, Math.ceil(segs.length / LEE_FIELD_SAMPLES));
+        const s = [];
+        for (let i = 0; i < segs.length; i += stride) s.push(segs[i]);
+        return {
+            /** Direction (degrees) of the segment nearest to (x, y). */
+            at(x, y) {
+                let best = Infinity, dir = 0;
+                for (const g of s) {
+                    const ax = g[0], ay = g[1], bx = g[2], by = g[3];
+                    const dx = bx - ax, dy = by - ay;
+                    const len2 = dx * dx + dy * dy;
+                    let t = len2 > 1e-12 ? ((x - ax) * dx + (y - ay) * dy) / len2 : 0;
+                    t = t < 0 ? 0 : t > 1 ? 1 : t;
+                    const px = x - (ax + t * dx), py = y - (ay + t * dy);
+                    const d2 = px * px + py * py;
+                    if (d2 < best) { best = d2; dir = Math.atan2(dy, dx) * 180 / Math.PI; }
+                }
+                return dir;
+            },
+        };
     },
 
     _countValues(items) {
