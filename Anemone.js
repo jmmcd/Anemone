@@ -1475,6 +1475,7 @@ class InteractiveEAFramework {
             'FreeSurface3DIndividual': FreeSurface3DIndividual,
             'WarpedSurface3DIndividual': WarpedSurface3DIndividual,
             'JennPolytopeIndividual': JennPolytopeIndividual,
+            'EndlessFormsIndividual': EndlessFormsIndividual,
             'RobotIndividual': RobotIndividual,
             'WonkyGuysIndividual': WonkyGuysIndividual,
             'HoxCreatureIndividual': HoxCreatureIndividual,

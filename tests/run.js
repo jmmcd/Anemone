@@ -139,6 +139,7 @@ check('only the 3D types report is3D()', () => {
         'SuperShape3DIndividual', 'PetalSphere3DIndividual',
         'FreeSurface3DIndividual', 'WarpedSurface3DIndividual',
         'JennPolytopeIndividual', 'SITCode3DIndividual',
+        'EndlessFormsIndividual',
     ]);
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
