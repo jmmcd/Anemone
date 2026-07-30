@@ -123,15 +123,35 @@ const FIGURES = [
     },
     {
         id: '10e', label: '10E HATCH', page: 318, family: 360, mode: '2d',
-        note: '⦃a,n·(0)⦄ over b,p·(0) — a spoke at EVERY element of the polygon',
-        code: par([cont(edge(45, 4)), edge(90, 2)], { every: [false, true] }),
+        note: 'the vanished hexagon of 10c carrying b,p·(0) at EVERY element — '
+            + 'so the polygon is implicit and only the outward strokes (and its vertex dots) draw',
+        // The paper prints 10e's code with an unvanished polygon, ⦃a,n·(0)⦄ over
+        // b,p·(0), but its FIGURE has no outline: a clean hexagonal void with six
+        // groups of strokes radiating from it. Its own discussion of 10d (p. 319)
+        // resolves this. 10d is the vanished polygon over the same branch, and is
+        // called "an exceptional case, since not only n·(0) itself vanishes but
+        // also its further function … where n·(0) has disappeared, p·(0) has also
+        // disappeared. IF THIS HAD NOT BEEN SO, THE FORMULA WOULD HAVE ALSO
+        // APPLIED TO FIGURE 10e." So 10e is that same code read with the vanish
+        // NOT propagating to the branch — which is exactly our `every` flag:
+        // attach at every element (10e) versus only at the surviving ones (10d).
+        code: par([cont(seq(n(60), hide(run(6)))), edge(-90, 3)], { every: [false, true] }),
         status: 'match',
         checks: {
             marks: (m) => {
-                // 8 sides × 5 elements, each carrying a 3-grain spoke.
-                const spokes = 8 * 5;
-                if (lineCount(m) !== 8 * 5 + spokes * 3) {
-                    return `expected ${8 * 5 + spokes * 3} strokes, got ${lineCount(m)}`;
+                // Six vertex dots; 6 sides × 7 elements, each carrying a 4-grain stroke.
+                if (dotCount(m) !== 6) return `expected 6 vertex dots, got ${dotCount(m)}`;
+                if (lineCount(m) !== 6 * 7 * 4) return `expected ${6 * 7 * 4} strokes, got ${lineCount(m)}`;
+                // The strokes radiate OUTWARD: every one ends farther from the
+                // centre than it starts. (b = +90 instead of -90 turns the whole
+                // figure inside out, which is what it did before.)
+                const b = bounds(m);
+                const cx = (b.lo[0] + b.hi[0]) / 2, cy = (b.lo[1] + b.hi[1]) / 2;
+                for (const k of m) {
+                    if (k.dot) continue;
+                    if (Math.hypot(k.x2 - cx, k.y2 - cy) <= Math.hypot(k.x1 - cx, k.y1 - cy)) {
+                        return 'strokes should radiate outward from the implicit polygon';
+                    }
                 }
             },
         },
