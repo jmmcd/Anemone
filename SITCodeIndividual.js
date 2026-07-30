@@ -266,8 +266,26 @@ class SITCodeIndividual extends Individual {
             //    like a solid blob at full weight anyway.
             const contourPx = Math.max(1, marks.length * scale);
             const lineWidth = Math.max(1, Math.min(2.2 * s, scale * 0.6, Math.sqrt(3e6 / contourPx)));
+            // A grain with nothing joined to it is a point, not a dash (see
+            // SITLanguage._markDots) — that is what makes the paper's dot
+            // patterns dot patterns. But only when a grain is *small* relative
+            // to the whole figure: Table 1's C and G span many grains, so a lone
+            // one reads as a dot, whereas shape I (the asterisk `≈a≈`) is one
+            // grain across and the very same mark is its whole stroke. The
+            // engine flags the structural fact; the threshold is presentation.
+            const grainsAcross = Math.min(width, height) / Math.max(1e-6, scale);
+            const asDots = grainsAcross > 8;
+            const dotRadius = Math.max(1.2, lineWidth * 0.9);
             for (const m of marks) {
                 const color = window.Palette.color(m.t);
+                if (m.dot && asDots) {
+                    Canvas2DModality.drawCircle(
+                        data, width, height,
+                        m.x1 * scale + offsetX, m.y1 * scale + offsetY,
+                        dotRadius, color
+                    );
+                    continue;
+                }
                 Canvas2DModality.drawThickLine(
                     data, width, height,
                     m.x1 * scale + offsetX, m.y1 * scale + offsetY,

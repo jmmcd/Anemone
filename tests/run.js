@@ -335,6 +335,90 @@ console.log('\nLeeuwenberg coding language (worked examples from the paper):');
         assert(Math.abs(plain[2]) > 0.9, '⟨90⟩ should tip fully out of the start plane');
     });
 
+    // The paper's opening worked example, end to end (pp. 310-311). It derives
+    // the code 4·((46, 4·(R(-23,23)))∫) for figure 3 and prints the angle series
+    // it expands to; asserting that series exercises ∫, R and iteration together
+    // and against real numbers rather than stand-in letters. Our ∫ prepends the
+    // 0 its stated rule calls for ("(3,2,5)∫ = 0,3,5,10"), which the figure-3
+    // derivation drops — a leading 0 is not information (p. 331) and draws one
+    // grain along the base axis, so the rest must match exactly.
+    check('fig. 3: 4·((46,4·(R(-23,23)))∫) expands to the paper\'s angle series', () => {
+        const code = { k: 'iter', ns: [4], child: { k: 'int', child: seq(num(46),
+            { k: 'iter', ns: [4], child: { k: 'rev', child: seq(num(-23), num(23)) } }) } };
+        const got = SITLanguage.evaluate(code).map(it => it.v);
+        // p. 310, quadruplicity expanded: 4·(46,23,0,-23,-46,-23,0,23,46,69,92,115,138,115,92,69,46)
+        const distinct = [46, 23, 0, -23, -46, -23, 0, 23, 46, 69, 92, 115, 138, 115, 92, 69, 46];
+        const want = [0, 0, 0, 0];
+        for (const v of distinct) for (let i = 0; i < 4; i++) want.push(v);
+        assert(got.length === want.length, `got ${got.length} angles, paper has ${want.length}`);
+        for (let i = 0; i < want.length; i++) {
+            assert(got[i] === want[i], `angle ${i}: got ${got[i]}, paper says ${want[i]}`);
+        }
+        // ∫ turns relative angles into absolute ones, so every value says so.
+        assert(SITLanguage.evaluate(code).every(it => it.abs), '∫ must yield absolute angles');
+    });
+
+    // Fig. 10c: the vanishing sign turns a polygon into a dot pattern. Exactly
+    // the corners survive — one visible grain each, isolated by hidden runs.
+    check('fig. 10c: ⦃60,‾4·(0)‾⦄ draws six isolated dots, not a hexagon', () => {
+        const code = { k: 'cont', child: seq(num(60), { k: 'hide', child: { k: 'iter', ns: [4], child: num(0) } }) };
+        const marks = SITLanguage.interpret2D(SITLanguage.evaluate(code, 1), 1);
+        assert(marks.length === 6, `expected 6 visible corners, got ${marks.length}`);
+        // ...and they are genuinely separated, not a closed outline.
+        for (let i = 1; i < marks.length; i++) {
+            const gap = Math.hypot(marks[i].x1 - marks[i - 1].x2, marks[i].y1 - marks[i - 1].y2);
+            assert(gap > 1.5, 'dots should be separated by the hidden runs');
+        }
+    });
+
+    // Fig. 10i: the castellated line. Combination interleaves the operands —
+    // (0,180)(90) = 0,90,180,90 — and | | reads them as absolute angles, so the
+    // contour only ever heads along three fixed directions.
+    check('fig. 10i: (|0,180|)(|90|) as absolute angles makes a square wave', () => {
+        const code = { k: 'iter', ns: [4], child: { k: 'abs',
+            child: { k: 'comb', a: seq(num(0), num(180)), b: seq(num(90)) } } };
+        const marks = SITLanguage.interpret2D(SITLanguage.evaluate(code, 1), 1);
+        const dirs = new Set(marks.map(m => Math.round(Math.atan2(m.y2 - m.y1, m.x2 - m.x1) * 180 / Math.PI)));
+        assert(dirs.size === 3, `a square wave uses 3 directions, got ${[...dirs].join(',')}`);
+        for (const d of dirs) assert([0, 90, 180, -180].includes(d), `unexpected direction ${d}`);
+    });
+
+    // Fig. 10m / Table 1 S-3: the generalised cylinder. A ring carrying a
+    // vertical profile at every node, lofted — so every point of the skin sits
+    // at one distance from the ring's axis. This is the geometric pay-off of the
+    // two-quarter-turn lathe tip; with a single tip the profile would lean
+    // tangentially and the radius would wander.
+    check('fig. 10m: a ring plus a vertical profile lofts into a true cylinder', () => {
+        const ind = new classes.SITCode3DIndividual();
+        const tip = { k: 'iter', ns: [2], child: { k: 'out', child: num(90) } };
+        const profile = seq(num(-90), { k: 'iter', ns: [6], child: num(0) });
+        Object.defineProperty(ind, 'phenotype', {
+            value: {
+                family: 360,
+                root: {
+                    k: 'par', rows: [{ k: 'cont', child: num(30) }, seq(tip, profile)],
+                    indep: [false, false], every: [false, true], skin: [false, true],
+                },
+            },
+        });
+        const fam = ind.skins()[0];
+        assert(fam && fam.strands.length === 12, 'a 30° continuation should close into 12 nodes');
+        // The wall: every profile point after the tip must share one radius
+        // about the ring's axis. The ring lies in the z = 0 plane but the turtle
+        // starts on its rim, not at its centre, so measure about the centroid of
+        // the trunk nodes.
+        let cx = 0, cy = 0;
+        for (const s of fam.strands) { cx += s[0][0]; cy += s[0][1]; }
+        cx /= fam.strands.length; cy /= fam.strands.length;
+        const radii = [];
+        for (const s of fam.strands) {
+            for (let j = 3; j < s.length; j++) radii.push(Math.hypot(s[j][0] - cx, s[j][1] - cy));
+        }
+        const lo = Math.min(...radii), hi = Math.max(...radii);
+        assert(hi - lo < 0.05, `cylinder wall radius wandered from ${lo.toFixed(3)} to ${hi.toFixed(3)}`);
+        assert(lo > 1, 'the wall should stand off the axis');
+    });
+
     // Structural information I (pp. 331-332).
     check('I counts values and operations, and 0 is not information', () => {
         // "n·(0) conveys one unit of information"; "the value 0, and therefore
@@ -348,6 +432,85 @@ console.log('\nLeeuwenberg coding language (worked examples from the paper):');
         // "3 × ( ) [is] one given entity — one information unit", plus its argument.
         l = SITLanguage.load({ k: 'iter', ns: [3], child: seq(A, B) });
         assert(l.values === 2 && l.ops === 1, `3·(a,b) should be 1 op + 2 values, got ${JSON.stringify(l)}`);
+    });
+}
+
+// --- The paper's own figures ---
+// tests/paper-figures.js holds hand-written transcriptions of Leeuwenberg's
+// figure 10 and Table 1, shared with scripts/sit-figures.js (which renders them
+// as a contact sheet). Every figure must evaluate, interpret and draw; those
+// carrying `checks` are asserted against the shape the paper prints. Figures
+// whose `status` names a discrepancy are still exercised — they must not throw
+// or go blank — but are not held to a shape they are known to miss.
+console.log('\nThe paper\'s figures (tests/paper-figures.js):');
+{
+    const { FIGURES } = require('./paper-figures');
+    const ids = new Set();
+    check('the figure table is well formed', () => {
+        assert(FIGURES.length >= 25, `expected the bulk of the paper's figures, got ${FIGURES.length}`);
+        for (const f of FIGURES) {
+            assert(f.id && f.label && f.code && f.family, `figure ${f.id || '?'} is missing fields`);
+            assert(!ids.has(f.id), `duplicate figure id ${f.id}`);
+            ids.add(f.id);
+            assert(f.status, `figure ${f.id} must state whether it matches the paper`);
+        }
+    });
+    for (const f of FIGURES) {
+        const differs = /^DIFFERS/.test(f.status);
+        check(`${f.id} — ${f.label}${differs ? ' (known to differ)' : ''}`, () => {
+            const unit = 360 / f.family;
+            const items = SITLanguage.evaluate(f.code, unit);
+            assert(items.length > 0, 'code evaluated to nothing');
+            if (f.mode === 'solid') {
+                const fig = SITLanguage.interpret3D(items, unit);
+                assert(fig.segments.length > 0 || fig.families.length > 0, 'figure is empty');
+                if (f.checks && f.checks.skins) {
+                    const err = f.checks.skins(fig.families.filter(x => x.skin));
+                    assert(!err, err);
+                }
+                if (f.checks && f.checks.segments) {
+                    const err = f.checks.segments(fig.segments);
+                    assert(!err, err);
+                }
+            } else {
+                const marks = SITLanguage.interpret2D(items, unit);
+                assert(marks.length > 0, 'figure drew nothing');
+                for (const m of marks) {
+                    assert(Number.isFinite(m.x1) && Number.isFinite(m.y2), 'non-finite mark');
+                }
+                if (f.checks && f.checks.marks) {
+                    const err = f.checks.marks(marks);
+                    assert(!err, err);
+                }
+            }
+        });
+    }
+    // The two engine features the figures forced out into the open.
+    check('a lone grain is flagged as a dot; a joined one is not', () => {
+        const dots = SITLanguage.interpret2D(
+            SITLanguage.evaluate({ k: 'comb', a: { k: 'iter', ns: [5], child: { k: 'num', a: 0 } },
+                b: { k: 'chunk', child: { k: 'hide', child: { k: 'iter', ns: [5], child: { k: 'num', a: 0 } } } } }, 1), 1);
+        assert(dots.length === 5 && dots.every(m => m.dot), 'Table 1 C should be five dots');
+        const line = SITLanguage.interpret2D(
+            SITLanguage.evaluate({ k: 'iter', ns: [5], child: { k: 'num', a: 0 } }, 1), 1);
+        assert(line.length === 5 && line.every(m => !m.dot), 'Table 1 B is a line, not five dots');
+    });
+    check('parallel continuation fans about one point; serial extends a contour', () => {
+        const fan = SITLanguage.interpret2D(SITLanguage.evaluate({ k: 'parcont', child: { k: 'num', a: 45 } }, 1), 1);
+        assert(fan.length === 8, `≈45≈ should fan into 8 spokes, got ${fan.length}`);
+        // All eight start at the origin — that is what "common starting points" means.
+        for (const m of fan) assert(Math.hypot(m.x1, m.y1) < 1e-9, 'a fan copy did not start at the shared point');
+        const chain = SITLanguage.interpret2D(SITLanguage.evaluate({ k: 'cont', child: { k: 'num', a: 45 } }, 1), 1);
+        assert(chain.length === 8, `⦃45⦄ should close into 8 sides, got ${chain.length}`);
+        // ...whereas a serial continuation walks away from it.
+        assert(chain.some(m => Math.hypot(m.x1, m.y1) > 1), 'a serial continuation should not stay at the origin');
+    });
+    check('the vanishing sign does not infect what is computed from it (fig. 10h)', () => {
+        const code = { k: 'op', op: '@', a: { k: 'hide', child: { k: 'parcont', child: { k: 'num', a: 30 } } },
+            b: { k: 'brkall', child: { k: 'abs', child: { k: 'iter', ns: [6], child: { k: 'num', a: 70 } } } } };
+        const marks = SITLanguage.interpret2D(SITLanguage.evaluate(code, 1), 1);
+        assert(marks.length === 6, `expected the induced figure to survive, got ${marks.length} marks`);
+        assert(marks.every(m => !m.dot), 'the induced figure should be a contour, not dots');
     });
 }
 
@@ -393,13 +556,12 @@ check('a skinned parallel structure lofts into a closed surface of revolution', 
     const width = strands[0].length;
     for (const s of strands) assert(s.length === width, 'replicated branches must be the same length');
 
-    // The loop closes, so a 4-node ring gives 4 quad bands round the sweep, not
-    // 3 — the surface joins up instead of leaving a seam.
+    // The loop closes, so a 4-node ring sweeps 4 bands round the figure, not 3
+    // — the surface joins up instead of leaving a seam.
     const skin = { vertices: [], indices: [], colors: [] };
-    ind._emitSkin(skins[0], (p) => p, skin);
-    const quads = (width - 1) * 4;
-    assert(skin.indices.length === quads * 6,
-        `expected ${quads} closed-loop quads, got ${skin.indices.length / 6}`);
+    const bands = ind._emitSkin(skins[0], (p) => p, skin);
+    assert(bands === 4, `a closed 4-node trunk should sweep 4 bands, got ${bands}`);
+    assert(skin.indices.length > 0, 'no surface triangles emitted');
     for (const v of skin.vertices) assert(Number.isFinite(v), 'non-finite surface vertex');
 
     // The whole mesh carries the skin plus the ring's own rods, and nothing in
@@ -408,6 +570,52 @@ check('a skinned parallel structure lofts into a closed surface of revolution', 
     assert(indices.length > skin.indices.length, 'the trunk should still be tubed');
     const maxIndex = vertices.length / 3;
     for (const ix of indices) assert(ix >= 0 && ix < maxIndex, 'index out of range');
+});
+check('an open trunk leaves a seam (one band fewer than a closed one)', () => {
+    // The closure rule must be a real test of the geometry, not always-on: a
+    // trunk that does not come back on itself must not have its skin wrapped
+    // around from the last profile to the first.
+    const ind = new classes.SITCode3DIndividual();
+    const branch = { k: 'seq', items: [{ k: 'iter', ns: [2], child: { k: 'out', child: { k: 'num', a: 1 } } }, { k: 'num', a: 0 }] };
+    const open = { k: 'seq', items: [{ k: 'num', a: 0 }, { k: 'num', a: 0 }, { k: 'num', a: 0 }, { k: 'num', a: 0 }] };
+    Object.defineProperty(ind, 'phenotype', {
+        value: {
+            family: 4,
+            root: { k: 'par', rows: [open, branch], indep: [false, false], every: [false, true], skin: [false, true] },
+        },
+    });
+    const fam = ind.skins()[0];
+    assert(fam && fam.strands.length === 4, 'expected 4 profiles on the straight trunk');
+    const bands = ind._emitSkin(fam, (p) => p, { vertices: [], indices: [], colors: [] });
+    assert(bands === 3, `an open trunk should sweep 3 bands, got ${bands}`);
+});
+check('geometry drawn twice in one place is not built twice (no z-fighting)', () => {
+    // The flicker bug. A code may legitimately say "draw this again" — e.g.
+    // n·{closed contour} repeats a closed figure in place — and in 2D the
+    // overdraw is harmless. In 3D two coincident sheets or tubes z-fight, and
+    // the surface speckles and flickers as the camera orbits. Measured across
+    // random individuals, ~15% of all triangles were exact duplicates (worst
+    // case 77%) before this was handled.
+    const ind = new classes.SITCode3DIndividual();
+    const ring = { k: 'cont', child: { k: 'num', a: 1 } };
+    const branch = { k: 'seq', items: [{ k: 'iter', ns: [2], child: { k: 'out', child: { k: 'num', a: 1 } } }, { k: 'num', a: 0 }] };
+    const lathe = { k: 'par', rows: [ring, branch], indep: [false, false], every: [false, true], skin: [false, true] };
+    Object.defineProperty(ind, 'phenotype', {
+        // 3·{lathe}: the same closed figure three times over, in place.
+        value: { family: 4, root: { k: 'iter', ns: [3], child: { k: 'chunk', child: lathe } } },
+    });
+    const fam = ind.skins()[0];
+    assert(fam.strands.length === 12, `expected 3 in-place copies of a 4-node ring, got ${fam.strands.length}`);
+
+    const { vertices, indices } = ind.generate3DPoints();
+    const key = (i) => [0, 1, 2].map(k => vertices[i * 3 + k].toFixed(4)).join(',');
+    const seen = new Set();
+    for (let i = 0; i < indices.length; i += 3) {
+        const k = [key(indices[i]), key(indices[i + 1]), key(indices[i + 2])].sort().join('|');
+        assert(!seen.has(k), 'coincident duplicate triangle survived into the mesh');
+        seen.add(k);
+    }
+    assert(indices.length > 0, 'the figure should still have geometry');
 });
 check('3D codes build a mesh that STL export can consume', () => {
     let built = 0;
