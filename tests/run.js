@@ -33,7 +33,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage } = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -101,6 +101,7 @@ console.log('\nFramework hotkey table + partial-class split:');
         // A representative method from each partial file + a few that stayed.
         for (const m of ['addMeshToScene', 'renderMeshToCanvas', 'cleanupShared3D',      // Shared3D
                          'openZoom', 'closeZoom', 'togglePlayPauseOrRotation',            // Lightbox
+                         'setupEditing', 'teardownEditing',                               // Lightbox (intervention)
                          'saveCurrentImage', 'exportCurrentSTL', 'placeLoadedIndividual', // ExportManager
                          'evolveGeneration', '_handleKeydown', '_hotkeyContext',          // Hotkeys
                          'loadExtensions', 'render', 'switchIndividualType']) {           // stayed
@@ -117,6 +118,51 @@ console.log('\nFramework hotkey table + partial-class split:');
             assert(typeof b.group === 'string' && b.group, 'binding needs a group');
             assert(typeof b.run === 'function', 'binding needs run()');
             assert(!b.when || typeof b.when === 'function', 'when must be a predicate');
+        }
+    });
+
+    check('undo/redo step through the existing generation history', () => {
+        // stepGeneration is pure framework logic over ea.history, so it can be
+        // exercised on a stub `this` without a DOM.
+        const toasts = [];
+        const fake = {
+            ea: {
+                generation: 3,
+                history: [{ generation: 0 }, { generation: 1 }, { generation: 2 }, { generation: 3 }],
+                loadGeneration(i) { this.generation = this.history[i].generation; },
+            },
+            currentlyPlaying: null,
+            render() {},
+            showToast(m) { toasts.push(m); },
+        };
+        const step = (d) => F.prototype.stepGeneration.call(fake, d);
+        Object.assign(fake, {
+            goToHistoryIndex: F.prototype.goToHistoryIndex,
+            _currentHistoryIndex: F.prototype._currentHistoryIndex,
+        });
+        assert(step(-1) === true && fake.ea.generation === 2, 'undo should land on generation 2');
+        assert(step(-1) === true && fake.ea.generation === 1, 'undo should keep stepping back');
+        assert(step(1) === true && fake.ea.generation === 2, 'redo should step forward again');
+        fake.ea.generation = 0;
+        assert(step(-1) === false, 'undo at generation 0 must be a no-op');
+        assert(toasts[toasts.length - 1] === 'No earlier generation', 'expected the no-op toast');
+        fake.ea.generation = 3;
+        assert(step(1) === false, 'redo past the newest generation must be a no-op');
+    });
+
+    check('every binding can appear in the ? overlay, and ? itself is bound', () => {
+        // The overlay is generated from this table, so a binding is documented iff
+        // it carries the fields the overlay renders. (The well-formed check above
+        // already asserts desc/group exist; this pins the ? entry point itself and
+        // that no binding hides from the overlay by having an unsatisfiable when.)
+        const q = F.HOTKEYS.find(b => b.keys.includes('?'));
+        assert(q && q.group === 'General', '"?" must be bound and listed under General');
+        const seq = { sequencer: true, animatedPattern: false };
+        const anim = { sequencer: false, animatedPattern: true };
+        const def = { sequencer: false, animatedPattern: false };
+        for (const b of F.HOTKEYS) {
+            const reachable = !b.when || [seq, anim, def].some(c => b.when(c));
+            assert(reachable, `binding "${b.keys.join('/')}" (${b.desc}) can never be shown`);
         }
     });
 
@@ -623,8 +669,20 @@ console.log('\nThe paper\'s figures (tests/paper-figures.js):');
 }
 
 console.log('\nLeeuwenberg code individuals:');
+// A raw `new` is NOT what the app shows: the EA retries construction until
+// validate() passes (createValidIndividual), and SITCode's validate() rejects
+// degenerate codes — fewer than 6 marks, or a figure collapsed to a sliver. So
+// assert this type's drawing invariants on a *validated* individual, as the app
+// would; otherwise the ~1-in-20 degenerate draw makes the test flaky.
+function validInstance(Cls, attempts = 100) {
+    for (let i = 0; i < attempts; i++) {
+        const ind = new Cls();
+        if (ind.validate()) return ind;
+    }
+    throw new Error(`no valid ${Cls.name} in ${attempts} attempts`);
+}
 check('both types draw a figure, and the 3D one goes spatial', () => {
-    const flat = new classes.SITCodeIndividual();
+    const flat = validInstance(classes.SITCodeIndividual);
     assert(flat.marks().length > 0, '2D code drew nothing');
     assert(flat.unitDegrees() > 0, 'no angular unit');
 
@@ -821,6 +879,509 @@ check('renderCached skips re-render until genome or size changes', () => {
     Canvas2D.renderCached(canvas, holder, renderFn);
     assert(calls === 3, 'a cleared cache should re-render');
 });
+
+// --- Evolution controls (population size + mutation rate) ---
+console.log('\nEvolution controls:');
+{
+    // The EA class comes from the sandbox (it is a plain <script> global).
+    const EvolutionaryAlgorithm = require('./harness').load
+        ? load().EvolutionaryAlgorithm : null;
+    const mkEA = () => new EvolutionaryAlgorithm(classes.GridIndividual, 16);
+
+    check('population sizes offered are perfect squares', () => {
+        for (const n of EvolutionaryAlgorithm.POPULATION_SIZES) {
+            const r = Math.sqrt(n);
+            assert(r === Math.round(r), `${n} is not a perfect square — the grid would be ragged`);
+        }
+    });
+
+    check('shrinking the population keeps the survivors (it is not a reset)', () => {
+        const ea = mkEA();
+        const keep = ea.population.slice(0, 9).map(i => i.id);
+        assert(ea.setPopulationSize(9) === true, 'resize should report a change');
+        assert(ea.population.length === 9, `expected 9, got ${ea.population.length}`);
+        assert(ea.population.map(i => i.id).join() === keep.join(), 'the kept individuals must be the originals');
+    });
+
+    check('growing the population keeps the existing individuals and pads', () => {
+        const ea = mkEA();
+        const before = ea.population.map(i => i.id);
+        ea.setPopulationSize(25);
+        assert(ea.population.length === 25, `expected 25, got ${ea.population.length}`);
+        assert(ea.population.slice(0, 16).map(i => i.id).join() === before.join(),
+            'the first 16 must be the individuals already evolved');
+        assert(new Set(ea.population.map(i => i.id)).size === 25, 'padded individuals must be distinct');
+    });
+
+    check('a dropped individual stops being a parent', () => {
+        const ea = mkEA();
+        ea.toggleLike(ea.population[15]);            // like one that shrinking will drop
+        ea.toggleLike(ea.population[0]);             // ...and one that survives
+        assert(ea.selectedIndividuals.length === 2, 'setup: two likes');
+        ea.setPopulationSize(9);
+        assert(ea.selectedIndividuals.length === 1, 'the dropped individual must be deselected');
+        assert(ea.selectedIndividuals[0].id === ea.population[0].id, 'the survivor stays liked');
+    });
+
+    check('resizing to the same size is a no-op', () => {
+        const ea = mkEA();
+        assert(ea.setPopulationSize(16) === false, 'no change should be reported');
+    });
+
+    check('the mutation rate is a parameter the EA actually uses', () => {
+        const ea = mkEA();
+        assert(ea.mutationRate === EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE, 'should start at the default');
+        // A rate of 0 must leave a mutant identical to its parent; a high rate must not.
+        const parent = ea.population[0];
+        const shape = (ind) => JSON.stringify(ind.phenotype);
+        ea.mutationRate = 0;
+        assert(shape(ea.createValidMutant(parent)) === shape(parent), 'rate 0 should produce no change');
+        ea.mutationRate = 1;
+        let differed = false;
+        for (let i = 0; i < 5 && !differed; i++) {
+            differed = shape(ea.createValidMutant(parent)) !== shape(parent);
+        }
+        assert(differed, 'rate 1 should change the phenotype');
+    });
+
+    check('evolve honours the population size that was set', () => {
+        const ea = mkEA();
+        ea.setPopulationSize(9);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 9, `evolve produced ${ea.population.length}, expected 9`);
+    });
+}
+
+// --- Locked (protected) tiles ---
+// A lock says "keep exactly this" where a like says "make more like this": the
+// individual is carried into the next generation unchanged and is never bred
+// from. The two states are mutually exclusive.
+console.log('\nLocked tiles:');
+{
+    const EvolutionaryAlgorithm = load().EvolutionaryAlgorithm;
+    const mkEA = () => new EvolutionaryAlgorithm(classes.GridIndividual, 16);
+    const shape = (ind) => JSON.stringify(ind.phenotype);
+
+    check('a locked individual survives evolve unchanged', () => {
+        const ea = mkEA();
+        const kept = ea.population[3];
+        const keptShape = shape(kept);
+        ea.toggleLock(kept);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 16, 'population size must be unchanged');
+        const survivor = ea.population.filter(ind => ind.locked);
+        assert(survivor.length === 1, `expected exactly one locked survivor, got ${survivor.length}`);
+        assert(shape(survivor[0]) === keptShape, 'the locked individual was not carried over unchanged');
+    });
+
+    check('locking clears the like, and a locked individual cannot be liked', () => {
+        const ea = mkEA();
+        const ind = ea.population[2];
+        ea.toggleLike(ind);
+        assert(ind.selected === true, 'setup: liked');
+        ea.toggleLock(ind);
+        assert(ind.locked === true && ind.selected === false, 'locking must clear the like');
+        assert(ea.selectedIndividuals.some(i => i.id === ind.id) === false, 'and remove it from the parent pool');
+        assert(ea.toggleLike(ind) === false && ind.selected === false, 'a locked individual must not be likeable');
+    });
+
+    check('selectParent never returns a locked individual', () => {
+        const ea = mkEA();
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.toggleLock(ea.population[1]);          // was liked; locking withdraws it
+        for (let i = 0; i < 50; i++) {
+            assert(ea.selectParent().locked !== true, 'a locked individual was drawn as a parent');
+        }
+    });
+
+    check('locks take slots off the table rather than crowding out elitism', () => {
+        // Two elites + N locks must still fit: the elites are what the user's
+        // likes bought them, so the locks must not push them out of the grid.
+        const ea = mkEA();
+        for (const i of [5, 6, 7]) ea.toggleLock(ea.population[i]);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 16, `expected 16, got ${ea.population.length}`);
+        assert(ea.population.filter(i => i.locked).length === 3, 'all three locks should survive');
+    });
+
+    check('locks survive with no likes at all (a fresh generation around them)', () => {
+        const ea = mkEA();
+        const kept = ea.population[4];
+        const keptShape = shape(kept);
+        ea.toggleLock(kept);
+        ea.evolve();                               // no likes → re-initialise
+        const locked = ea.population.filter(i => i.locked);
+        assert(locked.length === 1 && shape(locked[0]) === keptShape,
+            'a lock must be preserved even when the generation is re-rolled');
+        assert(ea.population.length === 16, 'population size must be unchanged');
+    });
+
+    check('history preserves lock state', () => {
+        const ea = mkEA();
+        const wanted = shape(ea.population[7]);
+        ea.toggleLock(ea.population[7]);
+        ea.toggleLike(ea.population[0]);
+        ea.evolve();
+        ea.loadGeneration(0);                      // back to the generation we locked in
+        const restored = ea.population.filter(i => i.locked);
+        assert(restored.length === 1, `expected the lock to be restored, got ${restored.length}`);
+        // Identity is by content, not id: loadGeneration re-clones the stored
+        // population and clone() mints a fresh id, which is exactly why the lock
+        // mask is positional rather than id-based.
+        assert(shape(restored[0]) === wanted, 'the restored lock landed on a different individual');
+        assert(ea.population.indexOf(restored[0]) === 7, 'and it should be in its original slot');
+    });
+}
+
+// --- Active intervention (direct manipulation → heritable genome) ---
+// The edit gesture belongs to the individual (base Individual.beginEditSession
+// implements the step-grid one); the framework only supplies session callbacks.
+// The contract that matters is that an edit is written into the *genome*, not
+// just a cached phenotype, so evolution continues from what the user drew.
+console.log('\nActive intervention (edit sessions):');
+{
+    // A canvas stub that also answers the DOM calls an edit session makes.
+    function makeEditCanvas(w = 768, h = 768) {
+        const canvas = makeCanvas(w, h);
+        const listeners = {};
+        canvas.style = {};
+        canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: w, height: h });
+        canvas.addEventListener = (type, fn, opts) => {
+            (listeners[type] = listeners[type] || []).push({ fn, signal: opts && opts.signal });
+        };
+        canvas.dispatch = (type, x, y) => {
+            for (const l of (listeners[type] || [])) {
+                if (l.signal && l.signal.aborted) continue;
+                l.fn({ clientX: x, clientY: y, pointerId: 1, preventDefault() {} });
+            }
+        };
+        canvas.liveCount = () => Object.values(listeners)
+            .reduce((n, ls) => n + ls.filter(l => !(l.signal && l.signal.aborted)).length, 0);
+        return canvas;
+    }
+
+    // Canvas coordinates of the centre of cell (c, s), via the type's own layout.
+    function cellCentre(ind, canvas, c, s) {
+        for (let py = 0; py < canvas.height; py += 2) {
+            for (let px = 0; px < canvas.width; px += 2) {
+                const cell = ind.cellAtCanvasXY(canvas, px, py);
+                if (cell && cell.c === c && cell.s === s) return { x: px, y: py };
+            }
+        }
+        throw new Error(`no canvas point maps to cell ${c},${s}`);
+    }
+
+    // An on cell anywhere in the grid. Both grids are sparse — Melody especially —
+    // so a fixed corner is not reliably populated; turn one on if there is none.
+    function anOnCell(ind) {
+        for (let c = 0; c < 8; c++)
+            for (let s = 0; s < 16; s++) if (ind.cellOn(c, s)) return { c, s };
+        ind.setCellHit(0, 0, true);
+        return { c: 0, s: 0 };
+    }
+
+    check('the editable flag defaults off, and on for the step sequencers', () => {
+        assert(new classes.PatternIndividual().isEditable() === false, 'a plain 2D type is not editable');
+        assert(new classes.DrumMachineIndividual().isEditable() === true, 'DrumMachine should be editable');
+        assert(new classes.MelodyIndividual().isEditable() === true, 'Melody should be editable');
+    });
+
+    check('base beginEditSession returns a teardown that unbinds the gesture', () => {
+        const ind = new classes.DrumMachineIndividual();
+        const canvas = makeEditCanvas();
+        const end = ind.beginEditSession(canvas, {});
+        assert(typeof end === 'function', 'beginEditSession must return a teardown function');
+        assert(canvas.liveCount() > 0, 'expected pointer listeners to be bound');
+        end();
+        assert(canvas.liveCount() === 0, 'teardown must unbind every listener');
+    });
+
+    check('a non-grid type gets a harmless no-op session', () => {
+        // The base session is grid-shaped; a type without the cell hooks must not
+        // throw when handed a canvas (a third-party type overrides the whole
+        // method instead).
+        const ind = new classes.PatternIndividual();
+        const end = ind.beginEditSession(makeEditCanvas(), {});
+        assert(typeof end === 'function', 'expected a teardown even with no gesture');
+        end();
+    });
+
+    for (const type of ['DrumMachineIndividual', 'MelodyIndividual']) {
+        check(`${type}: a click toggles a cell and writes it into the genome`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            let edits = 0, gestures = 0;
+            const end = ind.beginEditSession(canvas, {
+                onEdit: () => edits++,
+                onGestureEnd: () => gestures++,
+            });
+            const before = ind.cellOn(2, 3);
+            const genomeBefore = ind.genome;
+            const { x, y } = cellCentre(ind, canvas, 2, 3);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointerup', x, y);
+            assert(ind.cellOn(2, 3) === !before, 'click should toggle the cell');
+            assert(ind.genome !== genomeBefore, 'the edit must produce a new genome, not mutate the phenotype');
+            assert(edits === 1, `expected one onEdit, got ${edits}`);
+            assert(gestures === 1, `expected one onGestureEnd, got ${gestures}`);
+            end();
+        });
+
+        check(`${type}: the edit is heritable (survives clone and mutation)`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            const want = !ind.cellOn(1, 5);
+            const { x, y } = cellCentre(ind, canvas, 1, 5);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointerup', x, y);
+            end();
+            assert(ind.cellOn(1, 5) === want, 'setup: the cell should have toggled');
+            const child = ind.clone();
+            assert(child.cellOn(1, 5) === want, 'a clone must inherit the edited cell');
+            // ...and the edited genome is a valid trace the operators still accept.
+            const mutant = ind.clone();
+            mutant.mutate(0.05);
+            assert(mutant.phenotype && mutant.phenotype.grid, 'the edited genome must survive mutation');
+        });
+
+        check(`${type}: a vertical drag on an on-cell edits velocity, not the hit`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            // Find an on cell to drag.
+            const on = anOnCell(ind);
+            const v0 = ind.cellVel(on.c, on.s);
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            assert(ind.cellOn(on.c, on.s), 'pressing an on cell must NOT toggle it immediately');
+            canvas.dispatch('pointermove', x, y - 200);      // drag up = louder
+            canvas.dispatch('pointerup', x, y - 200);
+            end();
+            assert(ind.cellOn(on.c, on.s), 'a velocity drag must leave the cell on');
+            const v1 = ind.cellVel(on.c, on.s);
+            assert(v1 > v0 || v0 === 1, `dragging up should raise velocity (${v0} → ${v1})`);
+            assert(v1 <= 1, 'velocity must stay within 0..1');
+        });
+
+        check(`${type}: dragging down lowers velocity, and it is heritable`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            const on = anOnCell(ind);
+            ind.setCellVel(on.c, on.s, 0.8);                 // start from a known level
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointermove', x, y + 300);      // drag down = softer
+            canvas.dispatch('pointerup', x, y + 300);
+            end();
+            const v = ind.cellVel(on.c, on.s);
+            assert(v < 0.8, `dragging down should lower velocity (got ${v})`);
+            assert(v >= 0, 'velocity must not go negative');
+            assert(ind.clone().cellVel(on.c, on.s) === v, 'the velocity edit must be heritable');
+        });
+
+        check(`${type}: a small movement is still a click (dead zone)`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            const on = anOnCell(ind);
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointermove', x + 2, y + 3);    // inside the 6px dead zone
+            canvas.dispatch('pointerup', x + 2, y + 3);
+            end();
+            assert(ind.cellOn(on.c, on.s) === false, 'a jittery click should still toggle the cell off');
+        });
+
+        check(`${type}: a drag paints in one direction and dedupes within a cell`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            let edits = 0;
+            const end = ind.beginEditSession(canvas, { onEdit: () => edits++ });
+            // Start on a cell that is off, so the drag paints ON.
+            let start = null;
+            for (let s = 0; s < 8 && !start; s++) if (!ind.cellOn(0, s)) start = s;
+            assert(start !== null, 'expected at least one off cell in row 0');
+            const a = cellCentre(ind, canvas, 0, start);
+            canvas.dispatch('pointerdown', a.x, a.y);
+            canvas.dispatch('pointermove', a.x, a.y);        // same cell — must not re-fire
+            assert(edits === 1, `re-entering the same cell should not re-fire (got ${edits})`);
+            const next = start + 1;
+            if (next < 8) {
+                const b = cellCentre(ind, canvas, 0, next);
+                canvas.dispatch('pointermove', b.x, b.y);
+                assert(ind.cellOn(0, next) === true, 'the drag should paint the next cell ON');
+                assert(edits === 2, `expected a second edit on the new cell (got ${edits})`);
+            }
+            canvas.dispatch('pointerup', a.x, a.y);
+            end();
+        });
+    }
+}
+
+// --- Seeded PRNGs (render-time randomness) ---
+// These streams are part of the phenotype: a type's saved genomes only reload
+// to the same picture while its generator produces the same numbers. The
+// expected values below are the streams as of the shared-PRNG refactor and are
+// pinned deliberately — if a change here fails, the fix is to restore the
+// stream, not to update the numbers.
+console.log('\nSeeded PRNGs:');
+{
+    check('Individual.mulberry32 reproduces its reference stream', () => {
+        const expected = [
+            0.979728267760947, 0.306752264499664, 0.484205421525985,
+            0.817934412509203, 0.509428369347006,
+        ];
+        const rand = Individual.mulberry32(12345);
+        expected.forEach((e, i) => {
+            const got = rand();
+            assert(Math.abs(got - e) < 1e-15, `draw ${i}: expected ${e}, got ${got}`);
+        });
+    });
+
+    check('mulberry32 is a fresh independent stream per seed', () => {
+        const a = Individual.mulberry32(1), b = Individual.mulberry32(1), c = Individual.mulberry32(2);
+        const draw = (r) => [r(), r(), r()];
+        const [x, y, z] = [draw(a), draw(b), draw(c)];
+        assert(x.every((v, i) => v === y[i]), 'same seed must give the same stream');
+        assert(x.some((v, i) => v !== z[i]), 'different seeds must diverge');
+        assert(x.every(v => v >= 0 && v < 1), 'draws must lie in [0,1)');
+    });
+
+    check('AntRendering renders identically from the same genome (seeded, cacheable)', () => {
+        const a = new classes.AntRenderingIndividual();
+        const b = a.clone();
+        const px = (ind) => {
+            const canvas = makeCanvas(128, 128);
+            ind.visualize(canvas);
+            return ind._cachedImageData;
+        };
+        const [pa, pb] = [px(a), px(b)];
+        assert(pa && pb, 'expected a cached render from both');
+        assert(pa.data.length === pb.data.length, 'renders differ in size');
+        let diff = 0;
+        for (let i = 0; i < pa.data.length; i++) if (pa.data[i] !== pb.data[i]) diff++;
+        assert(diff === 0, `${diff} bytes differ — the colony sim is not reproducible from the genome`);
+    });
+
+    check('PSystem keeps its own LCG stream (deliberately not mulberry32)', () => {
+        // The two identical copies of this LCG were deduped into one psRandom
+        // factory. The stream must be exactly what it was, or every saved
+        // P-system genome reloads to a different picture.
+        const expected = [
+            0.238780839834362, 0.913493264699355, 0.612491666339338,
+            0.926981459138915, 0.049341175239533,
+        ];
+        const rand = psRandom(7);
+        expected.forEach((e, i) => {
+            const got = rand();
+            assert(Math.abs(got - e) < 1e-15, `LCG draw ${i}: expected ${e}, got ${got}`);
+        });
+        // Seed 0 falls back to 1 (an LCG seeded 0 from this state would still
+        // advance, but the guard predates the refactor and is part of the stream).
+        assert(psRandom(0)() === psRandom(1)(), 'seed 0 must behave as seed 1');
+        // ...and it is genuinely a different stream from mulberry32.
+        assert(psRandom(7)() !== Individual.mulberry32(7)(), 'PSystem must not silently share mulberry32');
+    });
+
+    check('PSystem renders identically from the same genome', () => {
+        const a = new classes.PSystemIndividual();
+        const b = a.clone();
+        const px = (ind) => { const c = makeCanvas(128, 128); ind.visualize(c); return ind._cachedImageData; };
+        const [pa, pb] = [px(a), px(b)];
+        assert(pa && pb, 'expected a cached render from both');
+        let diff = 0;
+        for (let i = 0; i < pa.data.length; i++) if (pa.data[i] !== pb.data[i]) diff++;
+        assert(diff === 0, `${diff} bytes differ — the P-system render is not reproducible`);
+    });
+}
+
+// --- Shared expression compiler (services/ExpressionCompiler.js) ---
+// The four expression types (PatternGrammar, AnimatedPattern, PolarCurve,
+// RadialSurface3D) share one rewrite pipeline. Their differences are real and
+// load-bearing, so each is pinned here: a preset quietly gaining or losing a
+// rewrite would silently change every render of that type.
+console.log('\nShared expression compiler:');
+{
+    const EC = ExpressionCompiler;
+    const P = EC.PRESETS;
+
+    check('qualifies bare math functions and evaluates', () => {
+        const f = EC.compile('sin(x) + cos(y)', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(f(0, 0) - 1) < 1e-12, `expected 1, got ${f(0, 0)}`);
+    });
+
+    check('PATTERN: r and theta become derived quantities of x,y', () => {
+        const r = EC.compile('r', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(r(3, 4) - 5) < 1e-12, `r should be hypot(x,y), got ${r(3, 4)}`);
+        const th = EC.compile('theta', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(th(0, 1) - Math.PI / 2) < 1e-12, `theta should be atan2(y,x), got ${th(0, 1)}`);
+    });
+
+    check('SURFACE: theta stays a variable (no polar substitution)', () => {
+        const f = EC.compile('theta + phi', ['theta', 'phi'], P.SURFACE);
+        assert(Math.abs(f(2, 3) - 5) < 1e-12, `theta must be the parameter here, got ${f(2, 3)}`);
+        const g = EC.compile('pow(a, 2)', ['a'], P.SURFACE);
+        assert(Math.abs(g(3) - 9) < 1e-12, 'pow should be qualified for surfaces');
+    });
+
+    check('PATTERN: ifpos compiles to a conditional', () => {
+        const f = EC.compile('ifpos(x, 10, 20)', ['x', 'y'], P.PATTERN);
+        assert(f(1, 0) === 10 && f(-1, 0) === 20, 'ifpos did not branch on sign');
+    });
+
+    check('PATTERN: division and modulo are protected against a zero divisor', () => {
+        const f = EC.compile('1/x', ['x', 'y'], P.PATTERN);
+        assert(f(0, 0) === 1, `guarded divisor should give 1/1, got ${f(0, 0)}`);
+        assert(Math.abs(f(4, 0) - 0.25) < 1e-12, 'ordinary division must be unaffected');
+    });
+
+    check('POLAR: division is NOT rewritten (the regex would mangle this grammar)', () => {
+        const src = EC.toJS('(t*3)/tan(t)', P.POLAR);
+        assert(!src.includes('1e-6'), 'POLAR must not carry the protected-division guard');
+        const f = EC.compile('5.0*(t/2)', ['t'], P.POLAR);
+        assert(Math.abs(f(2) - 5) < 1e-12, 'polar division expression should evaluate');
+    });
+
+    check('pi literals the grammars emit become exact constants', () => {
+        const f = EC.compile('6.28318', ['t'], P.POLAR);
+        assert(Math.abs(f(0) - 2 * Math.PI) < 1e-12, 'literal should become 2*Math.PI exactly');
+        const g = EC.compile('3.14159', ['x', 'y'], P.PATTERN);
+        assert(g(0, 0) === Math.PI, 'literal should become Math.PI exactly');
+    });
+
+    check('fallbacks differ by preset: 0 for a value, 1 for a polar radius', () => {
+        assert(EC.compile('0/0', ['t'], P.POLAR)(1) === 1.0, 'NaN in POLAR should fall back to a unit radius');
+        assert(EC.compile('log(0-1)', ['theta', 'phi'], P.SURFACE)(0, 0) === 0, 'NaN in SURFACE should fall back to 0');
+        assert(EC.compile('sqrt(0-1)', ['x', 'y'], P.PATTERN)(0, 0) === 0.0, 'NaN in PATTERN should fall back to 0');
+    });
+
+    check('an uncompilable expression yields the constant fallback, not a throw', () => {
+        const f = EC.compile('this is ) not ( javascript', ['t'], P.POLAR);
+        assert(f(0) === 1.0 && f(99) === 1.0, 'syntax error should degrade to the constant fallback');
+    });
+
+    check('the four call sites route through the shared compiler', () => {
+        // Each type keeps its own thin wrapper; these are the contracts the
+        // wrappers must preserve (variables and fallback value).
+        const pg = new classes.PatternGrammarIndividual();
+        assert(Math.abs(pg.compileExpression('x+y')(2, 3) - 5) < 1e-12, 'PatternGrammar compiles over x,y');
+        const ap = new classes.AnimatedPatternIndividual();
+        assert(Math.abs(ap._compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
+        const pc = new classes.PolarCurveIndividual();
+        assert(Math.abs(pc.compileExpressionForT('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
+        const s3 = new classes.WarpedSurface3DIndividual();
+        assert(Math.abs(s3.compileExpr('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
+    });
+}
 
 // --- GE Radius expression compilation regression ---
 // Regression for the protected-division regex that mangled any expression

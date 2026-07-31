@@ -57,6 +57,139 @@ class Individual {
     // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
     usesMIDISync() { return false; }
 
+    // --- Active intervention (direct manipulation of the phenotype) --------------
+    // A type can let the user edit its rendered phenotype *directly* — by pointer,
+    // on the zoom canvas — with each edit written back into the heritable genome,
+    // so evolution continues from what the user drew rather than discarding it.
+    //
+    // The framework asks `isEditable()`, then calls `beginEditSession(canvas,
+    // session)` and keeps the returned teardown function to call on close. The
+    // gesture belongs to the *individual*: a type with a different phenotype (a
+    // curve to drag, a node to move) overrides `beginEditSession` entirely and
+    // owns its own pointer handling. `session` carries the framework's side of
+    // the deal, so the individual needs to know nothing about the lightbox:
+    //
+    //   session.onEdit()        an edit landed — refresh the info panel
+    //   session.onGestureEnd()  the gesture finished — resync the grid tile, and
+    //                           restart the sound if this individual is playing
+    //
+    // The genome-writeback contract is the individual's: an edit must go through
+    // the representation (setCellHit → representation.setGene), not just mutate a
+    // cached phenotype, or the change is lost at the next mutate/clone.
+    isEditable() { return this.isGridEditable(); }
+
+    beginEditSession(canvas, session = {}) {
+        return this._gridEditSession(canvas, session);
+    }
+
+    // The default session: a step grid, with two gestures distinguished by the
+    // direction the pointer first moves — the Logic/Ableton drum-editor idiom.
+    //
+    //   click (no movement)          toggle the cell
+    //   horizontal-first drag        paint: the first cell sets whether the drag
+    //                                turns cells on or off
+    //   vertical-first drag on an    velocity: adjust that ONE cell, up louder /
+    //   *on* cell                    down softer, a full canvas height ≈ full range
+    //
+    // Starting on an *off* cell always paints (there is no velocity to drag), so
+    // the toggle fires immediately there; on an on cell the toggle is deferred
+    // until the gesture resolves, or until pointerup makes it a plain click.
+    //
+    // Driven entirely by the type's cellAtCanvasXY/cellOn/setCellHit hooks, plus
+    // cellVel/setCellVel for velocity — so both step sequencers get all of it
+    // without writing any pointer code.
+    _gridEditSession(canvas, session = {}) {
+        if (!canvas || typeof this.cellAtCanvasXY !== 'function') return () => {};
+        const abort = new AbortController();
+        const signal = abort.signal;
+        const prevCursor = canvas.style.cursor;
+        canvas.style.cursor = 'pointer';
+        const DEADZONE = 6;   // client px before a drag commits to a direction
+        const canEditVel = typeof this.setCellVel === 'function' && typeof this.cellVel === 'function';
+
+        // mode: null = undecided (pointer is down on an on cell, awaiting direction)
+        let mode = null, paintOn = null, lastKey = null;
+        let startCell = null, startX = 0, startY = 0, startVel = 0;
+
+        const cellAt = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+            return this.cellAtCanvasXY(canvas, px, py);
+        };
+        const redraw = () => {
+            this.visualize(canvas);
+            if (session.onEdit) session.onEdit();
+        };
+        const paint = (cell, on) => {
+            const key = cell.c + ',' + cell.s;
+            if (key === lastKey) return;         // don't re-fire within the same cell during a drag
+            lastKey = key;
+            this.setCellHit(cell.c, cell.s, on);
+            redraw();
+        };
+
+        canvas.addEventListener('pointerdown', (e) => {
+            const cell = cellAt(e);
+            if (!cell) return;
+            e.preventDefault();
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
+            lastKey = null;
+            startCell = cell; startX = e.clientX; startY = e.clientY;
+            if (this.cellOn(cell.c, cell.s) && canEditVel) {
+                // Could still become a velocity drag — wait for the direction.
+                mode = null;
+                startVel = this.cellVel(cell.c, cell.s);
+            } else {
+                mode = 'paint';
+                paintOn = !this.cellOn(cell.c, cell.s);
+                paint(cell, paintOn);
+            }
+        }, { signal });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (mode === null && startCell) {
+                const dx = e.clientX - startX, dy = e.clientY - startY;
+                if (Math.abs(dx) < DEADZONE && Math.abs(dy) < DEADZONE) return;  // still undecided
+                if (Math.abs(dy) > Math.abs(dx)) {
+                    mode = 'velocity';
+                } else {
+                    mode = 'paint';
+                    paintOn = false;                       // began on an on cell ⇒ erase
+                    paint(startCell, paintOn);
+                }
+            }
+            if (mode === 'velocity') {
+                const rect = canvas.getBoundingClientRect();
+                const dv = -(e.clientY - startY) / (rect.height || canvas.height); // up = louder
+                this.setCellVel(startCell.c, startCell.s, startVel + dv);
+                redraw();
+            } else if (mode === 'paint') {
+                const cell = cellAt(e);
+                if (cell) paint(cell, paintOn);
+            }
+        }, { signal });
+
+        const end = () => {
+            if (mode === null && startCell) {
+                // Pressed and released without committing to a direction: a click.
+                this.setCellHit(startCell.c, startCell.s, !this.cellOn(startCell.c, startCell.s));
+                redraw();
+            } else if (mode === null) {
+                return;                                    // nothing was in progress
+            }
+            mode = null; startCell = null; lastKey = null;
+            if (session.onGestureEnd) session.onGestureEnd();
+        };
+        canvas.addEventListener('pointerup', end, { signal });
+        canvas.addEventListener('pointercancel', end, { signal });
+
+        return () => {
+            abort.abort();
+            canvas.style.cursor = prevCursor;
+        };
+    }
+
     // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
     // Play this individual's loop LIVE over MIDI when an output is available, else
     // fall back to a synthesised AudioBuffer through the shared AudioModality. Both
@@ -136,6 +269,29 @@ class Individual {
             throw new Error('Code must be a function expression, e.g. (rnd) => { … }.');
         }
         return fn;
+    }
+
+    /**
+     * mulberry32 — a small, fast, deterministic PRNG, for individuals whose
+     * *rendering* needs randomness (a particle sim, scattered strokes) rather
+     * than their genome. Seed it from a `seed` gene and the whole render is
+     * reproducible from the genome, so it stays cacheable and a saved genome
+     * reloads to the same picture.
+     *
+     * NOTE: this is deliberately not the only PRNG in the codebase. Changing
+     * the *stream* a type draws from changes every phenotype it has ever
+     * rendered, so a type using a different generator (PSystem's LCG) keeps it;
+     * only exact duplicates of this implementation should be folded in here.
+     */
+    static mulberry32(seed) {
+        let t = seed;
+        return function () {
+            t += 0x6D2B79F5;
+            let r = t;
+            r = Math.imul(r ^ (r >>> 15), r | 1);
+            r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+            return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
     }
 
     /** Section editing a PTORepresentation's generator (defines the search space). */

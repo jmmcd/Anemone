@@ -45,6 +45,10 @@
         }
         closeAbout() { if (this.aboutModal) this.aboutModal.classList.remove('open'); }
 
+        // The ? overlay, generated from this very table (see ui/HelpOverlayUI.js).
+        toggleHelp() { if (this.helpOverlay) this.helpOverlay.toggle(); }
+        closeHelp() { if (this.helpOverlay) this.helpOverlay.close(); }
+
         // The current type's context, computed once per keydown. `[ ] .` mean
         // different things for a step sequencer, an animated pattern, or otherwise.
         _hotkeyContext() {
@@ -81,7 +85,7 @@
 
     InteractiveEAFramework.HOTKEYS = [
         { keys: ['Escape'], global: true, group: 'General', desc: 'Close zoom / drawer / about / placement',
-          run: (fw) => { fw.closeZoom(); fw.closeDrawer(); fw.closeAbout(); fw.exitPlacementMode(); } },
+          run: (fw) => { fw.closeZoom(); fw.closeDrawer(); fw.closeAbout(); fw.closeHelp(); fw.exitPlacementMode(); } },
 
         // [ and ] — context-sensitive (sequencer length, animation speed, or camera zoom).
         { keys: ['['], group: 'Step sequencer', when: (c) => c.sequencer, desc: 'Shorten loop (−1 step)',
@@ -111,6 +115,12 @@
         { keys: ['.', '>'], group: 'Playback', when: (c) => !c.animatedPattern, desc: 'Play / pause sound (or 3D rotation)',
           run: (fw, e) => { e.preventDefault(); fw.togglePlayPauseOrRotation(); } },
 
+        { keys: ['z', 'u'], group: 'General', desc: 'Undo evolve (back one generation)',
+          run: (fw) => fw.stepGeneration(-1) },
+        { keys: ['Z', 'U'], group: 'General', desc: 'Redo (forward one generation)',
+          run: (fw) => fw.stepGeneration(1) },
+        { keys: ['?'], group: 'General', desc: 'Show / hide this shortcuts list',
+          run: (fw, e) => { e.preventDefault(); fw.toggleHelp(); } },
         { keys: [' '], group: 'General', desc: 'Evolve next generation',
           run: (fw, e) => { e.preventDefault(); if (fw.lightbox && fw.lightbox.classList.contains('open')) fw.closeZoom(); fw.evolveGeneration(); } },
         { keys: HEX, displayKeys: '0–9 a–f', group: 'General', desc: 'Like / unlike a tile',

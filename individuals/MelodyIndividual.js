@@ -170,12 +170,22 @@ class MelodyIndividual extends Individual {
                 if (p.grid[r][s] > 0) {
                     let e = s;
                     while (e < cols && p.grid[r][e] > 0) e++;
-                    const b = 0.3 + 0.7 * (this._velocity(p.grid[r][s]) / 127);
+                    // Velocity reads as a PARTIAL FILL FROM THE BOTTOM of the note
+                    // bar, matching the drum machine: a faint full-height wash so a
+                    // quiet note still reads as a note, then the velocity fraction
+                    // solid over it (clipped to the rounded bar).
                     const m = Math.min(cw, chh) * 0.14;
                     const x = pad + s * cw + m, w = (e - s) * cw - 2 * m;
-                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${b})`;
-                    this._roundRect(ctx, x, y + m, w, chh - 2 * m, Math.min(6, chh * 0.3, w * 0.5));
+                    const by = y + m, bh = chh - 2 * m;
+                    this._roundRect(ctx, x, by, w, bh, Math.min(6, chh * 0.3, w * 0.5));
+                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.28)`;
                     ctx.fill();
+                    const f = Math.max(0.12, this.cellVel(r, s));
+                    ctx.save();
+                    ctx.clip();
+                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},1)`;
+                    ctx.fillRect(x, by + bh * (1 - f), w, bh * f);
+                    ctx.restore();
                     s = e;
                 } else s++;
             }
@@ -209,6 +219,35 @@ class MelodyIndividual extends Individual {
     // heritable (a freshly-on cell reuses its existing velocity-seed gene).
     setCellHit(c, s, on) {
         this.genome = melodyRepresentation.setGene(this.genome, `hit_${c}_${s}`, on ? 1 : 0);
+        this.invalidateImageCache();
+    }
+
+    // First step of the held note containing (c, s) — a run of on-cells is ONE
+    // note, sounded at the head cell's velocity, so both reading and editing a
+    // velocity must address the head. Without this, dragging on the tail of a
+    // held note would silently edit a gene that is neither heard nor drawn.
+    _runStart(c, s) {
+        const p = this.phenotype;
+        if (!p || !p.grid || !p.grid[c] || !(p.grid[c][s] > 0)) return s;
+        let head = s;
+        while (head > 0 && p.grid[c][head - 1] > 0) head--;
+        return head;
+    }
+
+    // Per-cell velocity, as the 0..1 `vel_c_s` gene — also the fraction of the note
+    // bar drawn filled, so the height is exactly the gene being edited. The stored
+    // grid value is the seed 0.6 + 0.4·gene (a note is never quieter than 0.6 of
+    // full velocity). Same contract as DrumMachine, so both inherit one gesture.
+    cellVel(c, s) {
+        const p = this.phenotype;
+        const head = this._runStart(c, s);
+        const seed = (p && p.grid && p.grid[c] && p.grid[c][head]) || 0;
+        return seed > 0 ? Math.max(0, Math.min(1, (seed - 0.6) / 0.4)) : 0;
+    }
+
+    setCellVel(c, s, v) {
+        const gene = Math.max(0, Math.min(1, v));
+        this.genome = melodyRepresentation.setGene(this.genome, `vel_${c}_${this._runStart(c, s)}`, gene);
         this.invalidateImageCache();
     }
 

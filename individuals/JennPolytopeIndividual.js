@@ -9,25 +9,122 @@
  * stereographically projects to R³ — so straight edges (great-circle arcs in S³)
  * bend into curves, and the whole thing can be rotated in 4D.
  *
- * This first version uses *precomputed* vertex tables for the regular polychora
- * (5-cell, 8-cell/tesseract, 16-cell, 24-cell, 600-cell) rather than a general
- * Todd–Coxeter / Wythoff engine. Edges are recovered by nearest-neighbour
- * distance on S³ (validated against the known edge counts in the tests). The
- * genome (a small PTO parameter vector, in the spirit of the "64 bits" paper)
- * chooses the polytope, a full SO(4)-ish rotation (6 plane angles — rotations in
- * a w-plane are what "fly through" the projection), a projection scale, and tube
- * thickness (ball nodes at every vertex are always drawn). Colour comes from the shared
- * palette, keyed on 4D w-depth so the stereographic depth reads as hue.
+ * ── Shapes ────────────────────────────────────────────────────────────────
+ * *Precomputed* vertex tables, not a general Todd–Coxeter / Wythoff engine.
  *
- * Rendering rides the existing Three.js 3D pipeline: each curved edge is sampled
- * along its great-circle arc (SLERP in S³ → project) and swept into a thin tube
- * of triangles, so it plugs straight into ThreeDModality / the shared scene and
- * gets STL export (MeshExport) for free. The camera rotation (Anemone.js) spins
- * the 3D result; the evolved 4D rotation is baked into the geometry.
+ * - The regular polychora (5-cell, 8-cell/tesseract, 16-cell, 24-cell,
+ *   600-cell). Edges are recovered by nearest-neighbour distance on S³,
+ *   validated against the known edge counts in the tests.
+ *
+ * - The semiregular **grand antiprism**, and the parametric **duoprisms**
+ *   {p}×{q}. These two exist for a reason the regular set cannot supply: the
+ *   concentric-ring / zig-zag ("antiprismatic") stereographic look of the
+ *   Nicolau & Costelloe figures.
+ *
+ *   The grand antiprism is carved from the 600-cell by removing two
+ *   completely-orthogonal decagonal rings (→ 100 verts / 500 edges, both
+ *   asserted in the tests), each ring walked via the great-circle recurrence
+ *   pₖ₊₁ = φ·pₖ − pₖ₋₁. Carving leaves an arbitrary pose, so it is then
+ *   **canonically re-oriented** with the two removed decagons' planes as the
+ *   coordinate 2-planes: its zig-zag antiprism bands only read cleanly down
+ *   that axis, and off-axis it degenerates visually into a generic
+ *   20-antiprism + 300-tetrahedron tangle. For the same reason its rotation
+ *   genome is **biased near that axis**: the three w-plane angles (xw/yw/zw
+ *   — the ones that rotate vertices through the projection pole and tangle
+ *   it) are capped to JENN_GA_WCAP ≈ 0.3 rad, which PTO 'fine' mutation's
+ *   clamp then keeps near-axis for the whole lineage. The pole-preserving
+ *   xy/xz/yz planes stay full-range for orientation variety, and the zoom
+ *   morph still sweeps w dynamically.
+ *
+ *   Duoprisms are the Cartesian product of a p-gon and a q-gon on the Clifford
+ *   torus — two concentric rings joined by a lattice. They carry **explicit**
+ *   edges and faces rather than recovered ones: for p≠q the two edge families
+ *   differ in length, so nearest-neighbour recovery would silently drop the
+ *   longer family. Their p,q are conditional genome genes (3–12); PTO
+ *   structural naming handles the dependent search space, as Robot does.
  *
  * Deferred (would want the Wythoff/reflection engine — see the site's callout of
  * the bitruncated 120-cell): the 120-cell (600 verts) and true truncations /
- * omnitruncations. Those need per-mirror "ringing", i.e. path (a).
+ * omnitruncations. Those need per-mirror "ringing", i.e. path (a). The grand
+ * antiprism sidesteps that engine (it is a *subset* of the 600-cell) and the
+ * duoprisms are elementary products, so both land without Wythoff.
+ *
+ * ── Genome ────────────────────────────────────────────────────────────────
+ * A small PTO parameter vector, in the spirit of the "64 bits" paper: the
+ * polytope choice, an SO(4) rotation (6 plane angles — rotations in a w-plane
+ * are what "fly through" the projection), projection scale, tube thickness, and
+ * `renderStyle` (wire rods / solid = faces + rods / both). Colour comes from the
+ * shared palette, keyed on 4D w-depth so stereographic depth reads as hue
+ * (reversible). Geometry is built in the individual, not the generator, like the
+ * tree/DAG types.
+ *
+ * ── Rendering ─────────────────────────────────────────────────────────────
+ * Rides the shared Three.js pipeline, so STL export (MeshExport) is free. The
+ * camera rotation (Anemone.js) spins the 3D result; the evolved 4D rotation is
+ * baked into the geometry.
+ *
+ * - **Edges**: sampled along their great-circle arc (SLERP in S³ → project) and
+ *   swept into triangle tubes using a rotation-minimizing (parallel-transport)
+ *   frame. The naive alternative — a per-ring fixed-up frame — flips
+ *   orientation wherever the tangent crosses a switch threshold and pinches the
+ *   low-poly tube (the "thinning"). Sampling density is gated by *projected*
+ *   arc length, scaled by a `lod` factor (0.5 for the 128px grid tiles, 1 for
+ *   the 768px zoom and STL) to keep triangle counts down.
+ *
+ * - **Ball nodes at every vertex, always** (3.4× rod radius). Stereographic
+ *   projection is *conformal*, so it preserves the polytope's real vertex
+ *   corners: they cannot be smoothed away, only capped by a ball, à la Jenn.
+ *
+ * - **2-faces** recovered from the edge graph (triangles, or squares for the
+ *   tesseract; duoprisms supply theirs explicitly), meshed as curved patches —
+ *   a barycentric/bilinear grid re-normalised onto S³ and then projected.
+ *
+ * - Renders as a **two-material THREE.Group**: opaque rods+balls seen *through*
+ *   strongly-transparent glass faces (opacity 0.24, depthWrite:false). That low
+ *   opacity is the edge-dominant Jenn look — the crisp rods and nodes carry the
+ *   structure and a face caught edge-on recedes. Rods therefore draw in every
+ *   non-wire mode, so the curved edges stay crisp over the glass.
+ *   `visualize()` builds the group directly (not via ThreeDModality) and hands
+ *   it to addMeshToScene/renderMeshToCanvas; `generate3DPoints()` merges both
+ *   buckets into one mesh for STL and the tests.
+ *
+ * - **Face subdivision has two modes.** Static (paused zoom / tiles / STL) uses
+ *   a per-face projected-arc-length depth, cap 40. While 4D-**morphing** it
+ *   uses a rotation-invariant budgeted uniform depth (`_faceDepthStable`,
+ *   ~60k tris/frame split evenly across the faces). The uniform-during-morph
+ *   rule is essential and not an optimisation: a face's **limb** (its
+ *   silhouette, which cuts *across* the face) is a polygon whose corner count
+ *   otherwise pops as the projection changes — "the number of angles keeps
+ *   changing" — and only a rotation-invariant depth is flicker-free. So spend a
+ *   fixed budget making it as fine as possible rather than varying it per frame.
+ *
+ * - **maxProjRadius = 6, a soft tanh far-field bound.** Stereographic
+ *   projection flings a near-pole vertex toward infinity, dragging its faces
+ *   into large flat "panels". The bound caps their reach (down from 12) to
+ *   shrink those panels toward the core — a projection-singularity artifact —
+ *   while barely touching the core/mid loops, which sit well inside it. It is
+ *   deliberately tanh rather than a hard clamp so rods sweeping outward stay
+ *   curved.
+ *
+ * - **Robust camera framing**: visualize() publishes
+ *   group.userData.framingCenter/framingRadius (median centre + interpolated
+ *   ~80th-percentile vertex radius, ignoring near-pole outliers) and
+ *   renderMeshToCanvas frames on that when present, so the core fills the view.
+ *   This is a sensible default zoom, *not* a fix for the panels — [ / ] zoom-out
+ *   still shows them. The real levers for those are maxProjRadius, subdivision
+ *   and opacity.
+ *
+ * - **Animated 4D rotation**: the zoom lightbox rotates the polytope in the
+ *   w-planes over time (animatesGeometry()/setAnimationTime(); the zoom loop
+ *   rebuilds the mesh each frame at capped LOD, resetAnimation() on close).
+ *   This is also what makes the curved faces read as curved — it sweeps them
+ *   through the high-curvature near-pole zone, whereas a static face keeps part
+ *   of its curvature in the depth axis. Grid tiles stay static: a per-frame CPU
+ *   rebuild ×16 is too heavy.
+ *
+ * QA: `node scripts/jenn-preview.js <shape|duoprism:PxQ> [out.png]` renders any
+ * shape's edge-only stereographic projection to a PNG headlessly, reusing the
+ * real jennGeometry via the test harness and the shared scripts/lib/png.js.
  */
 
 const JENN_PHI = (1 + Math.sqrt(5)) / 2;

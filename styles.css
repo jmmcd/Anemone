@@ -80,7 +80,10 @@ body {
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /* Column counts are published by the framework (applyGridColumns) so the
+       population-size control can make the grid square; each breakpoint keeps
+       its own cap. */
+    grid-template-columns: repeat(var(--grid-cols-sm, 2), 1fr);
     gap: 12px;
 }
 
@@ -145,6 +148,35 @@ body {
 }
 .play-btn:hover { background: rgba(0, 255, 136, 0.7); transform: scale(1.08); }
 .play-btn.playing { background: rgba(0, 255, 136, 0.85); color: #000; }
+
+/* Lock (protect) affordance: same treatment as the zoom button, but it stays
+   visible once locked — the state has to be legible without hovering. */
+.lock-btn {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.lock-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.individual.locked .lock-btn { display: flex; }
+/* Touch has no hover, so the affordance must be permanently visible there. */
+@media (pointer: coarse) { .lock-btn { display: flex; } }
+
+/* A locked cell keeps its own border colour, distinct from a liked one. */
+.individual.locked {
+    border-color: #ffb020;
+    box-shadow: 0 0 14px rgba(255, 176, 32, 0.3);
+}
 
 /* Zoom affordance: hidden by default, revealed on hover (pointer-fine only). */
 .zoom-btn {
@@ -461,6 +493,38 @@ select:focus { outline: none; border-color: var(--accent); }
 .about-inner { max-width: 640px; padding-top: 48px; }
 .about-content { white-space: pre-wrap; line-height: 1.5; }
 
+/* "?" shortcuts overlay — same chrome as About; content generated from the
+   HOTKEYS table by ui/HelpOverlayUI.js. */
+.help-content { line-height: 1.5; }
+.help-title { margin: 0 0 12px; font-size: 1.1rem; }
+.help-group {
+    margin: 18px 0 6px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.6;
+}
+.help-row {
+    display: grid;
+    grid-template-columns: 155px 1fr;
+    gap: 12px;
+    align-items: baseline;
+    padding: 3px 0;
+}
+.help-row em { font-style: normal; opacity: 0.85; }
+.help-row kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 1px 6px;
+    justify-self: start;
+}
+@media (max-width: 480px) {
+    .help-row { grid-template-columns: 1fr; gap: 2px; }
+}
+
 /* Placement banner: pick a grid tile to replace with a loaded individual. */
 .place-banner {
     position: fixed;
@@ -517,15 +581,18 @@ select:focus { outline: none; border-color: var(--accent); }
     margin: 0 auto 14px;
     border-radius: 8px;
     background: var(--bg);
+    /* Edit sessions read vertical drags (velocity) off this canvas; without this
+       a touch device would scroll the page instead of delivering the gesture. */
+    touch-action: none;
 }
 
 /* ---------------------------------------------------------------- Responsive */
 @media (min-width: 600px) {
-    .grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid { grid-template-columns: repeat(var(--grid-cols-md, 3), 1fr); gap: 14px; }
 }
 
 @media (min-width: 900px) {
-    .grid { grid-template-columns: repeat(4, 1fr); gap: 15px; }
+    .grid { grid-template-columns: repeat(var(--grid-cols, 4), 1fr); gap: 15px; }
     .app-title { font-size: 20px; }
 }
 
@@ -549,5 +616,10 @@ select:focus { outline: none; border-color: var(--accent); }
     }
     .evolve-bar:hover { background: #00cc6a; }
     .individual:hover .zoom-btn { display: flex; }
+    .individual:hover .lock-btn { display: flex; }
     .individual:hover { transform: scale(1.02); }
 }
+
+/* Evolution drawer panel (population size + mutation rate). */
+.evo-row { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; gap: 8px; margin-top: 10px; }
+.evo-row output { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; opacity: 0.8; min-width: 82px; }

@@ -13,27 +13,41 @@
 // The code language. A code is a tree over a turtle alphabet, built from
 // primitives and the three "holographic" regularities SIT is grounded on:
 //
-//   prim  {turn, len, draw}   one contour step: turn, then move `len` (drawing
-//                             unless draw=false — a pen-up move, which is how
+//   prim  {turn, len, mode}   one contour step: turn, then move `len`. `mode` is
+//                             three-way — *stroke* (draw a segment), *dot*
+//                             (stamp a point: SIT's `0` point primitive, for dot
+//                             patterns), or *move* (pen-up). Pen-up moves are how
 //                             SIT gets *multi-part* figures without branching:
 //                             a single traversal visits every part, hidden
-//                             moves connecting them).
+//                             moves connecting them.
 //   seq   [c1 c2 …]           concatenation (grouping).
 //   iter  n*(c)              ITERATION: the chunk repeated n times. Because the
 //                             chunk carries a net turn, iteration closes into
-//                             polygons / rosettes on its own.
-//   sym   S[c]               SYMMETRY: the chunk, then the chunk again reversed
-//                             with its turns negated. In a continuing turtle
-//                             this is a clean *point (2-fold rotational)*
-//                             symmetry (verified: reverse+negate = rotation by
-//                             180° about the join). True mirror-across-an-axis
-//                             needs first-class geometric loci (reflect the
-//                             accumulated points about an axis), which is the
-//                             salient-points / group-operation extension we
-//                             deliberately deferred — it can't be done with pure
-//                             relative turtle commands.
+//                             polygons / rosettes on its own. It also has an
+//                             *anchored* form (internal turtle push/pop), which
+//                             replicates the chunk about a fixed reference point
+//                             decoupled from the chunk's own displacement: a
+//                             ROSETTE n⟳θ(c) when the between-copy transform is
+//                             a rotation, a ROW/GRID n⇉d(c) when it is a pen-up
+//                             translation. This is the (b)-style "operator with
+//                             a reference point", and it is what fixes the
+//                             open-motif-about-a-centre case that a pure
+//                             contour turtle cannot express. Chained
+//                             (anchored=false) is the original contour form.
+//   sym   S[c] / M[c]        SYMMETRY, in two forms. S[c] is the chunk, then the
+//                             chunk again reversed with its turns negated — in a
+//                             continuing turtle a clean *point (2-fold
+//                             rotational)* symmetry (verified: reverse+negate =
+//                             rotation by 180° about the join). M[c] is a true
+//                             bilateral MIRROR, via a ±1 handedness flag the
+//                             turtle carries (flip → reflection) rather than
+//                             first-class geometric loci.
 //   alt   A[k : s1 s2 …]     ALTERNATION: a constant chunk k distributed before
 //                             each element of a series (k s1 k s2 … k sn).
+//
+// Between them these cover SIT's full isometry vocabulary — translation,
+// rotation, reflection, glide. What is still deferred is *emergent* salient
+// points (intersections, centroids), which are not part of SIT either.
 //
 // The whole thing is what makes it SIT and not "turtle-with-random-mirrors":
 // each operator generates its child chunk *once* and replicates it, so the

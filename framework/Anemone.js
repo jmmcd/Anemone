@@ -293,6 +293,19 @@ class InteractiveEAFramework {
         this.aboutModal = document.getElementById('about-modal');
         this.aboutContent = document.getElementById('about-content');
         this.aboutClose = document.getElementById('about-close');
+        // App-wide "?" shortcuts overlay, generated from the HOTKEYS table. Built
+        // once here rather than attached per type by loadExtensions, since it
+        // applies to every type (it just filters its rows by the current one).
+        this.helpOverlay = (typeof HelpOverlayUI !== 'undefined') ? new HelpOverlayUI(this) : null;
+        this.helpBtn = document.getElementById('help-btn');
+        if (this.helpBtn) this.helpBtn.addEventListener('click', () => this.toggleHelp());
+        // Evolution panel (population size + mutation rate) — also app-wide, so
+        // mounted here rather than attached per type by loadExtensions.
+        if (typeof EvolutionControlsUI !== 'undefined') {
+            this.evolutionControls = new EvolutionControlsUI(this);
+            this.evolutionControls.mount(document.getElementById('evolution-panel'));
+        }
+        this.applyGridColumns();
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -502,14 +515,30 @@ class InteractiveEAFramework {
             // Single tap/click = toggle like (binary) + make current.
             // …unless we're placing a loaded individual: then a click drops it
             // onto this tile.
-            div.addEventListener('click', () => {
+            div.addEventListener('click', (e) => {
                 if (this.pendingLoad) { this.placeLoadedIndividual(index); return; }
                 if (div._suppressClick) { div._suppressClick = false; return; }
                 this.currentIndividual = individual;
+                // Shift+click locks/unlocks (the pointer-fine gesture; touch users
+                // get the padlock button below).
+                if (e.shiftKey) { this.toggleLock(individual, div); return; }
                 this.ea.toggleLike(individual);
                 div.classList.toggle('selected', individual.selected);
                 this.renderInfo();
             });
+
+            // Lock affordance: like the zoom button, revealed on hover on
+            // pointer-fine, but kept visible once locked so the state is legible.
+            const lockBtn = document.createElement('button');
+            lockBtn.className = 'lock-btn';
+            lockBtn.textContent = individual.locked ? '🔒' : '🔓';
+            lockBtn.setAttribute('aria-label', individual.locked ? 'Unlock tile' : 'Lock tile');
+            lockBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleLock(individual, div);
+            });
+            div.appendChild(lockBtn);
+            div.classList.toggle('locked', !!individual.locked);
 
             // Double-click (pointer-fine) = zoom. The two clicks it also fires
             // toggle like twice (net no change), so like state is preserved.
@@ -613,18 +642,83 @@ class InteractiveEAFramework {
                 span.classList.add('current');
             }
             
-            span.addEventListener('click', () => {
-                // Stop any sound before swapping in a different generation.
-                if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
-                    this.currentlyPlaying.stopMIDI();
-                }
-                this.currentlyPlaying = null;
-                this.ea.loadGeneration(index);
-                this.render();
-            });
-            
+            span.addEventListener('click', () => this.goToHistoryIndex(index));
+
             this.historyList.appendChild(span);
         });
+    }
+
+    // Lock / unlock a tile: it is carried into the next generation unchanged and
+    // is not bred from. Locking clears the like (the EA keeps the two states
+    // exclusive), so refresh both bits of tile chrome here.
+    toggleLock(individual, div) {
+        const locked = this.ea.toggleLock(individual);
+        if (div) {
+            div.classList.toggle('locked', locked);
+            div.classList.toggle('selected', !!individual.selected);
+            const btn = div.querySelector('.lock-btn');
+            if (btn) {
+                btn.textContent = locked ? '🔒' : '🔓';
+                btn.setAttribute('aria-label', locked ? 'Unlock tile' : 'Lock tile');
+            }
+        }
+        this.renderInfo();
+        this.showToast(locked ? 'Locked — kept unchanged next generation' : 'Unlocked');
+    }
+
+    // Change the grid/population size, keeping the evolved individuals (the EA
+    // truncates or pads — it is not a reset), then re-lay-out and redraw.
+    setPopulationSize(n) {
+        if (!this.ea.setPopulationSize(n)) return;
+        this.applyGridColumns();
+        this.render();
+        this.showToast(`Population ${this.ea.populationSize}`);
+    }
+
+    // Publish the column counts the grid should use, as CSS custom properties
+    // read by styles.css per breakpoint. The wide layout gets the exact square
+    // (√n), narrower ones keep their 3 and 2 columns unless the population is
+    // smaller than that — so a small population never leaves a ragged last row.
+    applyGridColumns() {
+        if (!this.grid) return;
+        const cols = Math.max(1, Math.round(Math.sqrt(this.ea.populationSize)));
+        this.grid.style.setProperty('--grid-cols', cols);
+        this.grid.style.setProperty('--grid-cols-md', Math.min(3, cols));
+        this.grid.style.setProperty('--grid-cols-sm', Math.min(2, cols));
+    }
+
+    // Load a stored generation. The single path for time travel — the history
+    // strip clicks it, and the undo/redo hotkeys step through it.
+    goToHistoryIndex(index) {
+        if (index < 0 || index >= this.ea.history.length) return false;
+        // Stop any sound before swapping in a different generation.
+        if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
+            this.currentlyPlaying.stopMIDI();
+        }
+        this.currentlyPlaying = null;
+        this.ea.loadGeneration(index);
+        this.render();
+        return true;
+    }
+
+    // Where in the history the displayed population came from. loadGeneration
+    // restores `ea.generation`, so the generation number identifies the entry;
+    // fall back to the newest entry (the live population, before any time travel).
+    _currentHistoryIndex() {
+        const i = this.ea.history.findIndex((h) => h.generation === this.ea.generation);
+        return i === -1 ? this.ea.history.length - 1 : i;
+    }
+
+    // Undo / redo an evolve step (the z / u and Z hotkeys). No new state: this is
+    // the existing generation history, stepped one entry at a time.
+    stepGeneration(delta) {
+        const target = this._currentHistoryIndex() + delta;
+        if (!this.goToHistoryIndex(target)) {
+            this.showToast(delta < 0 ? 'No earlier generation' : 'No later generation');
+            return false;
+        }
+        this.showToast(`Generation ${this.ea.generation}`);
+        return true;
     }
     
     // Build the <select> options from the registry (INDIVIDUAL_TYPES), skipping

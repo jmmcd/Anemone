@@ -2,6 +2,13 @@ class EvolutionaryAlgorithm {
     constructor(individualClass, populationSize = 16, midiOutput = null) {
         this.individualClass = individualClass;
         this.populationSize = populationSize;
+        // Per-offspring mutation rate, passed to Individual.mutate(rate). With
+        // PTO's position-wise ("1/n type") mutation this is the probability each
+        // trace entry mutates, so the caller controls mutation strength — which
+        // matters in interactive EC, where the user is the fitness function and
+        // wants to say "explore harder" or "refine". Surfaced by the Evolution
+        // drawer panel; takes effect on the next evolve.
+        this.mutationRate = EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE;
         this.midiOutput = midiOutput;
         this.population = [];
         this.generation = 0;
@@ -16,13 +23,33 @@ class EvolutionaryAlgorithm {
         this.initializePopulation();
     }
     
-    initializePopulation() {
-        this.population = [];
+    initializePopulation(carried = []) {
+        this.population = carried.slice(0, this.populationSize);
         while (this.population.length < this.populationSize) {
             const individual = this.createValidIndividual();
             this.population.push(individual);
         }
         this.saveGeneration();
+    }
+
+    // Resize the population, KEEPING the individuals the user has evolved: shrink
+    // by truncation, grow by padding with fresh randoms. A full re-initialisation
+    // would throw away the run, which is not what changing a grid size means.
+    setPopulationSize(n) {
+        const size = Math.max(1, Math.round(n));
+        if (size === this.populationSize) return false;
+        this.populationSize = size;
+        if (this.population.length > size) {
+            const dropped = this.population.slice(size);
+            dropped.forEach(ind => { if (ind.stopMIDI) ind.stopMIDI(); });
+            this.population = this.population.slice(0, size);
+            // A dropped individual must not stay a parent for the next evolve.
+            const kept = new Set(this.population.map(ind => ind.id));
+            this.selectedIndividuals = this.selectedIndividuals.filter(ind => kept.has(ind.id));
+        } else {
+            while (this.population.length < size) this.population.push(this.createValidIndividual());
+        }
+        return true;
     }
 
     createValidIndividual() {
@@ -49,8 +76,8 @@ class EvolutionaryAlgorithm {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const [child1, child2] = parent1.crossover(parent2);
-            child1.mutate(0.1);
-            child2.mutate(0.1);
+            child1.mutate(this.mutationRate);
+            child2.mutate(this.mutationRate);
 
             if (child1.setMidiOutput && this.midiOutput) {
                 child1.setMidiOutput(this.midiOutput);
@@ -75,7 +102,7 @@ class EvolutionaryAlgorithm {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const child = parent.clone();
-            child.mutate(0.1);
+            child.mutate(this.mutationRate);
 
             if (child.setMidiOutput && this.midiOutput) {
                 child.setMidiOutput(this.midiOutput);
@@ -102,11 +129,22 @@ class EvolutionaryAlgorithm {
         // Stop all playback before evolution
         this.stopAllPlayback();
 
-        // No likes: nothing to breed from, so start a fresh random generation.
+        // Locked individuals are carried over first, unchanged, and take their
+        // slots off the table before anything is bred — so they never crowd out
+        // the liked parents' offspring, they just shrink the pool being filled.
+        const carried = this.lockedIndividuals().map(ind => {
+            const clone = ind.clone();
+            clone.locked = true;
+            if (clone.setMidiOutput && this.midiOutput) clone.setMidiOutput(this.midiOutput);
+            return clone;
+        });
+
+        // No likes: nothing to breed from, so start a fresh random generation —
+        // around whatever is locked.
         if (this.selectedIndividuals.length === 0) {
             console.log('No individuals liked — re-initialising the population');
             this.generation++;
-            this.initializePopulation();
+            this.initializePopulation(carried);
             return;
         }
 
@@ -117,7 +155,7 @@ class EvolutionaryAlgorithm {
         // two or more → crossover + mutation between liked parents.
         const singleParent = this.selectedIndividuals.length === 1;
 
-        const newPopulation = [];
+        const newPopulation = [...carried];
 
         const elite = this.selectedIndividuals.slice(0, 2);
         const eliteClones = elite.map(ind => {
@@ -128,7 +166,7 @@ class EvolutionaryAlgorithm {
             console.log(`Elite clone: ${ind.constructor.name} -> ${clone.constructor.name}`);
             return clone.validate() ? clone : this.createValidIndividual();
         });
-        newPopulation.push(...eliteClones);
+        newPopulation.push(...eliteClones.slice(0, Math.max(0, this.populationSize - newPopulation.length)));
 
         while (newPopulation.length < this.populationSize) {
             if (singleParent) {
@@ -160,6 +198,7 @@ class EvolutionaryAlgorithm {
         this.population.forEach(ind => {
             ind.fitness = 0;
             ind.selected = false;
+            // ...but a carried-over lock stays locked: that is the whole point.
         });
         this.selectedIndividuals = [];
         this.saveGeneration();
@@ -177,6 +216,10 @@ class EvolutionaryAlgorithm {
     // Fitness is 0 or 1; tournament selection then picks equal-weight among the
     // liked individuals (standard for interactive EC). Returns the new state.
     toggleLike(individual) {
+        // A locked individual is preserved, not bred from — the plan's "excluded
+        // from the parent pool". Liking it would put it back in that pool, so the
+        // two states are mutually exclusive (toggleLock unlikes; this refuses).
+        if (individual.locked) return false;
         if (individual.selected) {
             individual.selected = false;
             individual.fitness = 0;
@@ -196,11 +239,39 @@ class EvolutionaryAlgorithm {
         return individual.selected;
     }
     
+    // "Lock" (protect) an individual: a third per-tile state alongside liked.
+    // A locked individual is carried into the next generation UNCHANGED and is
+    // excluded from breeding — it is not a parent, and it does not count towards
+    // elitism. Where a like says "make more like this", a lock says "keep exactly
+    // this", which is what lets a user bank a result and keep searching around it.
+    toggleLock(individual) {
+        const locking = !individual.locked;
+        // Locking supersedes liking: a locked individual is preserved, not bred
+        // from, so leaving it in the parent pool would be contradictory. Withdraw
+        // the like BEFORE setting the flag — toggleLike refuses a locked one.
+        if (locking && individual.selected) this.toggleLike(individual);
+        individual.locked = locking;
+        // Keep the current history entry truthful, so time-travelling back to
+        // this generation restores the locks that were in effect for it.
+        const current = this.history[this.history.length - 1];
+        if (current) current.locked = this._lockMask();
+        return individual.locked;
+    }
+
+    lockedIndividuals() { return this.population.filter(ind => ind.locked); }
+
+    // Lock state as a positional mask. NOT ids: saveGeneration stores clones and
+    // clone() mints a fresh id, so an id recorded here would match nothing on the
+    // way back. Position is stable, since loadGeneration clones the stored
+    // population in order.
+    _lockMask() { return this.population.map(ind => !!ind.locked); }
+
     saveGeneration() {
         this.history.push({
             generation: this.generation,
             population: this.population.map(ind => ind.clone()),
-            selected: [...this.selectedIndividuals]
+            selected: [...this.selectedIndividuals],
+            locked: this._lockMask(),
         });
     }
     
@@ -211,8 +282,10 @@ class EvolutionaryAlgorithm {
             this.population = savedGen.population.map(ind => ind.clone());
             this.selectedIndividuals = savedGen.selected.map(ind => ind.clone());
             
-            this.population.forEach(ind => {
+            const lockMask = savedGen.locked || [];
+            this.population.forEach((ind, i) => {
                 ind.selected = this.selectedIndividuals.some(sel => sel.id === ind.id);
+                ind.locked = !!lockMask[i];           // locks are part of the saved state
             });
         }
     }
@@ -231,3 +304,8 @@ class EvolutionaryAlgorithm {
         return totalFitness / this.population.length;
     }
 }
+// Evolution parameters the Evolution drawer panel exposes. The default mutation
+// rate is the value the app has always used; the population sizes are perfect
+// squares so the grid stays square (see --grid-cols in styles.css).
+EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE = 0.1;
+EvolutionaryAlgorithm.POPULATION_SIZES = [9, 16, 25];

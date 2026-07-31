@@ -100,6 +100,16 @@ const PS_CAP_DOTS = 60;     // max particles drawn per symbol per membrane
 const PS_MAX_PARTICLES = 4000; // total drawn-particle guard (runaway safety)
 const PS_WOBBLE_MAX_MULT = 2.4; // cap on a membrane's wobbled radius, as a multiple of its base radius
 
+// Deterministic LCG (Numerical Recipes constants), seeded from the `seed` gene.
+// Both the simulation and the particle-jitter draw re-seed one of these, so the
+// render is reproducible from the genome. NOT Individual.mulberry32: this type
+// has always drawn from *this* stream, and swapping generators would change
+// every P-system picture ever saved.
+const psRandom = (seed) => {
+    let st = (seed >>> 0) || 1;
+    return () => { st = (st * 1664525 + 1013904223) >>> 0; return st / 4294967296; };
+};
+
 // this.phenotype (generator output):
 //   { symbolCount: K, steps: S, seed: int, root: MembraneNode }
 // MembraneNode: { objects: [int,...] (length K), rules: [Rule,...], children: [MembraneNode,...] }
@@ -201,8 +211,7 @@ class PSystemIndividual extends Individual {
         if (this._simSpec === spec && this._sim) return this._sim;
 
         const K = spec.symbolCount;
-        let st = (spec.seed >>> 0) || 1;
-        const rand = () => { st = (st * 1664525 + 1013904223) >>> 0; return st / 4294967296; };
+        const rand = psRandom(spec.seed);
 
         // Build a mutable tree with parent pointers from the (read-only) spec.
         const makeNode = (node, parent) => {
@@ -528,8 +537,7 @@ class PSystemIndividual extends Individual {
             // Particle jitter PRNG re-seeded from spec.seed; the draw walk below
             // visits nodes/symbols/dots in a fixed order for a given phenotype,
             // so placement is stable across renders.
-            let st = (spec.seed >>> 0) || 1;
-            const rand = () => { st = (st * 1664525 + 1013904223) >>> 0; return st / 4294967296; };
+            const rand = psRandom(spec.seed);
             let budget = PS_MAX_PARTICLES;
 
             const drawMembrane = (node, depth) => {

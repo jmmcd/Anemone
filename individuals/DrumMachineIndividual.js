@@ -274,13 +274,18 @@ class DrumMachineIndividual extends Individual {
                 ctx.strokeRect(x, y, cw, chh);
                 const seed = p.grid[c][s];
                 if (seed > 0) {
-                    // Spread the ~[0.4,0.95] velocity range across a wider brightness
-                    // band so per-hit dynamics read clearly (was a narrow, flat band).
-                    const v = this._velocity(seed, s);
-                    const b = 0.22 + 0.78 * Math.max(0, Math.min(1, (v - 0.4) / 0.55));
-                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${b})`;
+                    // Velocity reads as a PARTIAL FILL FROM THE BOTTOM (the Logic
+                    // drum-machine idiom) — colour keeps meaning the track, not the
+                    // dynamic. A faint full-height wash keeps a quiet cell legible
+                    // as "on"; the drag gesture edits exactly this height.
                     const m = Math.min(cw, chh) * 0.15;
-                    ctx.fillRect(x + m, y + m, cw - 2 * m, chh - 2 * m);
+                    const bx = x + m, bw = cw - 2 * m;
+                    const bh = chh - 2 * m, by = y + m;
+                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.22)`;
+                    ctx.fillRect(bx, by, bw, bh);
+                    const f = Math.max(0.12, this.cellVel(c, s));   // always a visible sliver
+                    ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},1)`;
+                    ctx.fillRect(bx, by + bh * (1 - f), bw, bh * f);
                 }
             }
         }
@@ -323,6 +328,22 @@ class DrumMachineIndividual extends Individual {
     // a sensible dynamic rather than a flat default.
     setCellHit(c, s, on) {
         this.genome = drumMachineRepresentation.setGene(this.genome, `hit_${c}_${s}`, on ? 1 : 0);
+        this.invalidateImageCache();
+    }
+
+    // Per-cell velocity, as the 0..1 `vel_c_s` gene — which is also the fraction of
+    // the cell drawn filled, so the bar height is exactly the gene the user is
+    // editing. The stored grid value is the *seed* 0.6 + 0.4·gene (a hit is never
+    // quieter than 0.6 of full); accent/humanize shape it further at render time.
+    cellVel(c, s) {
+        const p = this.phenotype;
+        const seed = (p && p.grid && p.grid[c] && p.grid[c][s]) || 0;
+        return seed > 0 ? Math.max(0, Math.min(1, (seed - 0.6) / 0.4)) : 0;
+    }
+
+    setCellVel(c, s, v) {
+        const gene = Math.max(0, Math.min(1, v));
+        this.genome = drumMachineRepresentation.setGene(this.genome, `vel_${c}_${s}`, gene);
         this.invalidateImageCache();
     }
 

@@ -111,40 +111,11 @@ class AnimatedPatternIndividual extends Individual {
         return this._compiledExpression(x, y, t);
     }
 
+    // Same rewrite pipeline as the static pattern grammar, one variable wider
+    // (time) — see services/ExpressionCompiler.js.
     _compileExpression(expression) {
-        try {
-            let js = expression
-                .replace(/sin/g,   'Math.sin')
-                .replace(/cos/g,   'Math.cos')
-                .replace(/tan/g,   'Math.tan')
-                .replace(/exp/g,   'Math.exp')
-                .replace(/log/g,   'Math.log')
-                .replace(/sqrt/g,  'Math.sqrt')
-                .replace(/abs/g,   'Math.abs')
-                .replace(/floor/g, 'Math.floor')
-                .replace(/ceil/g,  'Math.ceil')
-                .replace(/ifpos\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)/g,
-                    '(($1) > 0 ? ($2) : ($3))')
-                .replace(/\br\b/g,     'Math.sqrt(x*x + y*y)')
-                .replace(/\btheta\b/g, 'Math.atan2(y, x)')
-                .replace(/3\.14159/g,  'Math.PI')
-                .replace(/6\.28318/g,  '(2*Math.PI)');
-
-            // Protected division and modulo
-            js = js.replace(/\/([^\/]+)/g, (m, d) =>
-                `/(Math.abs(${d}) > 1e-6 ? ${d} : 1.0)`);
-            js = js.replace(/%([^%]+)/g, (m, d) =>
-                `%(Math.abs(${d}) > 1e-6 ? ${d} : 1.0)`);
-
-            return new Function('x', 'y', 't', `
-                try {
-                    const result = ${js};
-                    return isFinite(result) ? result : 0.0;
-                } catch (e) { return 0.0; }
-            `);
-        } catch (e) {
-            return () => 0.0;
-        }
+        return ExpressionCompiler.compile(expression, ['x', 'y', 't'],
+            ExpressionCompiler.PRESETS.PATTERN);
     }
 
     _renderFrame(canvas, t) {

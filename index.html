@@ -13,6 +13,8 @@
         <button id="menu-btn" class="icon-btn" aria-label="Open controls">☰</button>
         <h1 class="app-title">Anemone</h1>
         <span class="gen-indicator">Gen <span id="generation">0</span></span>
+        <!-- Same overlay as the "?" hotkey, for touch users with no keyboard. -->
+        <button id="help-btn" class="icon-btn" aria-label="Keyboard and pointer shortcuts" title="Shortcuts (?)">?</button>
         <button id="evolve-btn" class="evolve-bar">
             Evolve<span class="sel-badge" id="selected-count-bar">0</span>
         </button>
@@ -49,6 +51,12 @@
                 Pop <span id="population-size">16</span> ·
                 Avg <span id="avg-fitness">0.00</span>
             </div>
+        </section>
+
+        <section class="drawer-section">
+            <h3>Evolution</h3>
+            <!-- Built at startup by ui/EvolutionControlsUI.js (population size + mutation rate). -->
+            <div id="evolution-panel"></div>
         </section>
 
         <section class="drawer-section">
@@ -108,10 +116,11 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script src="vendor/pto-bundle.js"></script>
 
-    <!-- App-level services (window.Palette / Photo / AudioClip / MIDISync / OSCInput / SITLanguage) -->
+    <!-- App-level services (window.Palette / Photo / AudioClip / ExpressionCompiler / MIDISync / OSCInput / SITLanguage) -->
     <script src="services/Palette.js"></script>
     <script src="services/Photo.js"></script>
     <script src="services/AudioClip.js"></script>
+    <script src="services/ExpressionCompiler.js"></script>
 
     <!-- Export helpers -->
     <script src="export/ExportNaming.js"></script>
@@ -133,6 +142,8 @@
     <script src="ui/OSCInputUI.js"></script>
     <script src="ui/PerformanceControls.js"></script>
     <script src="ui/CodeEditorUI.js"></script>
+    <script src="ui/HelpOverlayUI.js"></script>
+    <script src="ui/EvolutionControlsUI.js"></script>
 
     <!-- Representation and Modality helpers -->
     <script src="representations/TreeRepresentation.js"></script>
