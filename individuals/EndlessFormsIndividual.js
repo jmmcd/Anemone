@@ -20,9 +20,17 @@
  *   symX:        fold x→|x| before feeding the net → bilateral symmetry (very
  *                common in the EndlessForms gallery — animals, faces, symmetric plants)
  *   outputIndex: which proc node decides occupancy; threshold: voxel ON iff value > threshold
+ *   coordScale:  the spatial frequency coordinates are fed at (see below)
  * The generator is self-contained (top-level consts only, no closure vars, no
  * `new`, `for` loops not `Array.from`) as PTO structural naming requires; the
  * trace is the genotype, this.phenotype is the plain-data network.
+ *
+ * coordScale is an evolvable *gene* (fine Gaussian creep over EF_COORD_SCALE_RANGE;
+ * EF_COORD_SCALE is the fallback) rather than a constant, because it decides
+ * whether the net's periodic activations ripple into structure at all: too low
+ * and a sin/cos node spans less than a period across the grid, so the field
+ * degenerates into a dull half-space slab. Low frequency ≈ big smooth blobs,
+ * high ≈ fine ridged detail.
  *
  * Meshing (two modes off one cached signed scalar field, _field()):
  *   EF_SMOOTH true  → _smoothMesh(): a smooth iso-surface via Naive Surface Nets
@@ -35,6 +43,15 @@
  * portrait forms); the query y-domain scales by EF_GRID_Y/EF_GRID so voxels stay
  * cubic. Height (y) drives the palette colour. Rides the shared Three.js pipeline
  * like the other 3D types, so it gets STL export for free.
+ *
+ * validate() rejects empty and near-solid forms — a CPPN whose threshold lands
+ * outside the field's range produces nothing or a full block, and neither is
+ * worth a grid tile.
+ *
+ * QA: `node scripts/endlessforms-preview.js [out.png] [--n 9]` renders the real
+ * generate3DPoints() mesh to a PNG headlessly (z-buffered, smooth
+ * per-vertex-normal shading, mirroring the app), as jenn-preview.js and
+ * sit-preview.js do for their types.
  */
 
 // Activation library for the CPPN nodes. A mix of periodic (sin/cos), bounded
