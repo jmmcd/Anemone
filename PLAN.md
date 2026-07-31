@@ -1,5 +1,14 @@
 # Anemone code-quality & UX pass — implementation plan
 
+**STATUS: complete.** All phases 0–7 landed (see `git log`, commits `df6863b`…`14d4d38`).
+The test suite grew 226 → 278, and the whole app was smoke-tested in a real
+browser: all 33 menu types render, zoom/evolve/export/deep-link/`file://` all
+work. Two things this pass deliberately did NOT do, both recorded in TODO.md:
+the ~50% flat-tile rate of `PatternGrammarIndividual` (long-standing —
+`validate()` checks the expression, never the rendering), and the latent
+like-restoration mismatch in `loadGeneration` (it matches saved likes by id, but
+`clone()` mints fresh ids; the new lock state uses a positional mask instead).
+
 Agreed scope: refactor/dedupe/layout/readability/extensibility + features D1–D5.
 No new individual types. Every phase ends with `node tests/run.js` green (226 tests,
 ~4s) and, where noted, a manual browser smoke (one 2D type, one 3D type, one sound

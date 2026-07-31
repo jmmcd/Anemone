@@ -4,6 +4,8 @@
 
 * PTO AnemoneIndividual "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in old AnemoneIndividual). 
 
+* `EvolutionaryAlgorithm.loadGeneration` restores the *like* state by matching `savedGen.selected` ids against the freshly-cloned population — but `clone()` mints a new id, so those never match and time-travelling silently loses the likes. Long-standing. (The lock state added alongside it sidesteps this with a positional mask.)
+
 * About half of `PatternGrammarIndividual`'s tiles render flat (a single colour), and some of `PatternIndividual`'s do too — the expression is constant over the image (`(x / x)`, or a subtree that swallows x and y). Measured at ~50% flat over 300 validated individuals; it is long-standing, not a regression. `validate()` checks the *expression* (that x/y appear) but never the *rendering*, so a constant-valued expression passes. A cheap fix would be to sample the evaluator at a handful of points in `validate()` and reject a phenotype with no variation.
 
 * In the pattern individual, theta tends to be bad, so better would be sin theta and cos theta? With factor of 2 pi.
