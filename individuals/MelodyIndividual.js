@@ -35,6 +35,10 @@ const MELODY_ROW_PRIOR = [0.9, 0.35, 0.7, 0.35, 0.8, 0.4, 0.35, 0.6];
 // drum machine: every cell keeps a {0,1} pool so aligned genes stay set-identical across
 // genomes and hand-edits survive replay.
 const MELODY_HIT_RES = 40;
+// Lowest velocity SEED a note stores (velocity gene 0 → this, gene 1 → 1.0). The
+// floor of the audible dynamic range: a note is never silent, but a dragged-down
+// note is clearly softer than the older 0.6 floor allowed. Matches DrumMachine.
+const MELODY_VEL_FLOOR = 0.35;
 
 const melodyGenerator = (rnd) => {
     const bpm = 80 + rnd.randint(0, 60);        // 80–140 BPM
@@ -55,7 +59,7 @@ const melodyGenerator = (rnd) => {
             for (let j = 0; j < MELODY_HIT_RES; j++) pool.push(j < k ? 1 : 0);
             const hit = rnd.choice(pool, { name: 'hit_' + r + '_' + s });   // categorical ⇒ fine mutation FLIPS the bit
             const vraw = rnd.uniform(0, 1, { name: 'vel_' + r + '_' + s });  // velocity seed (real ⇒ smooth creep)
-            row.push(hit ? 0.6 + 0.4 * vraw : 0);
+            row.push(hit ? MELODY_VEL_FLOOR + (1 - MELODY_VEL_FLOOR) * vraw : 0);
         }
         grid.push(row);
     }
@@ -236,13 +240,13 @@ class MelodyIndividual extends Individual {
 
     // Per-cell velocity, as the 0..1 `vel_c_s` gene — also the fraction of the note
     // bar drawn filled, so the height is exactly the gene being edited. The stored
-    // grid value is the seed 0.6 + 0.4·gene (a note is never quieter than 0.6 of
-    // full velocity). Same contract as DrumMachine, so both inherit one gesture.
+    // grid value is the seed MELODY_VEL_FLOOR + (1−floor)·gene (a note is never
+    // silent). Same contract as DrumMachine, so both inherit one gesture.
     cellVel(c, s) {
         const p = this.phenotype;
         const head = this._runStart(c, s);
         const seed = (p && p.grid && p.grid[c] && p.grid[c][head]) || 0;
-        return seed > 0 ? Math.max(0, Math.min(1, (seed - 0.6) / 0.4)) : 0;
+        return seed > 0 ? Math.max(0, Math.min(1, (seed - MELODY_VEL_FLOOR) / (1 - MELODY_VEL_FLOOR))) : 0;
     }
 
     setCellVel(c, s, v) {

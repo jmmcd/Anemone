@@ -1589,6 +1589,32 @@ check('rendered loop buffers end at zero (shared loop-seam declick, no click on 
         assert(Math.abs(data[data.length - 1]) < 1e-4, `${name} buffer must fade to ~0 at the loop seam (got ${data[data.length - 1]})`);
     }
 });
+check('velocity edits actually change the rendered loudness (not erased by RMS normalise)', () => {
+    // Regression: the drum loop is RMS-normalised so tempo/density/drive don't
+    // change loudness — but that must NOT erase velocity. Dragging every cell to
+    // the floor used to leave the normalised output identical (nothing to hear);
+    // the target is now scaled by the loop's average velocity, so it gets quieter.
+    const env = load();
+    const rms = (buf) => { let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]; return Math.sqrt(s / buf.length); };
+    const d = new env.classes.DrumMachineIndividual();
+    for (let c = 0; c < 8; c++) for (let s = 0; s < 16; s++) if (d.cellOn(c, s)) d.setCellVel(c, s, 0);
+    const lo = rms(d.renderToAudioBuffer().getChannelData(0));
+    for (let c = 0; c < 8; c++) for (let s = 0; s < 16; s++) if (d.cellOn(c, s)) d.setCellVel(c, s, 1);
+    const hi = rms(d.renderToAudioBuffer().getChannelData(0));
+    assert(hi > lo * 1.8, `a full-velocity drum loop must be clearly louder than an all-floor one (floor ${lo.toFixed(4)} vs full ${hi.toFixed(4)})`);
+
+    // And a single cell's velocity must reach the audible-velocity curve, with the
+    // user's velocity dominant over the accent tilt.
+    const d2 = new env.classes.DrumMachineIndividual();
+    const on = (() => { for (let c = 0; c < 8; c++) for (let s = 0; s < 16; s++) if (d2.cellOn(c, s)) return { c, s }; })();
+    d2.setCellVel(on.c, on.s, 0); const vLo = d2._velocity(d2.phenotype.grid[on.c][on.s], on.s);
+    d2.setCellVel(on.c, on.s, 1); const vHi = d2._velocity(d2.phenotype.grid[on.c][on.s], on.s);
+    assert(vHi - vLo > 0.25, `a full velocity drag on one cell must move audible velocity a lot (${vLo.toFixed(3)} → ${vHi.toFixed(3)})`);
+
+    // Melody carries velocity into note amplitude (no accent, no normalise).
+    const m = new env.classes.MelodyIndividual();
+    assert(m._velocity(1.0) - m._velocity(0.35) > 60, 'melody floor→full must span a wide MIDI-velocity range');
+});
 check('every drum voice ends at zero (no mid-loop tail cliff, e.g. the kick ~step 3)', () => {
     const env = load();
     const voices = env.drumVoices(44100);

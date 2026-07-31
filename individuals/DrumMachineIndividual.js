@@ -95,7 +95,14 @@ const DRUM_CHANNELS = ['kick', 'snare', 'chh', 'ohh', 'clap', 'rim', 'tom', 'cow
 const DRUM_HIT_RES = 48;
 // Target output loudness (RMS) the rendered loop is normalised to, so tempo,
 // density and drive don't change how loud a pattern is. ~0.16 leaves headroom.
+// The target is SCALED by the loop's average user velocity at render (see
+// renderToAudioBuffer), so velocity — unlike tempo/density/drive — DOES change
+// loudness; otherwise a uniform velocity edit is erased by the normalisation.
 const DRUM_TARGET_RMS = 0.16;
+// Lowest velocity SEED a hit stores (velocity gene 0 → this, gene 1 → 1.0). It's
+// the floor of the audible dynamic range: a hit is never fully silent, but a
+// dragged-down cell is now clearly softer than the older 0.6 floor allowed.
+const DRUM_VEL_FLOOR = 0.35;
 
 const drumMachineGenerator = (rnd) => {
     // Defaults kept deliberately calmer (less manic): moderate tempo, gentle swing,
@@ -136,7 +143,7 @@ const drumMachineGenerator = (rnd) => {
             // {name} as a later arg, which rnd.choice/uniform ignore, so ours wins.)
             const hit = rnd.choice(pool, { name: 'hit_' + c + '_' + s });   // categorical ⇒ fine mutation FLIPS the bit
             const vraw = rnd.uniform(0, 1, { name: 'vel_' + c + '_' + s });  // velocity seed (real ⇒ smooth creep)
-            row.push(hit ? 0.6 + 0.4 * vraw : 0); // store SEED; accent is applied at render
+            row.push(hit ? DRUM_VEL_FLOOR + (1 - DRUM_VEL_FLOOR) * vraw : 0); // store SEED; accent is applied at render
         }
         grid.push(row);
     }
@@ -226,15 +233,16 @@ class DrumMachineIndividual extends Individual {
         super.mutate(rate * 0.6);
     }
 
-    // Audible velocity from a cell's stored seed: the `accent` gene blends between
-    // flat (velocity ~ seed only) and strongly metrical (accents loud, ghosts
-    // quiet). Render-stage, so changing `accent` always changes the output. No
-    // humanize here — that jitter is added per-hit at render (kept out so the tile
-    // visual is stable).
+    // Audible velocity from a cell's stored seed. The seed (the user's velocity) is
+    // the DOMINANT factor; the `accent` gene only tilts it — metrically strong steps
+    // a little louder, ghosts a little softer — rather than swamping it, so a
+    // hand-set velocity is clearly heard. `accent` still changes the output (it
+    // reshapes the tilt), so it stays a live render-stage dial. No humanize here —
+    // that jitter is added per-hit at render (kept out so the tile visual is stable).
     _velocity(seed, s) {
         const a = this.phenotype.accent;
-        const accentTerm = a * DRUM_METRICAL[s] + (1 - a) * 0.6;
-        return Math.min(1, 0.35 + 0.6 * accentTerm * seed);
+        const accentTerm = a * DRUM_METRICAL[s] + (1 - a) * 0.7; // metrical tilt, centred near ~0.7
+        return Math.min(1, seed * (0.6 + 0.4 * accentTerm));     // seed dominant, accent ±
     }
 
     // Grid geometry for a W×H canvas — the single source of truth shared by
@@ -333,12 +341,12 @@ class DrumMachineIndividual extends Individual {
 
     // Per-cell velocity, as the 0..1 `vel_c_s` gene — which is also the fraction of
     // the cell drawn filled, so the bar height is exactly the gene the user is
-    // editing. The stored grid value is the *seed* 0.6 + 0.4·gene (a hit is never
-    // quieter than 0.6 of full); accent/humanize shape it further at render time.
+    // editing. The stored grid value is the *seed* DRUM_VEL_FLOOR + (1−floor)·gene
+    // (a hit is never fully silent); accent tilts it further at render time.
     cellVel(c, s) {
         const p = this.phenotype;
         const seed = (p && p.grid && p.grid[c] && p.grid[c][s]) || 0;
-        return seed > 0 ? Math.max(0, Math.min(1, (seed - 0.6) / 0.4)) : 0;
+        return seed > 0 ? Math.max(0, Math.min(1, (seed - DRUM_VEL_FLOOR) / (1 - DRUM_VEL_FLOOR))) : 0;
     }
 
     setCellVel(c, s, v) {
@@ -444,8 +452,24 @@ class DrumMachineIndividual extends Individual {
         // Normalise to a target LOUDNESS (RMS), not peak: saturation raises RMS at
         // equal peak, so peak-normalising would let drive just get louder. A peak
         // guard then keeps sparse/peaky loops from clipping.
+        //
+        // Scale the target by the loop's AVERAGE user velocity, so overall loudness
+        // tracks how hard the pattern is played — otherwise the normalisation cancels
+        // any uniform velocity change (drag every cell down and the gain just scales
+        // it all back up). Density/drive/tempo still normalise (they don't enter this
+        // average). Mapped to [0.4, 1] so a soft loop is clearly quieter but never
+        // silent; per-cell relative dynamics are still carried by the mix itself.
+        let dynSum = 0, dynN = 0;
+        for (let c = 0; c < 8; c++) for (let s = 0; s < L; s++) {
+            const seed = p.grid[c][s];
+            if (seed > 0) {
+                const gene = (seed - DRUM_VEL_FLOOR) / (1 - DRUM_VEL_FLOOR); // user velocity 0..1
+                dynSum += 0.4 + 0.6 * Math.max(0, Math.min(1, gene)); dynN++;
+            }
+        }
+        const avgDyn = dynN ? dynSum / dynN : 1;
         const rms = Math.sqrt(sumsq / N);
-        let gain = rms > 1e-6 ? DRUM_TARGET_RMS / rms : 1;
+        let gain = rms > 1e-6 ? (DRUM_TARGET_RMS * avgDyn) / rms : 1;
         if (peak * gain > 0.98) gain = 0.98 / peak;
         for (let i = 0; i < N; i++) buf[i] *= gain;
         // Fade the loop seam so truncated voice tails don't click on repeat (shared
