@@ -121,6 +121,22 @@ console.log('\nFramework hotkey table + partial-class split:');
         }
     });
 
+    check('every binding can appear in the ? overlay, and ? itself is bound', () => {
+        // The overlay is generated from this table, so a binding is documented iff
+        // it carries the fields the overlay renders. (The well-formed check above
+        // already asserts desc/group exist; this pins the ? entry point itself and
+        // that no binding hides from the overlay by having an unsatisfiable when.)
+        const q = F.HOTKEYS.find(b => b.keys.includes('?'));
+        assert(q && q.group === 'General', '"?" must be bound and listed under General');
+        const seq = { sequencer: true, animatedPattern: false };
+        const anim = { sequencer: false, animatedPattern: true };
+        const def = { sequencer: false, animatedPattern: false };
+        for (const b of F.HOTKEYS) {
+            const reachable = !b.when || [seq, anim, def].some(c => b.when(c));
+            assert(reachable, `binding "${b.keys.join('/')}" (${b.desc}) can never be shown`);
+        }
+    });
+
     check('the table reproduces the old context-sensitive dispatch', () => {
         // First binding whose key matches and whose when() holds — the dispatcher's rule.
         const pick = (key, c) => F.HOTKEYS.find(b => b.keys.includes(key) && (!b.when || b.when(c)));

@@ -13,6 +13,8 @@
         <button id="menu-btn" class="icon-btn" aria-label="Open controls">☰</button>
         <h1 class="app-title">Anemone</h1>
         <span class="gen-indicator">Gen <span id="generation">0</span></span>
+        <!-- Same overlay as the "?" hotkey, for touch users with no keyboard. -->
+        <button id="help-btn" class="icon-btn" aria-label="Keyboard and pointer shortcuts" title="Shortcuts (?)">?</button>
         <button id="evolve-btn" class="evolve-bar">
             Evolve<span class="sel-badge" id="selected-count-bar">0</span>
         </button>
@@ -134,6 +136,7 @@
     <script src="ui/OSCInputUI.js"></script>
     <script src="ui/PerformanceControls.js"></script>
     <script src="ui/CodeEditorUI.js"></script>
+    <script src="ui/HelpOverlayUI.js"></script>
 
     <!-- Representation and Modality helpers -->
     <script src="representations/TreeRepresentation.js"></script>

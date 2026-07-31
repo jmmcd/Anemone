@@ -293,6 +293,12 @@ class InteractiveEAFramework {
         this.aboutModal = document.getElementById('about-modal');
         this.aboutContent = document.getElementById('about-content');
         this.aboutClose = document.getElementById('about-close');
+        // App-wide "?" shortcuts overlay, generated from the HOTKEYS table. Built
+        // once here rather than attached per type by loadExtensions, since it
+        // applies to every type (it just filters its rows by the current one).
+        this.helpOverlay = (typeof HelpOverlayUI !== 'undefined') ? new HelpOverlayUI(this) : null;
+        this.helpBtn = document.getElementById('help-btn');
+        if (this.helpBtn) this.helpBtn.addEventListener('click', () => this.toggleHelp());
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');

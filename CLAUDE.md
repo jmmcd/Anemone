@@ -261,6 +261,7 @@ UI panels are attached by the framework based on capability flags / structural c
 - `PaletteControlUI` — attached when an individual returns `true` from `usesColorPalette()`.
 - `PerformanceControlsUI` — attached when an individual returns `true` from `usesPerformanceControls()` (the step sequencers).
 - `MIDISyncUI` — attached when an individual returns `true` from `usesMIDISync()` (the step sequencers plus MouseMusic/EEG); see MIDI Clock Sync above.
+- `HelpOverlayUI` — the **`?` shortcuts overlay**. Not attached per type: it is app-wide, so the framework builds it once in `setupUI()` (also reachable via the `?` button in the app bar, for touch users with no keyboard). Its content is **generated from `InteractiveEAFramework.HOTKEYS`**, so it cannot drift from the dispatcher — adding a binding to that table is all it takes to document it. Rows are grouped by the binding's `group` and **filtered to the current type**: `[`/`]` mean loop length on a step sequencer, animation speed on an animated pattern, and camera zoom otherwise, so showing all three at once would be a lie. It also lists the pointer gestures, which have no binding to generate them from and are the least discoverable part of the app.
 - `CodeEditorUI` — attached for **every individual that exposes editable code sections** (all PTO-backed types do — at minimum their generator). It lets the user view and rewrite the code of **whatever type is selected**.
 
 ### Editable code sections
