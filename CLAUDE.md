@@ -30,20 +30,38 @@ sandbox with minimal browser stubs (`window`, a no-op canvas 2D context, and
 exercises the genetic operators, the render path, capability flags, and the
 save/load/export services for every type.
 
-**IMPORTANT — keep the harness in sync with the code.** The harness has two
-hand-maintained lists that must track the app whenever an individual type (or a
-shared base class) is added, removed, or renamed:
+**IMPORTANT — keep the harness in sync with the code.** The concrete-class list
+is no longer hand-maintained: `INDIVIDUAL_CLASSES` is derived from
+`framework/IndividualRegistry.js`, and `tests/run.js` asserts every registry
+entry has both a `<script>` tag in `index.html` and a matching `*Individual.js`
+on disk — so a forgotten registration or script tag fails the suite instead of
+silently breaking the app. What still needs a hand edit when a type or base
+class is added/removed/renamed:
 
 - `SOURCES` in `tests/harness.js` — the source files, **in dependency order**
   (base classes before subclasses; mirror the `<script>` order in `index.html`). A
   missing base (e.g. `RadialSurface3DIndividual.js` before its subclasses) throws a
   `ReferenceError` at bundle load and **every** test fails.
-- `INDIVIDUAL_CLASSES` in `tests/harness.js` — the concrete individual class names.
 
 New app-level services accessed via `window.*` from a constructor/`visualize()`
-also need a stub in the harness `sandbox.window`. Update these lists (and run
-`node tests/run.js`) as part of the same change that adds the type — it's easy to
-forget after closing the laptop or clearing the session.
+also need a stub in the harness `sandbox.window`. Update these (and run
+`npm test`) as part of the same change that adds the type — it's easy to forget
+after closing the laptop or clearing the session.
+
+## Project Layout
+
+Source is grouped by role (all plain `<script>` globals — no build step, no module system). Load order lives in `index.html` and, mirrored, in `tests/harness.js` `SOURCES`.
+
+| Directory | Contents |
+|---|---|
+| `framework/` | `Anemone.js` (`InteractiveEAFramework`), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link) |
+| `individuals/` | every concrete `*Individual.js` plus the `RadialSurface3DIndividual.js` base |
+| `services/` | app-level `window.*` singletons: `Palette`, `Photo`, `AudioClip`, `MIDISync`, `OSCInput`, `SITLanguage` |
+| `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `CodeEditorUI`) and `PerformanceControls.js` |
+| `export/` | `ImageSave`, `MeshExport`, `AudioExport`, `MidiExport`, `ExportNaming` |
+| `representations/` | `PTORepresentation`, `TreeRepresentation`, `DAGRepresentation`, `Grammar.js` |
+| `modalities/` | `Canvas2DModality`, `MIDIModality`, `AudioModality`, `ThreeDModality` |
+| `scripts/` | headless dev tools (preview renderers, EEG sender, PTO repro) and `git-hooks/` |
 
 ## Architecture
 
@@ -51,7 +69,7 @@ The codebase separates three concerns:
 
 1. **Representations** (`representations/`) — genome structure and genetic operators
 2. **Modalities** (`modalities/`) — output mechanisms (rendering, audio)
-3. **Individuals** (root `*.js`) — application code that composes representations and modalities
+3. **Individuals** (`individuals/`) — application code that composes representations and modalities
 
 ### Framework Layer (`Anemone.js`)
 `InteractiveEAFramework` orchestrates the system:
@@ -80,7 +98,7 @@ All individual types inherit from this:
 
 ## Representations
 
-Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files below are no longer *representations* in the operator sense — they supply the **classes and converters** a PTO generator's output is built from. (`Grammar.js` lives at the repo root, not in `representations/`.)
+Every individual evolves via `PTORepresentation` (genome = PTO trace). The other files below are no longer *representations* in the operator sense — they supply the **classes and converters** a PTO generator's output is built from.
 
 | File | Role | Used by |
 |---|---|---|
@@ -267,7 +285,7 @@ By default `renderMeshToCanvas` frames the camera on the mesh's full bounding bo
 2. Write a self-contained `generator(rnd)` (no closure vars, no `new`, `for` loops not `Array.from`) and a shared `new PTORepresentation(generator)` (defaults fine/structural), assign it to `this.representation`, and set `this.genome = genome || this.representation.generateRandom()`. If the structure is a tree/DAG, have the generator emit plain data and convert it to the working classes in the individual (as `buildTreeNode`/`buildDAG` do); for a grammar, expand it directly in the generator (as the grammar individuals do).
 3. Implement `visualize(canvas)` reading `this.phenotype` (and pick a `Modality` if it helps); return `true` from `usesColorPalette()` and/or `is3D()` as appropriate
 4. Inherited `mutate`/`crossover`/`clone` delegate to `this.representation` — only override for non-standard genome semantics
-5. Register in `Anemone.js` individual type selector and add `<script>` tags to `index.html` (PTO-backed types need `vendor/pto-bundle.js` and `representations/PTORepresentation.js`, which are already loaded)
+5. Add an entry to `framework/IndividualRegistry.js` (the single source of truth for the type list — order, label, optional `hidden`) and a `<script>` tag in `index.html` under `individuals/`. `npm test` asserts both are present, so a forgotten step fails the suite. (PTO-backed types need `vendor/pto-bundle.js` and `representations/PTORepresentation.js`, which are already loaded.)
 
 **Sound-producing individual:** reference the framework's shared modality for your
 medium (local fallback for tests). **Notes** → `sharedMIDI`:

@@ -101,29 +101,38 @@
         </div>
     </div>
 
+    <!-- Third-party libraries -->
     <script src="https://d3js.org/d3-color.v3.min.js"></script>
     <script src="https://d3js.org/d3-interpolate.v3.min.js"></script>
     <script src="https://d3js.org/d3-scale-chromatic.v3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
     <script src="vendor/pto-bundle.js"></script>
-    <script src="Palette.js"></script>
-    <script src="Photo.js"></script>
-    <script src="AudioClip.js"></script>
-    <script src="ExportNaming.js"></script>
-    <script src="ImageSave.js"></script>
-    <script src="MeshExport.js"></script>
-    <script src="AudioExport.js"></script>
-    <script src="MidiExport.js"></script>
-    <script src="Individual.js"></script>
-    <script src="PaletteControlUI.js"></script>
-    <script src="PhotoControlUI.js"></script>
-    <script src="AudioControlUI.js"></script>
-    <script src="MIDISync.js"></script>
-    <script src="MIDISyncUI.js"></script>
-    <script src="OSCInput.js"></script>
-    <script src="OSCInputUI.js"></script>
-    <script src="PerformanceControls.js"></script>
-    <script src="CodeEditorUI.js"></script>
+
+    <!-- App-level services (window.Palette / Photo / AudioClip / MIDISync / OSCInput / SITLanguage) -->
+    <script src="services/Palette.js"></script>
+    <script src="services/Photo.js"></script>
+    <script src="services/AudioClip.js"></script>
+
+    <!-- Export helpers -->
+    <script src="export/ExportNaming.js"></script>
+    <script src="export/ImageSave.js"></script>
+    <script src="export/MeshExport.js"></script>
+    <script src="export/AudioExport.js"></script>
+    <script src="export/MidiExport.js"></script>
+
+    <!-- Individual base class -->
+    <script src="framework/Individual.js"></script>
+
+    <!-- UI drawer panels + shared services they depend on -->
+    <script src="ui/PaletteControlUI.js"></script>
+    <script src="ui/PhotoControlUI.js"></script>
+    <script src="ui/AudioControlUI.js"></script>
+    <script src="services/MIDISync.js"></script>
+    <script src="ui/MIDISyncUI.js"></script>
+    <script src="services/OSCInput.js"></script>
+    <script src="ui/OSCInputUI.js"></script>
+    <script src="ui/PerformanceControls.js"></script>
+    <script src="ui/CodeEditorUI.js"></script>
 
     <!-- Representation and Modality helpers -->
     <script src="representations/TreeRepresentation.js"></script>
@@ -134,47 +143,49 @@
     <script src="modalities/AudioModality.js"></script>
     <script src="modalities/ThreeDModality.js"></script>
 
-    <!-- Individual types -->
-    <script src="GridIndividual.js"></script>
-    <script src="ShapesIndividual.js"></script>
-    <script src="PhotoFilterIndividual.js"></script>
-    <script src="AntRenderingIndividual.js"></script>
-    <script src="AudioFilterIndividual.js"></script>
-    <script src="DrumMachineIndividual.js"></script>
-    <script src="MelodyIndividual.js"></script>
-    <script src="MouseMusicIndividual.js"></script>
-    <script src="EEGSonificationIndividual.js"></script>
-    <script src="PatternIndividual.js"></script>
-    <script src="Grammar.js"></script>
-    <script src="PatternGrammarIndividual.js"></script>
-    <script src="AnimatedPatternIndividual.js"></script>
-    <script src="PolarCurveIndividual.js"></script>
-    <script src="AnemoneIndividual.js"></script>
-    <script src="BranchIndividual.js"></script>
-    <script src="LSystemIndividual.js"></script>
-    <script src="StructuralInformationIndividual.js"></script>
-    <script src="StructuralInformationContinuousIndividual.js"></script>
-    <script src="SITLanguage.js"></script>
-    <script src="SITCodeIndividual.js"></script>
-    <script src="SITCode3DIndividual.js"></script>
-    <script src="BlindWatchmakerIndividual.js"></script>
-    <script src="SuperShapeIndividual.js"></script>
-    <script src="RadialSurface3DIndividual.js"></script>
-    <script src="SuperShape3DIndividual.js"></script>
-    <script src="PetalSphere3DIndividual.js"></script>
-    <script src="FreeSurface3DIndividual.js"></script>
-    <script src="WarpedSurface3DIndividual.js"></script>
-    <script src="JennPolytopeIndividual.js"></script>
-    <script src="EndlessFormsIndividual.js"></script>
-    <script src="RobotIndividual.js"></script>
-    <script src="WonkyGuysIndividual.js"></script>
-    <script src="HoxCreatureIndividual.js"></script>
-    <script src="SheepIndividual.js"></script>
-    <script src="PenroseIndividual.js"></script>
-    <script src="PSystemIndividual.js"></script>
-    <script src="EvolutionaryAlgorithm.js"></script>
-    <script src="IndividualRegistry.js"></script>
-    <script src="Anemone.js"></script>
-    <script src="main.js"></script>
+    <!-- Individual types (base classes before their subclasses; see harness SOURCES) -->
+    <script src="individuals/GridIndividual.js"></script>
+    <script src="individuals/ShapesIndividual.js"></script>
+    <script src="individuals/PhotoFilterIndividual.js"></script>
+    <script src="individuals/AntRenderingIndividual.js"></script>
+    <script src="individuals/AudioFilterIndividual.js"></script>
+    <script src="individuals/DrumMachineIndividual.js"></script>
+    <script src="individuals/MelodyIndividual.js"></script>
+    <script src="individuals/MouseMusicIndividual.js"></script>
+    <script src="individuals/EEGSonificationIndividual.js"></script>
+    <script src="individuals/PatternIndividual.js"></script>
+    <script src="representations/Grammar.js"></script>
+    <script src="individuals/PatternGrammarIndividual.js"></script>
+    <script src="individuals/AnimatedPatternIndividual.js"></script>
+    <script src="individuals/PolarCurveIndividual.js"></script>
+    <script src="individuals/AnemoneIndividual.js"></script>
+    <script src="individuals/BranchIndividual.js"></script>
+    <script src="individuals/LSystemIndividual.js"></script>
+    <script src="individuals/StructuralInformationIndividual.js"></script>
+    <script src="individuals/StructuralInformationContinuousIndividual.js"></script>
+    <script src="services/SITLanguage.js"></script>
+    <script src="individuals/SITCodeIndividual.js"></script>
+    <script src="individuals/SITCode3DIndividual.js"></script>
+    <script src="individuals/BlindWatchmakerIndividual.js"></script>
+    <script src="individuals/SuperShapeIndividual.js"></script>
+    <script src="individuals/RadialSurface3DIndividual.js"></script>
+    <script src="individuals/SuperShape3DIndividual.js"></script>
+    <script src="individuals/PetalSphere3DIndividual.js"></script>
+    <script src="individuals/FreeSurface3DIndividual.js"></script>
+    <script src="individuals/WarpedSurface3DIndividual.js"></script>
+    <script src="individuals/JennPolytopeIndividual.js"></script>
+    <script src="individuals/EndlessFormsIndividual.js"></script>
+    <script src="individuals/RobotIndividual.js"></script>
+    <script src="individuals/WonkyGuysIndividual.js"></script>
+    <script src="individuals/HoxCreatureIndividual.js"></script>
+    <script src="individuals/SheepIndividual.js"></script>
+    <script src="individuals/PenroseIndividual.js"></script>
+    <script src="individuals/PSystemIndividual.js"></script>
+
+    <!-- Framework (orchestration + registry + entry point) -->
+    <script src="framework/EvolutionaryAlgorithm.js"></script>
+    <script src="framework/IndividualRegistry.js"></script>
+    <script src="framework/Anemone.js"></script>
+    <script src="framework/main.js"></script>
 </body>
 </html>

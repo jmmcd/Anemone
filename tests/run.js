@@ -1001,7 +1001,7 @@ const { ImageSave, ExportNaming, AudioExport, MidiExport } = (() => {
     const prev = global.window;
     const w = {};
     global.window = w;
-    for (const f of ['../ExportNaming.js', '../ImageSave.js', '../AudioExport.js', '../MidiExport.js']) {
+    for (const f of ['../export/ExportNaming.js', '../export/ImageSave.js', '../export/AudioExport.js', '../export/MidiExport.js']) {
         delete require.cache[require.resolve(f)];
         require(f);
     }

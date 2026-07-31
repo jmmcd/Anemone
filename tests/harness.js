@@ -23,63 +23,63 @@ const ROOT = path.join(__dirname, '..');
 // throw a ReferenceError at load and every test fails. See CLAUDE.md > Testing.
 const SOURCES = [
     'vendor/pto-bundle.js',
-    'Individual.js',
+    'framework/Individual.js',
     'representations/TreeRepresentation.js',
     'representations/DAGRepresentation.js',
     'representations/PTORepresentation.js',
-    'Grammar.js',
+    'representations/Grammar.js',
     'modalities/Canvas2DModality.js',
     'modalities/MIDIModality.js',
     'modalities/AudioModality.js',
     'modalities/ThreeDModality.js',
-    'MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
-    'PerformanceControls.js',   // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
-    'EvolutionaryAlgorithm.js',
-    'IndividualRegistry.js',    // window.INDIVIDUAL_TYPES (single source of truth for the type list)
+    'services/MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
+    'ui/PerformanceControls.js',         // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
+    'framework/EvolutionaryAlgorithm.js',
+    'framework/IndividualRegistry.js',   // window.INDIVIDUAL_TYPES (single source of truth for the type list)
     // Individuals (base classes before their subclasses).
-    'GridIndividual.js',
-    'ShapesIndividual.js',
-    'PhotoFilterIndividual.js',
-    'AntRenderingIndividual.js',
-    'AudioFilterIndividual.js',
-    'DrumMachineIndividual.js',
-    'MelodyIndividual.js',
-    'MouseMusicIndividual.js',
-    'OSCInput.js',                // window.OSCInput (live OSC-over-WebSocket EEG feed)
-    'EEGSonificationIndividual.js',
-    'PatternIndividual.js',
-    'PatternGrammarIndividual.js',
-    'AnimatedPatternIndividual.js',
-    'PolarCurveIndividual.js',
-    'AnemoneIndividual.js',
-    'BranchIndividual.js',
-    'LSystemIndividual.js',
-    'StructuralInformationIndividual.js',
-    'StructuralInformationContinuousIndividual.js',
-    'SITLanguage.js',                 // window.SITLanguage (Leeuwenberg 1971 coding language engine)
-    'SITCodeIndividual.js',           // base for the Leeuwenberg-code family
-    'SITCode3DIndividual.js',
-    'BlindWatchmakerIndividual.js',
-    'SuperShapeIndividual.js',
-    'RadialSurface3DIndividual.js',   // base for the 3D surface family
-    'SuperShape3DIndividual.js',
-    'PetalSphere3DIndividual.js',
-    'FreeSurface3DIndividual.js',
-    'WarpedSurface3DIndividual.js',
-    'JennPolytopeIndividual.js',
-    'EndlessFormsIndividual.js',
-    'RobotIndividual.js',
-    'WonkyGuysIndividual.js',
-    'HoxCreatureIndividual.js',
-    'SheepIndividual.js',
-    'PenroseIndividual.js',
-    'PSystemIndividual.js',
+    'individuals/GridIndividual.js',
+    'individuals/ShapesIndividual.js',
+    'individuals/PhotoFilterIndividual.js',
+    'individuals/AntRenderingIndividual.js',
+    'individuals/AudioFilterIndividual.js',
+    'individuals/DrumMachineIndividual.js',
+    'individuals/MelodyIndividual.js',
+    'individuals/MouseMusicIndividual.js',
+    'services/OSCInput.js',                // window.OSCInput (live OSC-over-WebSocket EEG feed)
+    'individuals/EEGSonificationIndividual.js',
+    'individuals/PatternIndividual.js',
+    'individuals/PatternGrammarIndividual.js',
+    'individuals/AnimatedPatternIndividual.js',
+    'individuals/PolarCurveIndividual.js',
+    'individuals/AnemoneIndividual.js',
+    'individuals/BranchIndividual.js',
+    'individuals/LSystemIndividual.js',
+    'individuals/StructuralInformationIndividual.js',
+    'individuals/StructuralInformationContinuousIndividual.js',
+    'services/SITLanguage.js',                 // window.SITLanguage (Leeuwenberg 1971 coding language engine)
+    'individuals/SITCodeIndividual.js',        // base for the Leeuwenberg-code family
+    'individuals/SITCode3DIndividual.js',
+    'individuals/BlindWatchmakerIndividual.js',
+    'individuals/SuperShapeIndividual.js',
+    'individuals/RadialSurface3DIndividual.js',   // base for the 3D surface family
+    'individuals/SuperShape3DIndividual.js',
+    'individuals/PetalSphere3DIndividual.js',
+    'individuals/FreeSurface3DIndividual.js',
+    'individuals/WarpedSurface3DIndividual.js',
+    'individuals/JennPolytopeIndividual.js',
+    'individuals/EndlessFormsIndividual.js',
+    'individuals/RobotIndividual.js',
+    'individuals/WonkyGuysIndividual.js',
+    'individuals/HoxCreatureIndividual.js',
+    'individuals/SheepIndividual.js',
+    'individuals/PenroseIndividual.js',
+    'individuals/PSystemIndividual.js',
 ];
 
 // Every concrete individual class name, derived from the single source of truth
 // (IndividualRegistry.js) rather than hand-maintained here. tests/run.js asserts
 // each also has a <script> tag and resolves to an Individual subclass.
-const INDIVIDUAL_TYPES = require('../IndividualRegistry.js');
+const INDIVIDUAL_TYPES = require('../framework/IndividualRegistry.js');
 const INDIVIDUAL_CLASSES = INDIVIDUAL_TYPES.map(t => t.name);
 
 /** A no-op 2D canvas context that records nothing but never throws. */
