@@ -74,3 +74,26 @@ If your phenotype is a grid you need none of the above: implement
 and the base `beginEditSession` supplies the whole gesture set for you (this is
 how DrumMachine and Melody work): click toggles, a horizontal-first drag paints,
 and a vertical-first drag on an on-cell rides that cell's velocity up or down.
+
+# Adding a new individual type — checklist
+
+1. Extend `Individual` in `individuals/XYZIndividual.js`.
+2. Write a self-contained `generator(rnd)` and a shared
+   `new PTORepresentation(generator)`; assign it to `this.representation` and set
+   `this.genome = genome || this.representation.generateRandom()`.
+   (Generator rules: no closure variables, no `new` around `rnd` calls, `for`
+   loops rather than `Array.from` — see CLAUDE.md > PTORepresentation for why.)
+3. Implement `visualize(canvas)`, reading `this.phenotype`.
+4. Opt into what you need with the capability flags: `is3D()`,
+   `usesColorPalette()`, `usesPhoto()`, `usesPerformanceControls()`,
+   `usesMIDISync()`, `isGridEditable()`, …
+5. Register it in `framework/IndividualRegistry.js` (the single source of truth
+   for the type list — the menu and the tests both read it).
+6. Add a `<script>` tag in `index.html`, and the same path to `SOURCES` in
+   `tests/harness.js` (**in dependency order** — base classes first).
+7. Run `npm test`. It will tell you what you forgot: a missing registry entry, a
+   missing `<script>` tag, and an unresolvable class name are all test failures,
+   not silent runtime breakage.
+
+Inherited `mutate`/`crossover`/`clone` delegate to the representation, so only
+override them if your genome semantics genuinely fall outside that model.

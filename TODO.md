@@ -4,6 +4,8 @@
 
 * PTO AnemoneIndividual "pilot" is using a slightly simplified generator, where length does not creep upwards (which was a nice effect in old AnemoneIndividual). 
 
+* About half of `PatternGrammarIndividual`'s tiles render flat (a single colour), and some of `PatternIndividual`'s do too — the expression is constant over the image (`(x / x)`, or a subtree that swallows x and y). Measured at ~50% flat over 300 validated individuals; it is long-standing, not a regression. `validate()` checks the *expression* (that x/y appear) but never the *rendering*, so a constant-valued expression passes. A cheap fix would be to sample the evaluator at a handful of points in `validate()` and reject a phenotype with no variation.
+
 * In the pattern individual, theta tends to be bad, so better would be sin theta and cos theta? With factor of 2 pi.
 
 * In the xy pattern, allow use of individual points as centres with r and theta. Also mod. And somehow, special points defined by intersections of other curves, eg (theta mod 12 intersected with r % 10 == 0) can become useful as reference points for others. Reference points define new x and y frames. So maybe we have functions like r() and theta(). If called with no arguments they give radius wrt the image centre. If called with some arguments, calculate wrt the point defined by those arguments. 
@@ -17,8 +19,6 @@
 
 
 * The audio filter app is not super interesting... maybe if there was audio in/out so it could be used as an effect for GB? Maybe the audio filter stuff should just be simplified and folded into the drum machine.
-
-* Make a src/ directory?
 
 * The grammar individuals now (as before) generate an int to choose a production, rather than choosing a production directly. That's because a production is not transparent to JSON-encoding, so a save/load round-trip doesn't work. This could indicate we need a PTO fix, or some other solution.
 

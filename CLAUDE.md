@@ -57,7 +57,7 @@ Source is grouped by role (all plain `<script>` globals — no build step, no mo
 | `framework/` | `Anemone.js` (`InteractiveEAFramework` — orchestration, EA/MIDI/settings/extensions, grid render + selection, type switching), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link), plus four **partial-class files** merged onto `InteractiveEAFramework.prototype`: `Shared3D.js` (shared THREE scene/renderer + mesh/camera/animate), `Lightbox.js` (zoom overlay, grid-edit wiring, 3D rotation, transport helpers), `ExportManager.js` (PNG/STL/WAV/MIDI + bulk export + PNG-load/placement + toast), `Hotkeys.js` (the declarative `HOTKEYS` table + dispatcher, which the `?` help overlay also reads) |
 | `individuals/` | every concrete `*Individual.js` plus the `RadialSurface3DIndividual.js` base |
 | `services/` | app-level `window.*` singletons: `Palette`, `Photo`, `AudioClip`, `ExpressionCompiler`, `MIDISync`, `OSCInput`, `SITLanguage` |
-| `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `CodeEditorUI`) and `PerformanceControls.js` |
+| `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `CodeEditorUI`), `PerformanceControls.js`, and the two **app-wide** panels the framework mounts itself rather than attaching per type: `HelpOverlayUI` (the `?` overlay) and `EvolutionControlsUI` (the Evolution panel) |
 | `export/` | `ImageSave`, `MeshExport`, `AudioExport`, `MidiExport`, `ExportNaming` |
 | `representations/` | `PTORepresentation`, `TreeRepresentation`, `DAGRepresentation`, `Grammar.js` |
 | `modalities/` | `Canvas2DModality`, `MIDIModality`, `AudioModality`, `ThreeDModality` |
