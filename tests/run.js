@@ -121,6 +121,35 @@ console.log('\nFramework hotkey table + partial-class split:');
         }
     });
 
+    check('undo/redo step through the existing generation history', () => {
+        // stepGeneration is pure framework logic over ea.history, so it can be
+        // exercised on a stub `this` without a DOM.
+        const toasts = [];
+        const fake = {
+            ea: {
+                generation: 3,
+                history: [{ generation: 0 }, { generation: 1 }, { generation: 2 }, { generation: 3 }],
+                loadGeneration(i) { this.generation = this.history[i].generation; },
+            },
+            currentlyPlaying: null,
+            render() {},
+            showToast(m) { toasts.push(m); },
+        };
+        const step = (d) => F.prototype.stepGeneration.call(fake, d);
+        Object.assign(fake, {
+            goToHistoryIndex: F.prototype.goToHistoryIndex,
+            _currentHistoryIndex: F.prototype._currentHistoryIndex,
+        });
+        assert(step(-1) === true && fake.ea.generation === 2, 'undo should land on generation 2');
+        assert(step(-1) === true && fake.ea.generation === 1, 'undo should keep stepping back');
+        assert(step(1) === true && fake.ea.generation === 2, 'redo should step forward again');
+        fake.ea.generation = 0;
+        assert(step(-1) === false, 'undo at generation 0 must be a no-op');
+        assert(toasts[toasts.length - 1] === 'No earlier generation', 'expected the no-op toast');
+        fake.ea.generation = 3;
+        assert(step(1) === false, 'redo past the newest generation must be a no-op');
+    });
+
     check('every binding can appear in the ? overlay, and ? itself is bound', () => {
         // The overlay is generated from this table, so a binding is documented iff
         // it carries the fields the overlay renders. (The well-formed check above

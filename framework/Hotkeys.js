@@ -115,6 +115,10 @@
         { keys: ['.', '>'], group: 'Playback', when: (c) => !c.animatedPattern, desc: 'Play / pause sound (or 3D rotation)',
           run: (fw, e) => { e.preventDefault(); fw.togglePlayPauseOrRotation(); } },
 
+        { keys: ['z', 'u'], group: 'General', desc: 'Undo evolve (back one generation)',
+          run: (fw) => fw.stepGeneration(-1) },
+        { keys: ['Z', 'U'], group: 'General', desc: 'Redo (forward one generation)',
+          run: (fw) => fw.stepGeneration(1) },
         { keys: ['?'], group: 'General', desc: 'Show / hide this shortcuts list',
           run: (fw, e) => { e.preventDefault(); fw.toggleHelp(); } },
         { keys: [' '], group: 'General', desc: 'Evolve next generation',

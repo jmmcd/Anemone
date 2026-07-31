@@ -619,18 +619,44 @@ class InteractiveEAFramework {
                 span.classList.add('current');
             }
             
-            span.addEventListener('click', () => {
-                // Stop any sound before swapping in a different generation.
-                if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
-                    this.currentlyPlaying.stopMIDI();
-                }
-                this.currentlyPlaying = null;
-                this.ea.loadGeneration(index);
-                this.render();
-            });
-            
+            span.addEventListener('click', () => this.goToHistoryIndex(index));
+
             this.historyList.appendChild(span);
         });
+    }
+
+    // Load a stored generation. The single path for time travel — the history
+    // strip clicks it, and the undo/redo hotkeys step through it.
+    goToHistoryIndex(index) {
+        if (index < 0 || index >= this.ea.history.length) return false;
+        // Stop any sound before swapping in a different generation.
+        if (this.currentlyPlaying && this.currentlyPlaying.stopMIDI) {
+            this.currentlyPlaying.stopMIDI();
+        }
+        this.currentlyPlaying = null;
+        this.ea.loadGeneration(index);
+        this.render();
+        return true;
+    }
+
+    // Where in the history the displayed population came from. loadGeneration
+    // restores `ea.generation`, so the generation number identifies the entry;
+    // fall back to the newest entry (the live population, before any time travel).
+    _currentHistoryIndex() {
+        const i = this.ea.history.findIndex((h) => h.generation === this.ea.generation);
+        return i === -1 ? this.ea.history.length - 1 : i;
+    }
+
+    // Undo / redo an evolve step (the z / u and Z hotkeys). No new state: this is
+    // the existing generation history, stepped one entry at a time.
+    stepGeneration(delta) {
+        const target = this._currentHistoryIndex() + delta;
+        if (!this.goToHistoryIndex(target)) {
+            this.showToast(delta < 0 ? 'No earlier generation' : 'No later generation');
+            return false;
+        }
+        this.showToast(`Generation ${this.ea.generation}`);
+        return true;
     }
     
     // Build the <select> options from the registry (INDIVIDUAL_TYPES), skipping
