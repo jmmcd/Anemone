@@ -407,51 +407,34 @@ class InteractiveEAFramework {
         this.shared3D = null;
     }
     
+    // Attach UI drawer panels based on the current type's capability flags. Each
+    // entry names a boolean capability method the individual may declare and a
+    // factory that builds the panel; adding a panel is a one-line addition here.
+    // (See CLAUDE.md > Extension System. CodeEditorUI has its own guard below —
+    // it keys on editableSections() rather than a usesX() flag.)
+    static PANELS = [
+        { flag: 'usesColorPalette',        make: (fw) => new PaletteControlUI(fw) },
+        { flag: 'usesPhoto',               make: (fw) => new PhotoControlUI(fw) },
+        { flag: 'usesAudio',               make: (fw) => new AudioControlUI(fw) },
+        { flag: 'usesPerformanceControls', make: (fw, s) => new PerformanceControlsUI(fw, s.performanceDials()) },
+        { flag: 'usesMIDISync',            make: (fw) => new MIDISyncUI(fw) },
+        { flag: 'usesOSCInput',            make: (fw) => new OSCInputUI(fw) },
+    ];
+
     loadExtensions() {
-        // Attach the color-palette UI panel for individuals that use a palette.
-        // The capability is declared per individual via usesColorPalette().
         const sample = this.ea && this.ea.population && this.ea.population[0];
-        if (sample && typeof sample.usesColorPalette === 'function' && sample.usesColorPalette()) {
-            this.uiExtensions.push(new PaletteControlUI(this));
+        if (!sample) return;
+
+        for (const { flag, make } of InteractiveEAFramework.PANELS) {
+            if (typeof sample[flag] === 'function' && sample[flag]()) {
+                this.uiExtensions.push(make(this, sample));
+            }
         }
 
-        // Attach the photo-loading UI panel for individuals that filter a shared
-        // photo (usesPhoto()), so the user can load/replace it mid-evolution.
-        if (sample && typeof sample.usesPhoto === 'function' && sample.usesPhoto()) {
-            this.uiExtensions.push(new PhotoControlUI(this));
-        }
-
-        // Attach the audio-loading UI panel for individuals that filter a shared
-        // audio clip (usesAudio()), so the user can load/replace it mid-evolution.
-        if (sample && typeof sample.usesAudio === 'function' && sample.usesAudio()) {
-            this.uiExtensions.push(new AudioControlUI(this));
-        }
-
-        // Attach the global Performance panel (tempo/swing/…) for step-sequencer
-        // individuals that declare usesPerformanceControls() — lets the user drive the
-        // whole population from one place (e.g. lock a tempo to jam over). The type
-        // chooses which dials to show via performanceDials().
-        if (sample && typeof sample.usesPerformanceControls === 'function' && sample.usesPerformanceControls()) {
-            this.uiExtensions.push(new PerformanceControlsUI(this, sample.performanceDials()));
-        }
-
-        // Attach the MIDI Clock Sync panel for individuals whose sound has a tempo
-        // (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs) that can
-        // lock to an external MIDI clock (e.g. GarageBand) — see usesMIDISync().
-        if (sample && typeof sample.usesMIDISync === 'function' && sample.usesMIDISync()) {
-            this.uiExtensions.push(new MIDISyncUI(this));
-        }
-
-        // Attach the OSC Input panel for individuals that take a live OSC feature
-        // stream (usesOSCInput() — EEGSonificationIndividual) so the user can connect
-        // window.OSCInput to a sender (e.g. scripts/eeg-osc-sender.js).
-        if (sample && typeof sample.usesOSCInput === 'function' && sample.usesOSCInput()) {
-            this.uiExtensions.push(new OSCInputUI(this));
-        }
-
-        // Attach the code-editor panel for individuals that expose editable code
-        // sections (all PTO-backed types do — at minimum their generator).
-        if (sample && typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
+        // The code-editor panel is attached for every individual that exposes
+        // editable code sections (all PTO-backed types do — at minimum their
+        // generator), so it keys on editableSections() rather than a usesX() flag.
+        if (typeof sample.editableSections === 'function' && sample.editableSections().length > 0) {
             this.uiExtensions.push(new CodeEditorUI(this));
         }
     }
@@ -660,6 +643,7 @@ class InteractiveEAFramework {
 
         // Individual type switching: changing the selection switches immediately.
         this.individualTypeSelect = document.getElementById('individual-type-select');
+        this.populateIndividualTypeSelector();
 
         // Set current individual type in selector
         this.updateIndividualTypeSelector();
@@ -1437,6 +1421,23 @@ class InteractiveEAFramework {
         });
     }
     
+    // Build the <select> options from the registry (INDIVIDUAL_TYPES), skipping
+    // hidden entries. The menu order is the registry order.
+    populateIndividualTypeSelector() {
+        if (!this.individualTypeSelect) return;
+        const types = (typeof INDIVIDUAL_TYPES !== 'undefined')
+            ? INDIVIDUAL_TYPES
+            : (typeof window !== 'undefined' && window.INDIVIDUAL_TYPES) || [];
+        this.individualTypeSelect.innerHTML = '';
+        for (const t of types) {
+            if (t.hidden) continue;
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            opt.textContent = t.label;
+            this.individualTypeSelect.appendChild(opt);
+        }
+    }
+
     updateIndividualTypeSelector() {
         if (this.individualTypeSelect) {
             this.individualTypeSelect.value = this.individualClass.name;
@@ -1446,46 +1447,30 @@ class InteractiveEAFramework {
     // Map of individual type names → constructors. Shared by the type selector,
     // the load-PNG path (which looks a type up by its saved name), and the
     // deep-link resolver. Static so main.js can resolve a URL token to a class
-    // before the framework is constructed.
+    // before the framework is constructed. Derived from the single source of
+    // truth, INDIVIDUAL_TYPES (IndividualRegistry.js).
     individualTypeMap() { return InteractiveEAFramework.individualTypeMap(); }
 
+    // Resolve a registered type name to its class. Class declarations in classic
+    // <script> files are global *lexical* bindings, not properties of `window`,
+    // so `window[name]` won't find them; a global-scope Function body can. The
+    // name comes from our own registry and is identifier-checked before use.
+    static classForName(name) {
+        if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null;
+        try { return new Function('return (typeof ' + name + " !== 'undefined') ? " + name + ' : null;')(); }
+        catch (_) { return null; }
+    }
+
     static individualTypeMap() {
-        return {
-            'PatternIndividual': PatternIndividual,
-            'PatternGrammarIndividual': PatternGrammarIndividual,
-            'AnimatedPatternIndividual': AnimatedPatternIndividual,
-            'PolarCurveIndividual': PolarCurveIndividual,
-            'ShapesIndividual': ShapesIndividual,
-            'PhotoFilterIndividual': PhotoFilterIndividual,
-            'AntRenderingIndividual': AntRenderingIndividual,
-            'AudioFilterIndividual': AudioFilterIndividual,
-            'DrumMachineIndividual': DrumMachineIndividual,
-            'GridIndividual': GridIndividual,
-            'AnemoneIndividual': AnemoneIndividual,
-            'BranchIndividual': BranchIndividual,
-            'LSystemIndividual': LSystemIndividual,
-            'StructuralInformationIndividual': StructuralInformationIndividual,
-            'StructuralInformationContinuousIndividual': StructuralInformationContinuousIndividual,
-            'SITCodeIndividual': SITCodeIndividual,
-            'SITCode3DIndividual': SITCode3DIndividual,
-            'BlindWatchmakerIndividual': BlindWatchmakerIndividual,
-            'SuperShapeIndividual': SuperShapeIndividual,
-            'SuperShape3DIndividual': SuperShape3DIndividual,
-            'PetalSphere3DIndividual': PetalSphere3DIndividual,
-            'FreeSurface3DIndividual': FreeSurface3DIndividual,
-            'WarpedSurface3DIndividual': WarpedSurface3DIndividual,
-            'JennPolytopeIndividual': JennPolytopeIndividual,
-            'EndlessFormsIndividual': EndlessFormsIndividual,
-            'RobotIndividual': RobotIndividual,
-            'WonkyGuysIndividual': WonkyGuysIndividual,
-            'HoxCreatureIndividual': HoxCreatureIndividual,
-            'PenroseIndividual': PenroseIndividual,
-            'PSystemIndividual': PSystemIndividual,
-            'SheepIndividual': SheepIndividual,
-            'MelodyIndividual': MelodyIndividual,
-            'MouseMusicIndividual': MouseMusicIndividual,
-            'EEGSonificationIndividual': EEGSonificationIndividual
-        };
+        const types = (typeof INDIVIDUAL_TYPES !== 'undefined')
+            ? INDIVIDUAL_TYPES
+            : (typeof window !== 'undefined' && window.INDIVIDUAL_TYPES) || [];
+        const map = {};
+        for (const t of types) {
+            const cls = InteractiveEAFramework.classForName(t.name);
+            if (cls) map[t.name] = cls;
+        }
+        return map;
     }
 
     // Resolve a deep-link token (e.g. "DrumMachine", "drummachineindividual",

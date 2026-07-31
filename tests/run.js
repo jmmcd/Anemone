@@ -10,7 +10,9 @@
  *   - the render path (visualize() against a stubbed canvas, before and after mutation)
  * Plus targeted regression tests (e.g. Sheep neural-network phenotype).
  */
-const { load, INDIVIDUAL_CLASSES } = require('./harness');
+const fs = require('fs');
+const path = require('path');
+const { load, INDIVIDUAL_CLASSES, INDIVIDUAL_TYPES } = require('./harness');
 
 let passed = 0, failed = 0;
 const failures = [];
@@ -32,6 +34,46 @@ function assert(cond, msg) {
 }
 
 const { classes, makeCanvas, SITLanguage } = load();
+
+// --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
+// These tests convert the previously-silent "forgot to register / forgot a
+// <script> tag" failures into loud test failures. See CLAUDE.md > Testing.
+console.log('\nIndividual-type registry:');
+{
+    const ROOT = path.join(__dirname, '..');
+    // Concrete individual classes only; these two are abstract base classes that
+    // match *Individual.js but are intentionally not registered.
+    const ABSTRACT_BASES = new Set(['Individual', 'RadialSurface3DIndividual']);
+
+    check('every registry entry resolves to an Individual subclass', () => {
+        for (const t of INDIVIDUAL_TYPES) {
+            const C = classes[t.name];
+            assert(typeof C === 'function', `registry entry ${t.name} is not a loaded class`);
+            assert(typeof t.label === 'string' && t.label.length > 0, `${t.name} needs a label`);
+        }
+    });
+
+    check('every *Individual.js on disk is registered (no orphan types)', () => {
+        const names = new Set(INDIVIDUAL_TYPES.map(t => t.name));
+        const skipDirs = new Set(['.git', 'node_modules', 'vendor', 'tests', 'scripts', 'movies', 'data', 'img', 'assets']);
+        const orphans = [];
+        (function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (entry.isDirectory()) { if (!skipDirs.has(entry.name)) walk(path.join(dir, entry.name)); continue; }
+                const m = entry.name.match(/^(.+Individual)\.js$/);
+                if (!m || ABSTRACT_BASES.has(m[1]) || names.has(m[1])) continue;
+                orphans.push(entry.name);
+            }
+        })(ROOT);
+        assert(orphans.length === 0, `unregistered individual file(s): ${orphans.join(', ')} — add to IndividualRegistry.js`);
+    });
+
+    check('every registry entry has a <script> tag in index.html', () => {
+        const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+        const missing = INDIVIDUAL_TYPES.filter(t => !new RegExp(`src=["'][^"']*${t.name}\\.js["']`).test(html));
+        assert(missing.length === 0, `no <script> tag for: ${missing.map(t => t.name).join(', ')}`);
+    });
+}
 
 // --- Genetic operators ---
 console.log('\nGenetic operators (construct / mutate / crossover / clone):');

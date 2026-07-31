@@ -35,6 +35,7 @@ const SOURCES = [
     'MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
     'PerformanceControls.js',   // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
     'EvolutionaryAlgorithm.js',
+    'IndividualRegistry.js',    // window.INDIVIDUAL_TYPES (single source of truth for the type list)
     // Individuals (base classes before their subclasses).
     'GridIndividual.js',
     'ShapesIndividual.js',
@@ -75,43 +76,11 @@ const SOURCES = [
     'PSystemIndividual.js',
 ];
 
-// Every concrete individual class, in the order the UI lists them.
-const INDIVIDUAL_CLASSES = [
-    'PatternIndividual',
-    'PatternGrammarIndividual',
-    'AnimatedPatternIndividual',
-    'PolarCurveIndividual',
-    'ShapesIndividual',
-    'PhotoFilterIndividual',
-    'AntRenderingIndividual',
-    'GridIndividual',
-    'SuperShapeIndividual',
-    'SuperShape3DIndividual',
-    'PetalSphere3DIndividual',
-    'FreeSurface3DIndividual',
-    'WarpedSurface3DIndividual',
-    'JennPolytopeIndividual',
-    'EndlessFormsIndividual',
-    'AnemoneIndividual',
-    'BranchIndividual',
-    'LSystemIndividual',
-    'StructuralInformationIndividual',
-    'StructuralInformationContinuousIndividual',
-    'SITCodeIndividual',
-    'SITCode3DIndividual',
-    'BlindWatchmakerIndividual',
-    'RobotIndividual',
-    'WonkyGuysIndividual',
-    'HoxCreatureIndividual',
-    'SheepIndividual',
-    'PenroseIndividual',
-    'PSystemIndividual',
-    'MelodyIndividual',
-    'DrumMachineIndividual',
-    'AudioFilterIndividual',
-    'MouseMusicIndividual',
-    'EEGSonificationIndividual',
-];
+// Every concrete individual class name, derived from the single source of truth
+// (IndividualRegistry.js) rather than hand-maintained here. tests/run.js asserts
+// each also has a <script> tag and resolves to an Individual subclass.
+const INDIVIDUAL_TYPES = require('../IndividualRegistry.js');
+const INDIVIDUAL_CLASSES = INDIVIDUAL_TYPES.map(t => t.name);
 
 /** A no-op 2D canvas context that records nothing but never throws. */
 function makeContext() {
@@ -264,4 +233,4 @@ function load() {
     };
 }
 
-module.exports = { load, makeCanvas, INDIVIDUAL_CLASSES };
+module.exports = { load, makeCanvas, INDIVIDUAL_CLASSES, INDIVIDUAL_TYPES };

@@ -53,42 +53,8 @@
 
         <section class="drawer-section">
             <h3>Individual Type</h3>
-            <select id="individual-type-select">
-                <option value="PatternIndividual">Pattern</option>
-                <option value="PatternGrammarIndividual">Pattern (Grammar)</option>
-                <!-- AnimatedPatternIndividual hidden: too heavy for mobile/old hardware -->
-                <option value="PolarCurveIndividual">Polar Curve</option>
-                <option value="ShapesIndividual">Shapes</option>
-                <option value="PhotoFilterIndividual">Photo Filter</option>
-                <option value="AntRenderingIndividual">Ant Rendering</option>
-                <option value="AudioFilterIndividual">Audio Filter</option>
-                <option value="DrumMachineIndividual">Drum Machine</option>
-                <option value="GridIndividual">Grid</option>
-                <option value="SuperShapeIndividual">Supershape</option>
-                <option value="SuperShape3DIndividual">Supershape 3D</option>
-                <option value="PetalSphere3DIndividual">Petal Sphere 3D</option>
-                <option value="FreeSurface3DIndividual">Free Surface 3D</option>
-                <option value="WarpedSurface3DIndividual">Warped Surface 3D</option>
-                <option value="JennPolytopeIndividual">Jenn Polytope 4D</option>
-                <option value="EndlessFormsIndividual">Endless Forms</option>
-                <option value="AnemoneIndividual" selected>Anemone</option>
-                <option value="BranchIndividual">Branch</option>
-                <option value="LSystemIndividual">L-System</option>
-                <option value="StructuralInformationIndividual">Structural Information</option>
-                <option value="StructuralInformationContinuousIndividual">Structural Information (continuous)</option>
-                <option value="SITCodeIndividual">Leeuwenberg Code 2D</option>
-                <option value="SITCode3DIndividual">Leeuwenberg Code 3D</option>
-                <option value="BlindWatchmakerIndividual">Blind Watchmaker</option>
-                <option value="RobotIndividual">Robot</option>
-                <option value="WonkyGuysIndividual">Wonky Guys</option>
-                <option value="HoxCreatureIndividual">Bug</option>
-                <option value="SheepIndividual">Sheep</option>
-                <option value="PenroseIndividual">Penrose</option>
-                <option value="PSystemIndividual">P-System</option>
-                <option value="MelodyIndividual">Melody Grid</option>
-                <option value="MouseMusicIndividual">Mouse Music</option>
-                <option value="EEGSonificationIndividual">EEG Sonification</option>
-            </select>
+            <!-- Options are built at startup from INDIVIDUAL_TYPES (IndividualRegistry.js). -->
+            <select id="individual-type-select"></select>
         </section>
 
         <section class="drawer-section" id="palette-section">
@@ -207,6 +173,7 @@
     <script src="PenroseIndividual.js"></script>
     <script src="PSystemIndividual.js"></script>
     <script src="EvolutionaryAlgorithm.js"></script>
+    <script src="IndividualRegistry.js"></script>
     <script src="Anemone.js"></script>
     <script src="main.js"></script>
 </body>
