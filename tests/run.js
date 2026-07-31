@@ -669,8 +669,20 @@ console.log('\nThe paper\'s figures (tests/paper-figures.js):');
 }
 
 console.log('\nLeeuwenberg code individuals:');
+// A raw `new` is NOT what the app shows: the EA retries construction until
+// validate() passes (createValidIndividual), and SITCode's validate() rejects
+// degenerate codes — fewer than 6 marks, or a figure collapsed to a sliver. So
+// assert this type's drawing invariants on a *validated* individual, as the app
+// would; otherwise the ~1-in-20 degenerate draw makes the test flaky.
+function validInstance(Cls, attempts = 100) {
+    for (let i = 0; i < attempts; i++) {
+        const ind = new Cls();
+        if (ind.validate()) return ind;
+    }
+    throw new Error(`no valid ${Cls.name} in ${attempts} attempts`);
+}
 check('both types draw a figure, and the 3D one goes spatial', () => {
-    const flat = new classes.SITCodeIndividual();
+    const flat = validInstance(classes.SITCodeIndividual);
     assert(flat.marks().length > 0, '2D code drew nothing');
     assert(flat.unitDegrees() > 0, 'no angular unit');
 
@@ -868,6 +880,80 @@ check('renderCached skips re-render until genome or size changes', () => {
     assert(calls === 3, 'a cleared cache should re-render');
 });
 
+// --- Evolution controls (population size + mutation rate) ---
+console.log('\nEvolution controls:');
+{
+    // The EA class comes from the sandbox (it is a plain <script> global).
+    const EvolutionaryAlgorithm = require('./harness').load
+        ? load().EvolutionaryAlgorithm : null;
+    const mkEA = () => new EvolutionaryAlgorithm(classes.GridIndividual, 16);
+
+    check('population sizes offered are perfect squares', () => {
+        for (const n of EvolutionaryAlgorithm.POPULATION_SIZES) {
+            const r = Math.sqrt(n);
+            assert(r === Math.round(r), `${n} is not a perfect square — the grid would be ragged`);
+        }
+    });
+
+    check('shrinking the population keeps the survivors (it is not a reset)', () => {
+        const ea = mkEA();
+        const keep = ea.population.slice(0, 9).map(i => i.id);
+        assert(ea.setPopulationSize(9) === true, 'resize should report a change');
+        assert(ea.population.length === 9, `expected 9, got ${ea.population.length}`);
+        assert(ea.population.map(i => i.id).join() === keep.join(), 'the kept individuals must be the originals');
+    });
+
+    check('growing the population keeps the existing individuals and pads', () => {
+        const ea = mkEA();
+        const before = ea.population.map(i => i.id);
+        ea.setPopulationSize(25);
+        assert(ea.population.length === 25, `expected 25, got ${ea.population.length}`);
+        assert(ea.population.slice(0, 16).map(i => i.id).join() === before.join(),
+            'the first 16 must be the individuals already evolved');
+        assert(new Set(ea.population.map(i => i.id)).size === 25, 'padded individuals must be distinct');
+    });
+
+    check('a dropped individual stops being a parent', () => {
+        const ea = mkEA();
+        ea.toggleLike(ea.population[15]);            // like one that shrinking will drop
+        ea.toggleLike(ea.population[0]);             // ...and one that survives
+        assert(ea.selectedIndividuals.length === 2, 'setup: two likes');
+        ea.setPopulationSize(9);
+        assert(ea.selectedIndividuals.length === 1, 'the dropped individual must be deselected');
+        assert(ea.selectedIndividuals[0].id === ea.population[0].id, 'the survivor stays liked');
+    });
+
+    check('resizing to the same size is a no-op', () => {
+        const ea = mkEA();
+        assert(ea.setPopulationSize(16) === false, 'no change should be reported');
+    });
+
+    check('the mutation rate is a parameter the EA actually uses', () => {
+        const ea = mkEA();
+        assert(ea.mutationRate === EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE, 'should start at the default');
+        // A rate of 0 must leave a mutant identical to its parent; a high rate must not.
+        const parent = ea.population[0];
+        const shape = (ind) => JSON.stringify(ind.phenotype);
+        ea.mutationRate = 0;
+        assert(shape(ea.createValidMutant(parent)) === shape(parent), 'rate 0 should produce no change');
+        ea.mutationRate = 1;
+        let differed = false;
+        for (let i = 0; i < 5 && !differed; i++) {
+            differed = shape(ea.createValidMutant(parent)) !== shape(parent);
+        }
+        assert(differed, 'rate 1 should change the phenotype');
+    });
+
+    check('evolve honours the population size that was set', () => {
+        const ea = mkEA();
+        ea.setPopulationSize(9);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 9, `evolve produced ${ea.population.length}, expected 9`);
+    });
+}
+
 // --- Active intervention (direct manipulation → heritable genome) ---
 // The edit gesture belongs to the individual (base Individual.beginEditSession
 // implements the step-grid one); the framework only supplies session callbacks.
@@ -904,6 +990,15 @@ console.log('\nActive intervention (edit sessions):');
             }
         }
         throw new Error(`no canvas point maps to cell ${c},${s}`);
+    }
+
+    // An on cell anywhere in the grid. Both grids are sparse — Melody especially —
+    // so a fixed corner is not reliably populated; turn one on if there is none.
+    function anOnCell(ind) {
+        for (let c = 0; c < 8; c++)
+            for (let s = 0; s < 16; s++) if (ind.cellOn(c, s)) return { c, s };
+        ind.setCellHit(0, 0, true);
+        return { c: 0, s: 0 };
     }
 
     check('the editable flag defaults off, and on for the step sequencers', () => {
@@ -976,10 +1071,7 @@ console.log('\nActive intervention (edit sessions):');
             const canvas = makeEditCanvas();
             const end = ind.beginEditSession(canvas, {});
             // Find an on cell to drag.
-            let on = null;
-            for (let c = 0; c < 8 && !on; c++)
-                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
-            assert(on, 'expected at least one on cell');
+            const on = anOnCell(ind);
             const v0 = ind.cellVel(on.c, on.s);
             const { x, y } = cellCentre(ind, canvas, on.c, on.s);
             canvas.dispatch('pointerdown', x, y);
@@ -997,9 +1089,7 @@ console.log('\nActive intervention (edit sessions):');
             const ind = new classes[type]();
             const canvas = makeEditCanvas();
             const end = ind.beginEditSession(canvas, {});
-            let on = null;
-            for (let c = 0; c < 8 && !on; c++)
-                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
+            const on = anOnCell(ind);
             ind.setCellVel(on.c, on.s, 0.8);                 // start from a known level
             const { x, y } = cellCentre(ind, canvas, on.c, on.s);
             canvas.dispatch('pointerdown', x, y);
@@ -1016,9 +1106,7 @@ console.log('\nActive intervention (edit sessions):');
             const ind = new classes[type]();
             const canvas = makeEditCanvas();
             const end = ind.beginEditSession(canvas, {});
-            let on = null;
-            for (let c = 0; c < 8 && !on; c++)
-                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
+            const on = anOnCell(ind);
             const { x, y } = cellCentre(ind, canvas, on.c, on.s);
             canvas.dispatch('pointerdown', x, y);
             canvas.dispatch('pointermove', x + 2, y + 3);    // inside the 6px dead zone

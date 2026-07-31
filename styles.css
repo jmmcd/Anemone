@@ -80,7 +80,10 @@ body {
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /* Column counts are published by the framework (applyGridColumns) so the
+       population-size control can make the grid square; each breakpoint keeps
+       its own cap. */
+    grid-template-columns: repeat(var(--grid-cols-sm, 2), 1fr);
     gap: 12px;
 }
 
@@ -556,11 +559,11 @@ select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------------------------------------------------------------- Responsive */
 @media (min-width: 600px) {
-    .grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid { grid-template-columns: repeat(var(--grid-cols-md, 3), 1fr); gap: 14px; }
 }
 
 @media (min-width: 900px) {
-    .grid { grid-template-columns: repeat(4, 1fr); gap: 15px; }
+    .grid { grid-template-columns: repeat(var(--grid-cols, 4), 1fr); gap: 15px; }
     .app-title { font-size: 20px; }
 }
 
@@ -586,3 +589,7 @@ select:focus { outline: none; border-color: var(--accent); }
     .individual:hover .zoom-btn { display: flex; }
     .individual:hover { transform: scale(1.02); }
 }
+
+/* Evolution drawer panel (population size + mutation rate). */
+.evo-row { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; gap: 8px; margin-top: 10px; }
+.evo-row output { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; opacity: 0.8; min-width: 82px; }

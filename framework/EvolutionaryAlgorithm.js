@@ -2,6 +2,13 @@ class EvolutionaryAlgorithm {
     constructor(individualClass, populationSize = 16, midiOutput = null) {
         this.individualClass = individualClass;
         this.populationSize = populationSize;
+        // Per-offspring mutation rate, passed to Individual.mutate(rate). With
+        // PTO's position-wise ("1/n type") mutation this is the probability each
+        // trace entry mutates, so the caller controls mutation strength — which
+        // matters in interactive EC, where the user is the fitness function and
+        // wants to say "explore harder" or "refine". Surfaced by the Evolution
+        // drawer panel; takes effect on the next evolve.
+        this.mutationRate = EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE;
         this.midiOutput = midiOutput;
         this.population = [];
         this.generation = 0;
@@ -23,6 +30,26 @@ class EvolutionaryAlgorithm {
             this.population.push(individual);
         }
         this.saveGeneration();
+    }
+
+    // Resize the population, KEEPING the individuals the user has evolved: shrink
+    // by truncation, grow by padding with fresh randoms. A full re-initialisation
+    // would throw away the run, which is not what changing a grid size means.
+    setPopulationSize(n) {
+        const size = Math.max(1, Math.round(n));
+        if (size === this.populationSize) return false;
+        this.populationSize = size;
+        if (this.population.length > size) {
+            const dropped = this.population.slice(size);
+            dropped.forEach(ind => { if (ind.stopMIDI) ind.stopMIDI(); });
+            this.population = this.population.slice(0, size);
+            // A dropped individual must not stay a parent for the next evolve.
+            const kept = new Set(this.population.map(ind => ind.id));
+            this.selectedIndividuals = this.selectedIndividuals.filter(ind => kept.has(ind.id));
+        } else {
+            while (this.population.length < size) this.population.push(this.createValidIndividual());
+        }
+        return true;
     }
 
     createValidIndividual() {
@@ -49,8 +76,8 @@ class EvolutionaryAlgorithm {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const [child1, child2] = parent1.crossover(parent2);
-            child1.mutate(0.1);
-            child2.mutate(0.1);
+            child1.mutate(this.mutationRate);
+            child2.mutate(this.mutationRate);
 
             if (child1.setMidiOutput && this.midiOutput) {
                 child1.setMidiOutput(this.midiOutput);
@@ -75,7 +102,7 @@ class EvolutionaryAlgorithm {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const child = parent.clone();
-            child.mutate(0.1);
+            child.mutate(this.mutationRate);
 
             if (child.setMidiOutput && this.midiOutput) {
                 child.setMidiOutput(this.midiOutput);
@@ -231,3 +258,8 @@ class EvolutionaryAlgorithm {
         return totalFitness / this.population.length;
     }
 }
+// Evolution parameters the Evolution drawer panel exposes. The default mutation
+// rate is the value the app has always used; the population sizes are perfect
+// squares so the grid stays square (see --grid-cols in styles.css).
+EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE = 0.1;
+EvolutionaryAlgorithm.POPULATION_SIZES = [9, 16, 25];

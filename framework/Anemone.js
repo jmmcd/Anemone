@@ -299,6 +299,13 @@ class InteractiveEAFramework {
         this.helpOverlay = (typeof HelpOverlayUI !== 'undefined') ? new HelpOverlayUI(this) : null;
         this.helpBtn = document.getElementById('help-btn');
         if (this.helpBtn) this.helpBtn.addEventListener('click', () => this.toggleHelp());
+        // Evolution panel (population size + mutation rate) — also app-wide, so
+        // mounted here rather than attached per type by loadExtensions.
+        if (typeof EvolutionControlsUI !== 'undefined') {
+            this.evolutionControls = new EvolutionControlsUI(this);
+            this.evolutionControls.mount(document.getElementById('evolution-panel'));
+        }
+        this.applyGridColumns();
 
         // Load-PNG-to-individual chrome
         this.loadPngBtn = document.getElementById('load-png-btn');
@@ -623,6 +630,27 @@ class InteractiveEAFramework {
 
             this.historyList.appendChild(span);
         });
+    }
+
+    // Change the grid/population size, keeping the evolved individuals (the EA
+    // truncates or pads — it is not a reset), then re-lay-out and redraw.
+    setPopulationSize(n) {
+        if (!this.ea.setPopulationSize(n)) return;
+        this.applyGridColumns();
+        this.render();
+        this.showToast(`Population ${this.ea.populationSize}`);
+    }
+
+    // Publish the column counts the grid should use, as CSS custom properties
+    // read by styles.css per breakpoint. The wide layout gets the exact square
+    // (√n), narrower ones keep their 3 and 2 columns unless the population is
+    // smaller than that — so a small population never leaves a ragged last row.
+    applyGridColumns() {
+        if (!this.grid) return;
+        const cols = Math.max(1, Math.round(Math.sqrt(this.ea.populationSize)));
+        this.grid.style.setProperty('--grid-cols', cols);
+        this.grid.style.setProperty('--grid-cols-md', Math.min(3, cols));
+        this.grid.style.setProperty('--grid-cols-sm', Math.min(2, cols));
     }
 
     // Load a stored generation. The single path for time travel — the history
