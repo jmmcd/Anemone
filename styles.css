@@ -517,6 +517,9 @@ select:focus { outline: none; border-color: var(--accent); }
     margin: 0 auto 14px;
     border-radius: 8px;
     background: var(--bg);
+    /* Edit sessions read vertical drags (velocity) off this canvas; without this
+       a touch device would scroll the page instead of delivering the gesture. */
+    touch-action: none;
 }
 
 /* ---------------------------------------------------------------- Responsive */

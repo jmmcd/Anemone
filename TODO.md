@@ -15,8 +15,6 @@
 
 * In PhotoFilter the zoom-in re-render has a small issue. The zoom-in can look a bit different because of the different resolution. It is fixable, but unsure whether we want to fix it. For now I will decide that it is a feature not a bug, because the thumbnails are "exaggerated" relative to the real effect, but that is a good thing for thumbnails.
 
-* The drum machine does not allow Velocity editing still TODO (the mechanism works, just needs a UI gesture).
-
 * The drum machine has global controls which override the genome's values for eg tempo and swing. Could extend to accent/push/swingTarget.
 
 

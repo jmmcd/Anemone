@@ -926,6 +926,62 @@ console.log('\nActive intervention (edit sessions):');
             assert(mutant.phenotype && mutant.phenotype.grid, 'the edited genome must survive mutation');
         });
 
+        check(`${type}: a vertical drag on an on-cell edits velocity, not the hit`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            // Find an on cell to drag.
+            let on = null;
+            for (let c = 0; c < 8 && !on; c++)
+                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
+            assert(on, 'expected at least one on cell');
+            const v0 = ind.cellVel(on.c, on.s);
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            assert(ind.cellOn(on.c, on.s), 'pressing an on cell must NOT toggle it immediately');
+            canvas.dispatch('pointermove', x, y - 200);      // drag up = louder
+            canvas.dispatch('pointerup', x, y - 200);
+            end();
+            assert(ind.cellOn(on.c, on.s), 'a velocity drag must leave the cell on');
+            const v1 = ind.cellVel(on.c, on.s);
+            assert(v1 > v0 || v0 === 1, `dragging up should raise velocity (${v0} → ${v1})`);
+            assert(v1 <= 1, 'velocity must stay within 0..1');
+        });
+
+        check(`${type}: dragging down lowers velocity, and it is heritable`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            let on = null;
+            for (let c = 0; c < 8 && !on; c++)
+                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
+            ind.setCellVel(on.c, on.s, 0.8);                 // start from a known level
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointermove', x, y + 300);      // drag down = softer
+            canvas.dispatch('pointerup', x, y + 300);
+            end();
+            const v = ind.cellVel(on.c, on.s);
+            assert(v < 0.8, `dragging down should lower velocity (got ${v})`);
+            assert(v >= 0, 'velocity must not go negative');
+            assert(ind.clone().cellVel(on.c, on.s) === v, 'the velocity edit must be heritable');
+        });
+
+        check(`${type}: a small movement is still a click (dead zone)`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            let on = null;
+            for (let c = 0; c < 8 && !on; c++)
+                for (let s = 0; s < 8 && !on; s++) if (ind.cellOn(c, s)) on = { c, s };
+            const { x, y } = cellCentre(ind, canvas, on.c, on.s);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointermove', x + 2, y + 3);    // inside the 6px dead zone
+            canvas.dispatch('pointerup', x + 2, y + 3);
+            end();
+            assert(ind.cellOn(on.c, on.s) === false, 'a jittery click should still toggle the cell off');
+        });
+
         check(`${type}: a drag paints in one direction and dedupes within a cell`, () => {
             const ind = new classes[type]();
             const canvas = makeEditCanvas();

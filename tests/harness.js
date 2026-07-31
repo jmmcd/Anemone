@@ -93,7 +93,7 @@ function makeContext() {
         putImageData: noop, clearRect: noop, fillRect: noop, strokeRect: noop,
         beginPath: noop, closePath: noop, moveTo: noop, lineTo: noop, rect: noop,
         arc: noop, arcTo: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
-        fill: noop, stroke: noop, save: noop, restore: noop,
+        fill: noop, stroke: noop, save: noop, restore: noop, clip: noop,
         translate: noop, scale: noop, rotate: noop, setLineDash: noop, fillText: noop,
         // settable properties used by the drawing code
         fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt',

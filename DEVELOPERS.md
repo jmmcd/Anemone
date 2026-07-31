@@ -69,7 +69,8 @@ That is what makes the edit *heritable*, which is the whole point: the user's
 intervention becomes genetic material rather than a one-off touch-up.
 
 If your phenotype is a grid you need none of the above: implement
-`isGridEditable()`, `cellAtCanvasXY(canvas, px, py)`, `cellOn(c, s)` and
-`setCellHit(c, s, on)`, and the base `beginEditSession` supplies the
-click-to-toggle / drag-to-paint gesture for you (this is how DrumMachine and
-Melody work).
+`isGridEditable()`, `cellAtCanvasXY(canvas, px, py)`, `cellOn(c, s)`,
+`setCellHit(c, s, on)` and — for velocity — `cellVel(c, s)` / `setCellVel(c, s, v)`,
+and the base `beginEditSession` supplies the whole gesture set for you (this is
+how DrumMachine and Melody work): click toggles, a horizontal-first drag paints,
+and a vertical-first drag on an on-cell rides that cell's velocity up or down.

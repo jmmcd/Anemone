@@ -82,49 +82,103 @@ class Individual {
         return this._gridEditSession(canvas, session);
     }
 
-    // The default session: a step grid. Click toggles a cell; drag paints, with
-    // the first cell setting whether the drag turns cells on or off. Driven
-    // entirely by the type's cellAtCanvasXY/cellOn/setCellHit hooks, so both step
-    // sequencers get it without writing any pointer code.
+    // The default session: a step grid, with two gestures distinguished by the
+    // direction the pointer first moves — the Logic/Ableton drum-editor idiom.
+    //
+    //   click (no movement)          toggle the cell
+    //   horizontal-first drag        paint: the first cell sets whether the drag
+    //                                turns cells on or off
+    //   vertical-first drag on an    velocity: adjust that ONE cell, up louder /
+    //   *on* cell                    down softer, a full canvas height ≈ full range
+    //
+    // Starting on an *off* cell always paints (there is no velocity to drag), so
+    // the toggle fires immediately there; on an on cell the toggle is deferred
+    // until the gesture resolves, or until pointerup makes it a plain click.
+    //
+    // Driven entirely by the type's cellAtCanvasXY/cellOn/setCellHit hooks, plus
+    // cellVel/setCellVel for velocity — so both step sequencers get all of it
+    // without writing any pointer code.
     _gridEditSession(canvas, session = {}) {
         if (!canvas || typeof this.cellAtCanvasXY !== 'function') return () => {};
         const abort = new AbortController();
         const signal = abort.signal;
         const prevCursor = canvas.style.cursor;
         canvas.style.cursor = 'pointer';
+        const DEADZONE = 6;   // client px before a drag commits to a direction
+        const canEditVel = typeof this.setCellVel === 'function' && typeof this.cellVel === 'function';
 
-        let painting = false, paintOn = null, lastKey = null;
+        // mode: null = undecided (pointer is down on an on cell, awaiting direction)
+        let mode = null, paintOn = null, lastKey = null;
+        let startCell = null, startX = 0, startY = 0, startVel = 0;
+
         const cellAt = (e) => {
             const rect = canvas.getBoundingClientRect();
             const px = (e.clientX - rect.left) * (canvas.width / rect.width);
             const py = (e.clientY - rect.top) * (canvas.height / rect.height);
             return this.cellAtCanvasXY(canvas, px, py);
         };
-        const apply = (cell, on) => {
+        const redraw = () => {
+            this.visualize(canvas);
+            if (session.onEdit) session.onEdit();
+        };
+        const paint = (cell, on) => {
             const key = cell.c + ',' + cell.s;
             if (key === lastKey) return;         // don't re-fire within the same cell during a drag
             lastKey = key;
             this.setCellHit(cell.c, cell.s, on);
-            this.visualize(canvas);
-            if (session.onEdit) session.onEdit();
+            redraw();
         };
+
         canvas.addEventListener('pointerdown', (e) => {
             const cell = cellAt(e);
             if (!cell) return;
             e.preventDefault();
             try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
-            painting = true; lastKey = null;
-            paintOn = !this.cellOn(cell.c, cell.s);   // toggle sets the paint direction
-            apply(cell, paintOn);
+            lastKey = null;
+            startCell = cell; startX = e.clientX; startY = e.clientY;
+            if (this.cellOn(cell.c, cell.s) && canEditVel) {
+                // Could still become a velocity drag — wait for the direction.
+                mode = null;
+                startVel = this.cellVel(cell.c, cell.s);
+            } else {
+                mode = 'paint';
+                paintOn = !this.cellOn(cell.c, cell.s);
+                paint(cell, paintOn);
+            }
         }, { signal });
+
         canvas.addEventListener('pointermove', (e) => {
-            if (!painting) return;
-            const cell = cellAt(e);
-            if (cell) apply(cell, paintOn);
+            if (mode === null && startCell) {
+                const dx = e.clientX - startX, dy = e.clientY - startY;
+                if (Math.abs(dx) < DEADZONE && Math.abs(dy) < DEADZONE) return;  // still undecided
+                if (Math.abs(dy) > Math.abs(dx)) {
+                    mode = 'velocity';
+                } else {
+                    mode = 'paint';
+                    paintOn = false;                       // began on an on cell ⇒ erase
+                    paint(startCell, paintOn);
+                }
+            }
+            if (mode === 'velocity') {
+                const rect = canvas.getBoundingClientRect();
+                const dv = -(e.clientY - startY) / (rect.height || canvas.height); // up = louder
+                this.setCellVel(startCell.c, startCell.s, startVel + dv);
+                redraw();
+            } else if (mode === 'paint') {
+                const cell = cellAt(e);
+                if (cell) paint(cell, paintOn);
+            }
         }, { signal });
+
         const end = () => {
-            if (!painting) return;
-            painting = false; lastKey = null;
+            if (mode === null && startCell) {
+                // Pressed and released without committing to a direction: a click.
+                this.setCellHit(startCell.c, startCell.s, !this.cellOn(startCell.c, startCell.s));
+                redraw();
+            } else if (mode === null) {
+                return;                                    // nothing was in progress
+            }
+            mode = null; startCell = null; lastKey = null;
             if (session.onGestureEnd) session.onGestureEnd();
         };
         canvas.addEventListener('pointerup', end, { signal });
