@@ -19,6 +19,8 @@ const HELP_GESTURES = [
     ['Double-click / ⛶', 'Open the zoom view (long-press on touch)'],
     ['Drag in the zoom', 'Edit the phenotype directly, where a type allows it (the step sequencers)'],
     ['Drag up / down', 'On a step sequencer cell: its velocity'],
+    ['Shift+click a tile', 'Lock it — kept unchanged next generation, and not bred from'],
+    ['Padlock button', 'The same lock, for touch (no Shift key)'],
 ];
 
 class HelpOverlayUI {

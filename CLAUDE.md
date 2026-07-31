@@ -83,6 +83,7 @@ The codebase separates three concerns:
 
 ### Evolutionary Algorithm (`EvolutionaryAlgorithm.js`)
 - Direct ("truncation") selection: a click is a binary "like" (`toggleLike`, fitness 0/1); parents are drawn uniformly at random from the liked individuals (`selectParent`), since binary likes give no fitness gradient
+- **Locked (protected) tiles** — a third per-tile state alongside liked (`toggleLock`; Shift+click, or the padlock button on the tile for touch). Where a like says "make more like this", a lock says "keep exactly this": the individual is cloned into the next generation **unchanged** and is **never bred from** (`toggleLike` refuses a locked individual, and locking withdraws an existing like). Locks are carried over *first* and take their slots off the table before elitism and offspring fill the rest, so they shrink the pool being bred rather than crowding out the liked parents' children — and they survive an evolve with no likes at all (the re-rolled generation forms around them). History stores the lock state as a **positional mask**, not ids: `saveGeneration` stores clones and `clone()` mints a fresh id, so an id recorded there would match nothing on the way back.
 - Elitism: first 2 liked individuals cloned into next generation
 - Crossover and mutation fill remaining slots
 - Generation history for time-travel (reload previous generations)

@@ -515,14 +515,30 @@ class InteractiveEAFramework {
             // Single tap/click = toggle like (binary) + make current.
             // …unless we're placing a loaded individual: then a click drops it
             // onto this tile.
-            div.addEventListener('click', () => {
+            div.addEventListener('click', (e) => {
                 if (this.pendingLoad) { this.placeLoadedIndividual(index); return; }
                 if (div._suppressClick) { div._suppressClick = false; return; }
                 this.currentIndividual = individual;
+                // Shift+click locks/unlocks (the pointer-fine gesture; touch users
+                // get the padlock button below).
+                if (e.shiftKey) { this.toggleLock(individual, div); return; }
                 this.ea.toggleLike(individual);
                 div.classList.toggle('selected', individual.selected);
                 this.renderInfo();
             });
+
+            // Lock affordance: like the zoom button, revealed on hover on
+            // pointer-fine, but kept visible once locked so the state is legible.
+            const lockBtn = document.createElement('button');
+            lockBtn.className = 'lock-btn';
+            lockBtn.textContent = individual.locked ? '🔒' : '🔓';
+            lockBtn.setAttribute('aria-label', individual.locked ? 'Unlock tile' : 'Lock tile');
+            lockBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleLock(individual, div);
+            });
+            div.appendChild(lockBtn);
+            div.classList.toggle('locked', !!individual.locked);
 
             // Double-click (pointer-fine) = zoom. The two clicks it also fires
             // toggle like twice (net no change), so like state is preserved.
@@ -630,6 +646,24 @@ class InteractiveEAFramework {
 
             this.historyList.appendChild(span);
         });
+    }
+
+    // Lock / unlock a tile: it is carried into the next generation unchanged and
+    // is not bred from. Locking clears the like (the EA keeps the two states
+    // exclusive), so refresh both bits of tile chrome here.
+    toggleLock(individual, div) {
+        const locked = this.ea.toggleLock(individual);
+        if (div) {
+            div.classList.toggle('locked', locked);
+            div.classList.toggle('selected', !!individual.selected);
+            const btn = div.querySelector('.lock-btn');
+            if (btn) {
+                btn.textContent = locked ? '🔒' : '🔓';
+                btn.setAttribute('aria-label', locked ? 'Unlock tile' : 'Lock tile');
+            }
+        }
+        this.renderInfo();
+        this.showToast(locked ? 'Locked — kept unchanged next generation' : 'Unlocked');
     }
 
     // Change the grid/population size, keeping the evolved individuals (the EA

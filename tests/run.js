@@ -954,6 +954,92 @@ console.log('\nEvolution controls:');
     });
 }
 
+// --- Locked (protected) tiles ---
+// A lock says "keep exactly this" where a like says "make more like this": the
+// individual is carried into the next generation unchanged and is never bred
+// from. The two states are mutually exclusive.
+console.log('\nLocked tiles:');
+{
+    const EvolutionaryAlgorithm = load().EvolutionaryAlgorithm;
+    const mkEA = () => new EvolutionaryAlgorithm(classes.GridIndividual, 16);
+    const shape = (ind) => JSON.stringify(ind.phenotype);
+
+    check('a locked individual survives evolve unchanged', () => {
+        const ea = mkEA();
+        const kept = ea.population[3];
+        const keptShape = shape(kept);
+        ea.toggleLock(kept);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 16, 'population size must be unchanged');
+        const survivor = ea.population.filter(ind => ind.locked);
+        assert(survivor.length === 1, `expected exactly one locked survivor, got ${survivor.length}`);
+        assert(shape(survivor[0]) === keptShape, 'the locked individual was not carried over unchanged');
+    });
+
+    check('locking clears the like, and a locked individual cannot be liked', () => {
+        const ea = mkEA();
+        const ind = ea.population[2];
+        ea.toggleLike(ind);
+        assert(ind.selected === true, 'setup: liked');
+        ea.toggleLock(ind);
+        assert(ind.locked === true && ind.selected === false, 'locking must clear the like');
+        assert(ea.selectedIndividuals.some(i => i.id === ind.id) === false, 'and remove it from the parent pool');
+        assert(ea.toggleLike(ind) === false && ind.selected === false, 'a locked individual must not be likeable');
+    });
+
+    check('selectParent never returns a locked individual', () => {
+        const ea = mkEA();
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.toggleLock(ea.population[1]);          // was liked; locking withdraws it
+        for (let i = 0; i < 50; i++) {
+            assert(ea.selectParent().locked !== true, 'a locked individual was drawn as a parent');
+        }
+    });
+
+    check('locks take slots off the table rather than crowding out elitism', () => {
+        // Two elites + N locks must still fit: the elites are what the user's
+        // likes bought them, so the locks must not push them out of the grid.
+        const ea = mkEA();
+        for (const i of [5, 6, 7]) ea.toggleLock(ea.population[i]);
+        ea.toggleLike(ea.population[0]);
+        ea.toggleLike(ea.population[1]);
+        ea.evolve();
+        assert(ea.population.length === 16, `expected 16, got ${ea.population.length}`);
+        assert(ea.population.filter(i => i.locked).length === 3, 'all three locks should survive');
+    });
+
+    check('locks survive with no likes at all (a fresh generation around them)', () => {
+        const ea = mkEA();
+        const kept = ea.population[4];
+        const keptShape = shape(kept);
+        ea.toggleLock(kept);
+        ea.evolve();                               // no likes → re-initialise
+        const locked = ea.population.filter(i => i.locked);
+        assert(locked.length === 1 && shape(locked[0]) === keptShape,
+            'a lock must be preserved even when the generation is re-rolled');
+        assert(ea.population.length === 16, 'population size must be unchanged');
+    });
+
+    check('history preserves lock state', () => {
+        const ea = mkEA();
+        const wanted = shape(ea.population[7]);
+        ea.toggleLock(ea.population[7]);
+        ea.toggleLike(ea.population[0]);
+        ea.evolve();
+        ea.loadGeneration(0);                      // back to the generation we locked in
+        const restored = ea.population.filter(i => i.locked);
+        assert(restored.length === 1, `expected the lock to be restored, got ${restored.length}`);
+        // Identity is by content, not id: loadGeneration re-clones the stored
+        // population and clone() mints a fresh id, which is exactly why the lock
+        // mask is positional rather than id-based.
+        assert(shape(restored[0]) === wanted, 'the restored lock landed on a different individual');
+        assert(ea.population.indexOf(restored[0]) === 7, 'and it should be in its original slot');
+    });
+}
+
 // --- Active intervention (direct manipulation → heritable genome) ---
 // The edit gesture belongs to the individual (base Individual.beginEditSession
 // implements the step-grid one); the framework only supplies session callbacks.

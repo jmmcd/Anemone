@@ -149,6 +149,35 @@ body {
 .play-btn:hover { background: rgba(0, 255, 136, 0.7); transform: scale(1.08); }
 .play-btn.playing { background: rgba(0, 255, 136, 0.85); color: #000; }
 
+/* Lock (protect) affordance: same treatment as the zoom button, but it stays
+   visible once locked — the state has to be legible without hovering. */
+.lock-btn {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.lock-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.individual.locked .lock-btn { display: flex; }
+/* Touch has no hover, so the affordance must be permanently visible there. */
+@media (pointer: coarse) { .lock-btn { display: flex; } }
+
+/* A locked cell keeps its own border colour, distinct from a liked one. */
+.individual.locked {
+    border-color: #ffb020;
+    box-shadow: 0 0 14px rgba(255, 176, 32, 0.3);
+}
+
 /* Zoom affordance: hidden by default, revealed on hover (pointer-fine only). */
 .zoom-btn {
     position: absolute;
@@ -587,6 +616,7 @@ select:focus { outline: none; border-color: var(--accent); }
     }
     .evolve-bar:hover { background: #00cc6a; }
     .individual:hover .zoom-btn { display: flex; }
+    .individual:hover .lock-btn { display: flex; }
     .individual:hover { transform: scale(1.02); }
 }
 
