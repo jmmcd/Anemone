@@ -99,7 +99,7 @@ class AntRenderingIndividual extends Individual {
 
     // --- Simulation --------------------------------------------------------
     _runColony(g, buf, lum, gx, gy, width, height, res) {
-        const rand = this._mulberry32(g.seed >>> 0);
+        const rand = Individual.mulberry32(g.seed >>> 0);
         const step = g.stepSize * res;
         const penW = Math.max(0.5, g.penWidth * res);
         const maxTurn = g.maxTurn * Math.PI / 180;
@@ -259,18 +259,6 @@ class AntRenderingIndividual extends Individual {
             buf[q] = data[p] * 0.28; buf[q + 1] = data[p + 1] * 0.28; buf[q + 2] = data[p + 2] * 0.28;
         }
         return buf;
-    }
-
-    // Small, fast, deterministic PRNG so the whole colony is reproducible from `seed`.
-    _mulberry32(seed) {
-        let t = seed;
-        return function () {
-            t += 0x6D2B79F5;
-            let r = t;
-            r = Math.imul(r ^ (r >>> 15), r | 1);
-            r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
-            return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-        };
     }
 
     describeExtra() {

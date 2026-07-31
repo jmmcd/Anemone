@@ -33,7 +33,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage, ExpressionCompiler } = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -821,6 +821,83 @@ check('renderCached skips re-render until genome or size changes', () => {
     Canvas2D.renderCached(canvas, holder, renderFn);
     assert(calls === 3, 'a cleared cache should re-render');
 });
+
+// --- Seeded PRNGs (render-time randomness) ---
+// These streams are part of the phenotype: a type's saved genomes only reload
+// to the same picture while its generator produces the same numbers. The
+// expected values below are the streams as of the shared-PRNG refactor and are
+// pinned deliberately — if a change here fails, the fix is to restore the
+// stream, not to update the numbers.
+console.log('\nSeeded PRNGs:');
+{
+    check('Individual.mulberry32 reproduces its reference stream', () => {
+        const expected = [
+            0.979728267760947, 0.306752264499664, 0.484205421525985,
+            0.817934412509203, 0.509428369347006,
+        ];
+        const rand = Individual.mulberry32(12345);
+        expected.forEach((e, i) => {
+            const got = rand();
+            assert(Math.abs(got - e) < 1e-15, `draw ${i}: expected ${e}, got ${got}`);
+        });
+    });
+
+    check('mulberry32 is a fresh independent stream per seed', () => {
+        const a = Individual.mulberry32(1), b = Individual.mulberry32(1), c = Individual.mulberry32(2);
+        const draw = (r) => [r(), r(), r()];
+        const [x, y, z] = [draw(a), draw(b), draw(c)];
+        assert(x.every((v, i) => v === y[i]), 'same seed must give the same stream');
+        assert(x.some((v, i) => v !== z[i]), 'different seeds must diverge');
+        assert(x.every(v => v >= 0 && v < 1), 'draws must lie in [0,1)');
+    });
+
+    check('AntRendering renders identically from the same genome (seeded, cacheable)', () => {
+        const a = new classes.AntRenderingIndividual();
+        const b = a.clone();
+        const px = (ind) => {
+            const canvas = makeCanvas(128, 128);
+            ind.visualize(canvas);
+            return ind._cachedImageData;
+        };
+        const [pa, pb] = [px(a), px(b)];
+        assert(pa && pb, 'expected a cached render from both');
+        assert(pa.data.length === pb.data.length, 'renders differ in size');
+        let diff = 0;
+        for (let i = 0; i < pa.data.length; i++) if (pa.data[i] !== pb.data[i]) diff++;
+        assert(diff === 0, `${diff} bytes differ — the colony sim is not reproducible from the genome`);
+    });
+
+    check('PSystem keeps its own LCG stream (deliberately not mulberry32)', () => {
+        // The two identical copies of this LCG were deduped into one psRandom
+        // factory. The stream must be exactly what it was, or every saved
+        // P-system genome reloads to a different picture.
+        const expected = [
+            0.238780839834362, 0.913493264699355, 0.612491666339338,
+            0.926981459138915, 0.049341175239533,
+        ];
+        const rand = psRandom(7);
+        expected.forEach((e, i) => {
+            const got = rand();
+            assert(Math.abs(got - e) < 1e-15, `LCG draw ${i}: expected ${e}, got ${got}`);
+        });
+        // Seed 0 falls back to 1 (an LCG seeded 0 from this state would still
+        // advance, but the guard predates the refactor and is part of the stream).
+        assert(psRandom(0)() === psRandom(1)(), 'seed 0 must behave as seed 1');
+        // ...and it is genuinely a different stream from mulberry32.
+        assert(psRandom(7)() !== Individual.mulberry32(7)(), 'PSystem must not silently share mulberry32');
+    });
+
+    check('PSystem renders identically from the same genome', () => {
+        const a = new classes.PSystemIndividual();
+        const b = a.clone();
+        const px = (ind) => { const c = makeCanvas(128, 128); ind.visualize(c); return ind._cachedImageData; };
+        const [pa, pb] = [px(a), px(b)];
+        assert(pa && pb, 'expected a cached render from both');
+        let diff = 0;
+        for (let i = 0; i < pa.data.length; i++) if (pa.data[i] !== pb.data[i]) diff++;
+        assert(diff === 0, `${diff} bytes differ — the P-system render is not reproducible`);
+    });
+}
 
 // --- Shared expression compiler (services/ExpressionCompiler.js) ---
 // The four expression types (PatternGrammar, AnimatedPattern, PolarCurve,

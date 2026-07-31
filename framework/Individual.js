@@ -138,6 +138,29 @@ class Individual {
         return fn;
     }
 
+    /**
+     * mulberry32 — a small, fast, deterministic PRNG, for individuals whose
+     * *rendering* needs randomness (a particle sim, scattered strokes) rather
+     * than their genome. Seed it from a `seed` gene and the whole render is
+     * reproducible from the genome, so it stays cacheable and a saved genome
+     * reloads to the same picture.
+     *
+     * NOTE: this is deliberately not the only PRNG in the codebase. Changing
+     * the *stream* a type draws from changes every phenotype it has ever
+     * rendered, so a type using a different generator (PSystem's LCG) keeps it;
+     * only exact duplicates of this implementation should be folded in here.
+     */
+    static mulberry32(seed) {
+        let t = seed;
+        return function () {
+            t += 0x6D2B79F5;
+            let r = t;
+            r = Math.imul(r ^ (r >>> 15), r | 1);
+            r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+            return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
     /** Section editing a PTORepresentation's generator (defines the search space). */
     static generatorSection(representation, label = 'Generator') {
         return {
