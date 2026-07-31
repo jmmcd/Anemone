@@ -32,6 +32,7 @@ const SOURCES = [
     'modalities/MIDIModality.js',
     'modalities/AudioModality.js',
     'modalities/ThreeDModality.js',
+    'services/ExpressionCompiler.js',    // window.ExpressionCompiler (evolved expression string → numeric fn)
     'services/MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
     'ui/PerformanceControls.js',         // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
     'framework/EvolutionaryAlgorithm.js',
@@ -208,6 +209,7 @@ function load() {
     combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
     combined += `;globalThis.__drumVoices = (typeof drumVoices === 'function') ? drumVoices : null;\n`;
     combined += `;globalThis.__SITLanguage = SITLanguage;\n`;
+    combined += `;globalThis.__ExpressionCompiler = ExpressionCompiler;\n`;
     combined += `;globalThis.__jennGeometry = jennGeometry; globalThis.__JENN_EDGE_COUNTS = JENN_EDGE_COUNTS; globalThis.__JENN_POLYTOPES = JENN_POLYTOPES;\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
@@ -227,6 +229,7 @@ function load() {
         TerminalNode: sandbox.__TerminalNode,
         drumVoices: sandbox.__drumVoices,
         SITLanguage: sandbox.__SITLanguage,
+        ExpressionCompiler: sandbox.__ExpressionCompiler,
         jennGeometry: sandbox.__jennGeometry,
         JENN_EDGE_COUNTS: sandbox.__JENN_EDGE_COUNTS,
         JENN_POLYTOPES: sandbox.__JENN_POLYTOPES,

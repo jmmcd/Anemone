@@ -52,28 +52,12 @@ class RadialSurface3DIndividual extends Individual {
         return this._compiled[expr];
     }
 
+    // The SURFACE preset (services/ExpressionCompiler.js) qualifies `pow` and
+    // leaves `theta` alone — here it is a variable, not a derived quantity as
+    // in the x,y pattern grammars.
     _buildFn(expr, varNames) {
-        try {
-            const js = expr
-                .replace(/sin/g, 'Math.sin')
-                .replace(/cos/g, 'Math.cos')
-                .replace(/tan/g, 'Math.tan')
-                .replace(/exp/g, 'Math.exp')
-                .replace(/log/g, 'Math.log')
-                .replace(/sqrt/g, 'Math.sqrt')
-                .replace(/abs/g, 'Math.abs')
-                .replace(/pow/g, 'Math.pow');
-            return new Function(...varNames, `
-                try {
-                    const result = ${js};
-                    return isFinite(result) ? result : 0;
-                } catch (e) {
-                    return 0;
-                }
-            `);
-        } catch (error) {
-            return () => 0;
-        }
+        return ExpressionCompiler.compile(expr, varNames,
+            ExpressionCompiler.PRESETS.SURFACE);
     }
 
     _clampR(v) { return Math.max(0, Math.min(5000, v)); }

@@ -279,42 +279,14 @@ class PolarCurveIndividual extends Individual {
         }
     }
     
+    // Compile r(t). The POLAR preset (services/ExpressionCompiler.js) omits the
+    // protected-division rewrite: division/modulo by zero produces
+    // Infinity/NaN, which the isFinite guard maps to a unit radius, whereas the
+    // regex rewrite can't balance parentheses and would mangle most of this
+    // grammar's expressions into uncompilable code.
     compileExpressionForT(expression) {
-        try {
-            // Create a more efficient compiled function for t variable
-            let jsExpression = expression
-                .replace(/sin/g, 'Math.sin')
-                .replace(/cos/g, 'Math.cos')
-                .replace(/tan/g, 'Math.tan')
-                .replace(/exp/g, 'Math.exp')
-                .replace(/log/g, 'Math.log')
-                .replace(/sqrt/g, 'Math.sqrt')
-                .replace(/abs/g, 'Math.abs')
-                .replace(/floor/g, 'Math.floor')
-                .replace(/ceil/g, 'Math.ceil')
-                .replace(/3\.14159/g, 'Math.PI')
-                .replace(/6\.28318/g, '(2*Math.PI)');
-
-            // Note: division/modulo by zero produces Infinity/NaN, which the
-            // isFinite guard below maps to a safe value. We deliberately do NOT
-            // rewrite '/' and '%' with a regex — that can't balance parentheses
-            // and would mangle most expressions into uncompilable code.
-
-            // Create function that takes t parameter
-            const compiledFn = new Function('t', `
-                try {
-                    const result = ${jsExpression};
-                    return isFinite(result) ? result : 1.0;
-                } catch (e) {
-                    return 1.0;
-                }
-            `);
-            
-            return compiledFn;
-            
-        } catch (error) {
-            return () => 1.0;
-        }
+        return ExpressionCompiler.compile(expression, ['t'],
+            ExpressionCompiler.PRESETS.POLAR);
     }
     
 }

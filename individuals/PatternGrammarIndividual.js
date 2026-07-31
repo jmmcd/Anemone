@@ -96,43 +96,11 @@ class PatternGrammarIndividual extends Individual {
     }
 
     // Compile a grammar-derived expression string into a JS function of (x, y),
-    // with protected division/modulo. (Moved here from the former
-    // GrammaticalRepresentation, which the derivation generator made redundant.)
+    // with protected division/modulo. The rewrite pipeline is shared with the
+    // other expression types — see services/ExpressionCompiler.js.
     compileExpression(expression) {
-        try {
-            let jsExpression = expression
-                .replace(/sin/g, 'Math.sin')
-                .replace(/cos/g, 'Math.cos')
-                .replace(/tan/g, 'Math.tan')
-                .replace(/exp/g, 'Math.exp')
-                .replace(/log/g, 'Math.log')
-                .replace(/sqrt/g, 'Math.sqrt')
-                .replace(/abs/g, 'Math.abs')
-                .replace(/floor/g, 'Math.floor')
-                .replace(/ceil/g, 'Math.ceil')
-                .replace(/ifpos\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)/g, '(($1) > 0 ? ($2) : ($3))')
-                .replace(/\br\b/g, 'Math.sqrt(x*x + y*y)')
-                .replace(/\btheta\b/g, 'Math.atan2(y, x)')
-                .replace(/3\.14159/g, 'Math.PI')
-                .replace(/6\.28318/g, '(2*Math.PI)');
-
-            // Protected division and modulo
-            jsExpression = jsExpression.replace(/\/([^\/]+)/g, (match, divisor) =>
-                `/(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`);
-            jsExpression = jsExpression.replace(/%([^%]+)/g, (match, divisor) =>
-                `%(Math.abs(${divisor}) > 1e-6 ? ${divisor} : 1.0)`);
-
-            return new Function('x', 'y', `
-                try {
-                    const result = ${jsExpression};
-                    return isFinite(result) ? result : 0.0;
-                } catch (e) {
-                    return 0.0;
-                }
-            `);
-        } catch (error) {
-            return () => 0.0;
-        }
+        return ExpressionCompiler.compile(expression, ['x', 'y'],
+            ExpressionCompiler.PRESETS.PATTERN);
     }
 
     visualize(canvas) {

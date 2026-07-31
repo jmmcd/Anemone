@@ -33,7 +33,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage } = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -821,6 +821,85 @@ check('renderCached skips re-render until genome or size changes', () => {
     Canvas2D.renderCached(canvas, holder, renderFn);
     assert(calls === 3, 'a cleared cache should re-render');
 });
+
+// --- Shared expression compiler (services/ExpressionCompiler.js) ---
+// The four expression types (PatternGrammar, AnimatedPattern, PolarCurve,
+// RadialSurface3D) share one rewrite pipeline. Their differences are real and
+// load-bearing, so each is pinned here: a preset quietly gaining or losing a
+// rewrite would silently change every render of that type.
+console.log('\nShared expression compiler:');
+{
+    const EC = ExpressionCompiler;
+    const P = EC.PRESETS;
+
+    check('qualifies bare math functions and evaluates', () => {
+        const f = EC.compile('sin(x) + cos(y)', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(f(0, 0) - 1) < 1e-12, `expected 1, got ${f(0, 0)}`);
+    });
+
+    check('PATTERN: r and theta become derived quantities of x,y', () => {
+        const r = EC.compile('r', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(r(3, 4) - 5) < 1e-12, `r should be hypot(x,y), got ${r(3, 4)}`);
+        const th = EC.compile('theta', ['x', 'y'], P.PATTERN);
+        assert(Math.abs(th(0, 1) - Math.PI / 2) < 1e-12, `theta should be atan2(y,x), got ${th(0, 1)}`);
+    });
+
+    check('SURFACE: theta stays a variable (no polar substitution)', () => {
+        const f = EC.compile('theta + phi', ['theta', 'phi'], P.SURFACE);
+        assert(Math.abs(f(2, 3) - 5) < 1e-12, `theta must be the parameter here, got ${f(2, 3)}`);
+        const g = EC.compile('pow(a, 2)', ['a'], P.SURFACE);
+        assert(Math.abs(g(3) - 9) < 1e-12, 'pow should be qualified for surfaces');
+    });
+
+    check('PATTERN: ifpos compiles to a conditional', () => {
+        const f = EC.compile('ifpos(x, 10, 20)', ['x', 'y'], P.PATTERN);
+        assert(f(1, 0) === 10 && f(-1, 0) === 20, 'ifpos did not branch on sign');
+    });
+
+    check('PATTERN: division and modulo are protected against a zero divisor', () => {
+        const f = EC.compile('1/x', ['x', 'y'], P.PATTERN);
+        assert(f(0, 0) === 1, `guarded divisor should give 1/1, got ${f(0, 0)}`);
+        assert(Math.abs(f(4, 0) - 0.25) < 1e-12, 'ordinary division must be unaffected');
+    });
+
+    check('POLAR: division is NOT rewritten (the regex would mangle this grammar)', () => {
+        const src = EC.toJS('(t*3)/tan(t)', P.POLAR);
+        assert(!src.includes('1e-6'), 'POLAR must not carry the protected-division guard');
+        const f = EC.compile('5.0*(t/2)', ['t'], P.POLAR);
+        assert(Math.abs(f(2) - 5) < 1e-12, 'polar division expression should evaluate');
+    });
+
+    check('pi literals the grammars emit become exact constants', () => {
+        const f = EC.compile('6.28318', ['t'], P.POLAR);
+        assert(Math.abs(f(0) - 2 * Math.PI) < 1e-12, 'literal should become 2*Math.PI exactly');
+        const g = EC.compile('3.14159', ['x', 'y'], P.PATTERN);
+        assert(g(0, 0) === Math.PI, 'literal should become Math.PI exactly');
+    });
+
+    check('fallbacks differ by preset: 0 for a value, 1 for a polar radius', () => {
+        assert(EC.compile('0/0', ['t'], P.POLAR)(1) === 1.0, 'NaN in POLAR should fall back to a unit radius');
+        assert(EC.compile('log(0-1)', ['theta', 'phi'], P.SURFACE)(0, 0) === 0, 'NaN in SURFACE should fall back to 0');
+        assert(EC.compile('sqrt(0-1)', ['x', 'y'], P.PATTERN)(0, 0) === 0.0, 'NaN in PATTERN should fall back to 0');
+    });
+
+    check('an uncompilable expression yields the constant fallback, not a throw', () => {
+        const f = EC.compile('this is ) not ( javascript', ['t'], P.POLAR);
+        assert(f(0) === 1.0 && f(99) === 1.0, 'syntax error should degrade to the constant fallback');
+    });
+
+    check('the four call sites route through the shared compiler', () => {
+        // Each type keeps its own thin wrapper; these are the contracts the
+        // wrappers must preserve (variables and fallback value).
+        const pg = new classes.PatternGrammarIndividual();
+        assert(Math.abs(pg.compileExpression('x+y')(2, 3) - 5) < 1e-12, 'PatternGrammar compiles over x,y');
+        const ap = new classes.AnimatedPatternIndividual();
+        assert(Math.abs(ap._compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
+        const pc = new classes.PolarCurveIndividual();
+        assert(Math.abs(pc.compileExpressionForT('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
+        const s3 = new classes.WarpedSurface3DIndividual();
+        assert(Math.abs(s3.compileExpr('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
+    });
+}
 
 // --- GE Radius expression compilation regression ---
 // Regression for the protected-division regex that mangled any expression
