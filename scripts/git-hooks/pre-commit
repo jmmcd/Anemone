@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run the dependency-free smoke/regression suite before every commit.
+# Activate once with:  git config core.hooksPath scripts/git-hooks
+# Skip a single commit with:  git commit -n
+exec node "$(git rev-parse --show-toplevel)/tests/run.js"

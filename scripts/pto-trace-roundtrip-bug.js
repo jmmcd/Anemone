@@ -66,7 +66,7 @@ const path = require('path');
 // ---- Load the vendored bundle and capture its `PTO` export ----------------
 // (`var PTO = (() => {...})()` is module-local in the bundle, so evaluate it and
 // return PTO. Replace this with your usual import when running upstream.)
-const bundlePath = path.join(__dirname, 'vendor', 'pto-bundle.js');
+const bundlePath = path.join(__dirname, '..', 'vendor', 'pto-bundle.js');
 const PTO = new Function(fs.readFileSync(bundlePath, 'utf8') + '\nreturn PTO;')();
 
 // ---- Two generators that differ only in the TYPE of value chosen -----------

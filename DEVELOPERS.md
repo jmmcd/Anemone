@@ -10,6 +10,22 @@ Each individual holds a representation object and delegates `mutate`, `crossover
 
 * Visualiser can be from genome, phenotype, or both, it's up to the individual.
 
+# Testing
+
+A dependency-free smoke/regression suite runs under Node:
+
+```
+npm test        # or: node tests/run.js
+```
+
+A pre-commit hook that runs it is checked in at `scripts/git-hooks/`. Activate it once per clone:
+
+```
+git config core.hooksPath scripts/git-hooks
+```
+
+Skip it for a single commit with `git commit -n`.
+
 # Deployment
 
 I deploy this to Surge just by running this in the current directory:

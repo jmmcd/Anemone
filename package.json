@@ -1,0 +1,8 @@
+{
+  "name": "anemone",
+  "private": true,
+  "description": "Interactive evolutionary computation library for generating visual art, 3D graphics, and music",
+  "scripts": {
+    "test": "node tests/run.js"
+  }
+}
