@@ -245,6 +245,15 @@ The four ThreeD rows above (`SuperShape3D`, `PetalSphere3D`, `FreeSurface3D`, `W
 
 Any 3D individual exposing `generate3DPoints()` can be exported to a binary STL for 3D printing via `window.MeshExport.downloadSTL(individual)` (`MeshExport.js`), surfaced as the **⤓ STL** button in the zoom lightbox — so the whole family gets export for free. The mesh is exported raw (self-intersecting / non-periodic shapes aren't watertight and want a slicer/Blender repair pass).
 
+## Active intervention (direct manipulation)
+
+Any individual type can offer **direct manipulation of its rendered phenotype**, with each edit written back into the heritable genome — so a user's intervention becomes genetic material and evolution continues from it, rather than it being a one-off touch-up discarded at the next generation. The protocol is **not** grid-specific, even though the step sequencers are its only current users.
+
+- **`isEditable()`** (base `Individual`) — defaults to `isGridEditable()`, so the existing grid types opt in unchanged. The Lightbox consults it.
+- **`beginEditSession(canvas, session)`** (base `Individual`) — the individual owns the gesture and binds its own pointer handling; it returns a **teardown function**, which the Lightbox calls on close (`setupEditing`/`teardownEditing`). `session` is the framework's side of the deal, so the individual needs to know nothing about the lightbox: `session.onEdit()` (refresh the info panel) and `session.onGestureEnd()` (resync the grid tile, restart the sound if this individual is playing).
+- **The default session is the step grid** (`_gridEditSession`): click toggles, drag paints with the first cell setting the direction, per-cell dedupe within a drag. It is driven entirely by the type's `cellAtCanvasXY`/`cellOn`/`setCellHit` hooks, so DrumMachine and Melody get it without writing any pointer code. A type whose phenotype is something else (a curve to drag, a node to move) overrides `beginEditSession` entirely.
+- **The genome-writeback contract belongs to the individual**: an edit must go through the representation (`this.genome = rep.setGene(this.genome, name, value)`, as `setCellHit` does), not merely mutate a cached phenotype — otherwise the edit is lost at the next `mutate`/`clone`. This is what makes the intervention heritable, and it is asserted in the tests (an edited cell must survive `clone()`, and the edited genome must still be a trace the operators accept).
+
 ## Extension System
 
 UI panels are attached by the framework based on capability flags / structural checks rather than per-individual registration (see `loadExtensions()` in `Anemone.js`). A panel class needs a `mount(container)` method and accesses framework settings via `this.framework.updateSetting(key, value)`, which triggers cache invalidation and re-rendering. Current panels:

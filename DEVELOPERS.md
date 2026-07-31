@@ -35,3 +35,41 @@ I deploy this to Surge just by running this in the current directory:
 # Adding a new problem
 
 The goal is to design Anemone so that adding a new problems is easy. With PTO we don't need to define a new representation (encoding and search operators) for every problem. Instead the user only has to supply a **generator function** which samples from the solution space. It should go into a new `individuals/XYZIndividual.js` class where XYZ is your application name. Then add an entry to `framework/IndividualRegistry.js` (the single source of truth for the type list) and a `<script>` tag in `index.html`; `npm test` will tell you if you missed either. There are several audio, MIDI and graphics rendering examples already provided, so many new applications won't need much code. 
+# Active intervention (direct manipulation)
+
+A type can let the user edit its rendered phenotype **directly** — by pointer, on
+the zoom canvas — with each edit written back into the heritable genome, so
+evolution continues from what the user drew instead of discarding it. The step
+sequencers use this (click or drag cells to rewrite the loop), but the protocol
+is not grid-specific.
+
+The framework asks `isEditable()`, then calls
+`beginEditSession(canvas, session)` and keeps the returned teardown function to
+call when the lightbox closes. `session` is the framework's side of the deal, so
+your type needs to know nothing about the lightbox:
+
+```js
+isEditable() { return true; }
+
+beginEditSession(canvas, session) {
+    // ...bind your own pointer handling on `canvas`...
+    // after each edit:      session.onEdit();
+    // when the gesture ends: session.onGestureEnd();
+    return () => { /* unbind */ };      // teardown
+}
+```
+
+`session.onEdit()` refreshes the info panel; `session.onGestureEnd()` resyncs the
+small grid tile and restarts the sound if this individual is the one playing.
+
+**The genome-writeback contract is yours.** An edit must go through the
+representation — `this.genome = rep.setGene(this.genome, name, value)` — not just
+mutate a cached phenotype, or the change is lost at the next `mutate`/`clone`.
+That is what makes the edit *heritable*, which is the whole point: the user's
+intervention becomes genetic material rather than a one-off touch-up.
+
+If your phenotype is a grid you need none of the above: implement
+`isGridEditable()`, `cellAtCanvasXY(canvas, px, py)`, `cellOn(c, s)` and
+`setCellHit(c, s, on)`, and the base `beginEditSession` supplies the
+click-to-toggle / drag-to-paint gesture for you (this is how DrumMachine and
+Melody work).

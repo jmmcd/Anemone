@@ -119,6 +119,9 @@ function load() {
         isFinite, isNaN, parseInt, parseFloat, Uint8ClampedArray, Float32Array,
         setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
         performance: { now: () => 0 },
+        // Browser globals the app itself uses (not just via window.*):
+        // AbortController is how an edit session unbinds its pointer listeners.
+        AbortController,
     };
     sandbox.window = {
         framework: { settings: { colorPalette: 'viridis' } },

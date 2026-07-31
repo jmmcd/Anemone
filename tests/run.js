@@ -101,6 +101,7 @@ console.log('\nFramework hotkey table + partial-class split:');
         // A representative method from each partial file + a few that stayed.
         for (const m of ['addMeshToScene', 'renderMeshToCanvas', 'cleanupShared3D',      // Shared3D
                          'openZoom', 'closeZoom', 'togglePlayPauseOrRotation',            // Lightbox
+                         'setupEditing', 'teardownEditing',                               // Lightbox (intervention)
                          'saveCurrentImage', 'exportCurrentSTL', 'placeLoadedIndividual', // ExportManager
                          'evolveGeneration', '_handleKeydown', '_hotkeyContext',          // Hotkeys
                          'loadExtensions', 'render', 'switchIndividualType']) {           // stayed
@@ -821,6 +822,135 @@ check('renderCached skips re-render until genome or size changes', () => {
     Canvas2D.renderCached(canvas, holder, renderFn);
     assert(calls === 3, 'a cleared cache should re-render');
 });
+
+// --- Active intervention (direct manipulation → heritable genome) ---
+// The edit gesture belongs to the individual (base Individual.beginEditSession
+// implements the step-grid one); the framework only supplies session callbacks.
+// The contract that matters is that an edit is written into the *genome*, not
+// just a cached phenotype, so evolution continues from what the user drew.
+console.log('\nActive intervention (edit sessions):');
+{
+    // A canvas stub that also answers the DOM calls an edit session makes.
+    function makeEditCanvas(w = 768, h = 768) {
+        const canvas = makeCanvas(w, h);
+        const listeners = {};
+        canvas.style = {};
+        canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: w, height: h });
+        canvas.addEventListener = (type, fn, opts) => {
+            (listeners[type] = listeners[type] || []).push({ fn, signal: opts && opts.signal });
+        };
+        canvas.dispatch = (type, x, y) => {
+            for (const l of (listeners[type] || [])) {
+                if (l.signal && l.signal.aborted) continue;
+                l.fn({ clientX: x, clientY: y, pointerId: 1, preventDefault() {} });
+            }
+        };
+        canvas.liveCount = () => Object.values(listeners)
+            .reduce((n, ls) => n + ls.filter(l => !(l.signal && l.signal.aborted)).length, 0);
+        return canvas;
+    }
+
+    // Canvas coordinates of the centre of cell (c, s), via the type's own layout.
+    function cellCentre(ind, canvas, c, s) {
+        for (let py = 0; py < canvas.height; py += 2) {
+            for (let px = 0; px < canvas.width; px += 2) {
+                const cell = ind.cellAtCanvasXY(canvas, px, py);
+                if (cell && cell.c === c && cell.s === s) return { x: px, y: py };
+            }
+        }
+        throw new Error(`no canvas point maps to cell ${c},${s}`);
+    }
+
+    check('the editable flag defaults off, and on for the step sequencers', () => {
+        assert(new classes.PatternIndividual().isEditable() === false, 'a plain 2D type is not editable');
+        assert(new classes.DrumMachineIndividual().isEditable() === true, 'DrumMachine should be editable');
+        assert(new classes.MelodyIndividual().isEditable() === true, 'Melody should be editable');
+    });
+
+    check('base beginEditSession returns a teardown that unbinds the gesture', () => {
+        const ind = new classes.DrumMachineIndividual();
+        const canvas = makeEditCanvas();
+        const end = ind.beginEditSession(canvas, {});
+        assert(typeof end === 'function', 'beginEditSession must return a teardown function');
+        assert(canvas.liveCount() > 0, 'expected pointer listeners to be bound');
+        end();
+        assert(canvas.liveCount() === 0, 'teardown must unbind every listener');
+    });
+
+    check('a non-grid type gets a harmless no-op session', () => {
+        // The base session is grid-shaped; a type without the cell hooks must not
+        // throw when handed a canvas (a third-party type overrides the whole
+        // method instead).
+        const ind = new classes.PatternIndividual();
+        const end = ind.beginEditSession(makeEditCanvas(), {});
+        assert(typeof end === 'function', 'expected a teardown even with no gesture');
+        end();
+    });
+
+    for (const type of ['DrumMachineIndividual', 'MelodyIndividual']) {
+        check(`${type}: a click toggles a cell and writes it into the genome`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            let edits = 0, gestures = 0;
+            const end = ind.beginEditSession(canvas, {
+                onEdit: () => edits++,
+                onGestureEnd: () => gestures++,
+            });
+            const before = ind.cellOn(2, 3);
+            const genomeBefore = ind.genome;
+            const { x, y } = cellCentre(ind, canvas, 2, 3);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointerup', x, y);
+            assert(ind.cellOn(2, 3) === !before, 'click should toggle the cell');
+            assert(ind.genome !== genomeBefore, 'the edit must produce a new genome, not mutate the phenotype');
+            assert(edits === 1, `expected one onEdit, got ${edits}`);
+            assert(gestures === 1, `expected one onGestureEnd, got ${gestures}`);
+            end();
+        });
+
+        check(`${type}: the edit is heritable (survives clone and mutation)`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            const end = ind.beginEditSession(canvas, {});
+            const want = !ind.cellOn(1, 5);
+            const { x, y } = cellCentre(ind, canvas, 1, 5);
+            canvas.dispatch('pointerdown', x, y);
+            canvas.dispatch('pointerup', x, y);
+            end();
+            assert(ind.cellOn(1, 5) === want, 'setup: the cell should have toggled');
+            const child = ind.clone();
+            assert(child.cellOn(1, 5) === want, 'a clone must inherit the edited cell');
+            // ...and the edited genome is a valid trace the operators still accept.
+            const mutant = ind.clone();
+            mutant.mutate(0.05);
+            assert(mutant.phenotype && mutant.phenotype.grid, 'the edited genome must survive mutation');
+        });
+
+        check(`${type}: a drag paints in one direction and dedupes within a cell`, () => {
+            const ind = new classes[type]();
+            const canvas = makeEditCanvas();
+            let edits = 0;
+            const end = ind.beginEditSession(canvas, { onEdit: () => edits++ });
+            // Start on a cell that is off, so the drag paints ON.
+            let start = null;
+            for (let s = 0; s < 8 && !start; s++) if (!ind.cellOn(0, s)) start = s;
+            assert(start !== null, 'expected at least one off cell in row 0');
+            const a = cellCentre(ind, canvas, 0, start);
+            canvas.dispatch('pointerdown', a.x, a.y);
+            canvas.dispatch('pointermove', a.x, a.y);        // same cell — must not re-fire
+            assert(edits === 1, `re-entering the same cell should not re-fire (got ${edits})`);
+            const next = start + 1;
+            if (next < 8) {
+                const b = cellCentre(ind, canvas, 0, next);
+                canvas.dispatch('pointermove', b.x, b.y);
+                assert(ind.cellOn(0, next) === true, 'the drag should paint the next cell ON');
+                assert(edits === 2, `expected a second edit on the new cell (got ${edits})`);
+            }
+            canvas.dispatch('pointerup', a.x, a.y);
+            end();
+        });
+    }
+}
 
 // --- Seeded PRNGs (render-time randomness) ---
 // These streams are part of the phenotype: a type's saved genomes only reload

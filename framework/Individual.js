@@ -57,6 +57,85 @@ class Individual {
     // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
     usesMIDISync() { return false; }
 
+    // --- Active intervention (direct manipulation of the phenotype) --------------
+    // A type can let the user edit its rendered phenotype *directly* — by pointer,
+    // on the zoom canvas — with each edit written back into the heritable genome,
+    // so evolution continues from what the user drew rather than discarding it.
+    //
+    // The framework asks `isEditable()`, then calls `beginEditSession(canvas,
+    // session)` and keeps the returned teardown function to call on close. The
+    // gesture belongs to the *individual*: a type with a different phenotype (a
+    // curve to drag, a node to move) overrides `beginEditSession` entirely and
+    // owns its own pointer handling. `session` carries the framework's side of
+    // the deal, so the individual needs to know nothing about the lightbox:
+    //
+    //   session.onEdit()        an edit landed — refresh the info panel
+    //   session.onGestureEnd()  the gesture finished — resync the grid tile, and
+    //                           restart the sound if this individual is playing
+    //
+    // The genome-writeback contract is the individual's: an edit must go through
+    // the representation (setCellHit → representation.setGene), not just mutate a
+    // cached phenotype, or the change is lost at the next mutate/clone.
+    isEditable() { return this.isGridEditable(); }
+
+    beginEditSession(canvas, session = {}) {
+        return this._gridEditSession(canvas, session);
+    }
+
+    // The default session: a step grid. Click toggles a cell; drag paints, with
+    // the first cell setting whether the drag turns cells on or off. Driven
+    // entirely by the type's cellAtCanvasXY/cellOn/setCellHit hooks, so both step
+    // sequencers get it without writing any pointer code.
+    _gridEditSession(canvas, session = {}) {
+        if (!canvas || typeof this.cellAtCanvasXY !== 'function') return () => {};
+        const abort = new AbortController();
+        const signal = abort.signal;
+        const prevCursor = canvas.style.cursor;
+        canvas.style.cursor = 'pointer';
+
+        let painting = false, paintOn = null, lastKey = null;
+        const cellAt = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+            return this.cellAtCanvasXY(canvas, px, py);
+        };
+        const apply = (cell, on) => {
+            const key = cell.c + ',' + cell.s;
+            if (key === lastKey) return;         // don't re-fire within the same cell during a drag
+            lastKey = key;
+            this.setCellHit(cell.c, cell.s, on);
+            this.visualize(canvas);
+            if (session.onEdit) session.onEdit();
+        };
+        canvas.addEventListener('pointerdown', (e) => {
+            const cell = cellAt(e);
+            if (!cell) return;
+            e.preventDefault();
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) { }
+            painting = true; lastKey = null;
+            paintOn = !this.cellOn(cell.c, cell.s);   // toggle sets the paint direction
+            apply(cell, paintOn);
+        }, { signal });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!painting) return;
+            const cell = cellAt(e);
+            if (cell) apply(cell, paintOn);
+        }, { signal });
+        const end = () => {
+            if (!painting) return;
+            painting = false; lastKey = null;
+            if (session.onGestureEnd) session.onGestureEnd();
+        };
+        canvas.addEventListener('pointerup', end, { signal });
+        canvas.addEventListener('pointercancel', end, { signal });
+
+        return () => {
+            abort.abort();
+            canvas.style.cursor = prevCursor;
+        };
+    }
+
     // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
     // Play this individual's loop LIVE over MIDI when an output is available, else
     // fall back to a synthesised AudioBuffer through the shared AudioModality. Both
