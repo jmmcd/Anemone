@@ -54,7 +54,7 @@ Source is grouped by role (all plain `<script>` globals — no build step, no mo
 
 | Directory | Contents |
 |---|---|
-| `framework/` | `Anemone.js` (`InteractiveEAFramework`), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link) |
+| `framework/` | `Anemone.js` (`InteractiveEAFramework` — orchestration, EA/MIDI/settings/extensions, grid render + selection, type switching), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link), plus four **partial-class files** merged onto `InteractiveEAFramework.prototype`: `Shared3D.js` (shared THREE scene/renderer + mesh/camera/animate), `Lightbox.js` (zoom overlay, grid-edit wiring, 3D rotation, transport helpers), `ExportManager.js` (PNG/STL/WAV/MIDI + bulk export + PNG-load/placement + toast), `Hotkeys.js` (the declarative `HOTKEYS` table + dispatcher, which the `?` help overlay also reads) |
 | `individuals/` | every concrete `*Individual.js` plus the `RadialSurface3DIndividual.js` base |
 | `services/` | app-level `window.*` singletons: `Palette`, `Photo`, `AudioClip`, `MIDISync`, `OSCInput`, `SITLanguage` |
 | `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `CodeEditorUI`) and `PerformanceControls.js` |
@@ -71,7 +71,9 @@ The codebase separates three concerns:
 2. **Modalities** (`modalities/`) — output mechanisms (rendering, audio)
 3. **Individuals** (`individuals/`) — application code that composes representations and modalities
 
-### Framework Layer (`Anemone.js`)
+### Framework Layer (`Anemone.js` + partial-class files)
+`InteractiveEAFramework` is one class split across five files for readability: `Anemone.js` holds the constructor and core orchestration; `Shared3D.js`, `Lightbox.js`, `ExportManager.js`, and `Hotkeys.js` each contribute a cohesive method cluster by merging onto `InteractiveEAFramework.prototype` (via `Object.defineProperties` over a dummy class's descriptors). Because the methods land on the prototype, `this` is the framework instance and every call site (`this.foo()`, `framework.foo()` from an individual) is unchanged — the files are just where the source lives. They load after `Anemone.js` (the class must exist) and before `main.js` (the methods must exist before `new`). When adding a framework method, put it in whichever file matches its concern; there are no delegators to keep in sync.
+
 `InteractiveEAFramework` orchestrates the system:
 - Initialises MIDI access, the shared output modalities (`framework.sharedMIDI` for notes, `framework.sharedAudio` for sample buffers/graphs), and shared 3D resources (Three.js scene/renderer)
 - Tracks `currentlyPlaying` so only one sound individual plays at a time (they share the output modalities)

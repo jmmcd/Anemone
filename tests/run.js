@@ -75,6 +75,72 @@ console.log('\nIndividual-type registry:');
     });
 }
 
+// --- Framework hotkey table (framework/Hotkeys.js) ---
+// The framework files aren't in the harness sandbox (they need a real DOM), but
+// the class *declaration* + the partial-class prototype merges run in a bare vm
+// with no DOM, so we can assert the split didn't drop methods and that the
+// declarative hotkey table reproduces the old if/else dispatch.
+console.log('\nFramework hotkey table + partial-class split:');
+{
+    const vm = require('vm');
+    const FILES = ['Anemone.js', 'Shared3D.js', 'Lightbox.js', 'ExportManager.js', 'Hotkeys.js'];
+    let src = '';
+    for (const f of FILES) src += fs.readFileSync(path.join(__dirname, '..', 'framework', f), 'utf8') + '\n';
+    src += ';globalThis.__F = InteractiveEAFramework;';
+    const ctx = { console: { log() {}, warn() {}, error() {}, time() {}, timeEnd() {} }, Math, Object, Function, JSON, parseInt };
+    vm.createContext(ctx);
+    let F = null;
+    check('the five framework files load and merge onto one prototype', () => {
+        vm.runInContext(src, ctx, { filename: 'framework-concat.js' });
+        F = ctx.__F;
+        assert(typeof F === 'function', 'InteractiveEAFramework not defined');
+    });
+
+    check('partial classes contributed their methods (nothing dropped in the split)', () => {
+        const P = F.prototype;
+        // A representative method from each partial file + a few that stayed.
+        for (const m of ['addMeshToScene', 'renderMeshToCanvas', 'cleanupShared3D',      // Shared3D
+                         'openZoom', 'closeZoom', 'togglePlayPauseOrRotation',            // Lightbox
+                         'saveCurrentImage', 'exportCurrentSTL', 'placeLoadedIndividual', // ExportManager
+                         'evolveGeneration', '_handleKeydown', '_hotkeyContext',          // Hotkeys
+                         'loadExtensions', 'render', 'switchIndividualType']) {           // stayed
+            assert(typeof P[m] === 'function', `prototype missing ${m}`);
+        }
+        assert(P.constructor === F, 'constructor was clobbered by a prototype merge');
+    });
+
+    check('every hotkey binding is well formed', () => {
+        assert(Array.isArray(F.HOTKEYS) && F.HOTKEYS.length > 0, 'HOTKEYS missing');
+        for (const b of F.HOTKEYS) {
+            assert(Array.isArray(b.keys) && b.keys.length > 0, 'binding needs keys[]');
+            assert(typeof b.desc === 'string' && b.desc, 'binding needs a description (for the ? overlay)');
+            assert(typeof b.group === 'string' && b.group, 'binding needs a group');
+            assert(typeof b.run === 'function', 'binding needs run()');
+            assert(!b.when || typeof b.when === 'function', 'when must be a predicate');
+        }
+    });
+
+    check('the table reproduces the old context-sensitive dispatch', () => {
+        // First binding whose key matches and whose when() holds — the dispatcher's rule.
+        const pick = (key, c) => F.HOTKEYS.find(b => b.keys.includes(key) && (!b.when || b.when(c)));
+        const seq = { sequencer: true, animatedPattern: false };
+        const anim = { sequencer: false, animatedPattern: true };
+        const def = { sequencer: false, animatedPattern: false };
+        const cases = [
+            ['[', seq, 'Step sequencer'], [']', seq, 'Step sequencer'],
+            ['[', anim, 'Animated pattern'], ['[', def, '3D camera'],
+            ['.', anim, 'Animated pattern'], ['.', seq, 'Playback'], ['.', def, 'Playback'],
+            ['-', def, '3D camera'], [' ', def, 'General'],
+            ['a', def, 'General'], ['F', def, 'General'], ['Escape', def, 'General'],
+        ];
+        for (const [k, c, g] of cases) {
+            const e = pick(k, c);
+            assert(e, `no binding for "${k}"`);
+            assert(e.group === g, `"${k}" in ${JSON.stringify(c)} → ${e.group}, expected ${g}`);
+        }
+    });
+}
+
 // --- Genetic operators ---
 console.log('\nGenetic operators (construct / mutate / crossover / clone):');
 for (const name of INDIVIDUAL_CLASSES) {
