@@ -24,6 +24,8 @@
 
 * The grammar individuals now (as before) generate an int to choose a production, rather than choosing a production directly. That's because a production is not transparent to JSON-encoding, so a save/load round-trip doesn't work. This could indicate we need a PTO fix, or some other solution.
 
+* "Injection" or active intervention is a key feature. It partly works in Anemone drum machine and melody. EndlessForms had an interesting different approach: "The technical insight is to inject the distance to the surface of the object [the user's uploaded object] as an input [ie a variable] to the CPPN." (https://ieeexplore.ieee.org/abstract/document/6557986). Other options can include eg non-interactive search to try to match the user's object, direct backward inference via the generator...
+
 
 # NEW APPLICATIONS
 
