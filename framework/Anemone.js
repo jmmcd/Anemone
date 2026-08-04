@@ -202,6 +202,7 @@ class InteractiveEAFramework {
         { flag: 'usesPerformanceControls', make: (fw, s) => new PerformanceControlsUI(fw, s.performanceDials()) },
         { flag: 'usesMIDISync',            make: (fw) => new MIDISyncUI(fw) },
         { flag: 'usesOSCInput',            make: (fw) => new OSCInputUI(fw) },
+        { flag: 'usesSITAnalysis',         make: (fw) => new SITAnalysisUI(fw) },
     ];
 
     loadExtensions() {

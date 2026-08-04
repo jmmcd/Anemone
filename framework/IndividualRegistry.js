@@ -45,6 +45,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'StructuralInformationContinuousIndividual', label: 'Structural Information (continuous)' },
     { name: 'SITCodeIndividual',                        label: 'Leeuwenberg Code 2D' },
     { name: 'SITCode3DIndividual',                      label: 'Leeuwenberg Code 3D' },
+    { name: 'SITMusicIndividual',                       label: 'Leeuwenberg Code Music' },
     { name: 'BlindWatchmakerIndividual',                label: 'Blind Watchmaker' },
     { name: 'RobotIndividual',                          label: 'Robot' },
     { name: 'WonkyGuysIndividual',                      label: 'Wonky Guys' },

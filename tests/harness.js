@@ -32,6 +32,7 @@ const SOURCES = [
     'modalities/MIDIModality.js',
     'modalities/AudioModality.js',
     'modalities/ThreeDModality.js',
+    'export/MidiExport.js',              // window.MidiExport (SMF writer AND reader — SITAnalysis reads .mid)
     'services/ExpressionCompiler.js',    // window.ExpressionCompiler (evolved expression string → numeric fn)
     'services/MIDISync.js',              // window.MIDISync (external MIDI clock sync; consulted by Transport/PerformanceControls/MIDIModality)
     'ui/PerformanceControls.js',         // window.PerformanceControls + window.Transport (step-sequencer dials/clock)
@@ -60,6 +61,8 @@ const SOURCES = [
     'services/SITLanguage.js',                 // window.SITLanguage (Leeuwenberg 1971 coding language engine)
     'individuals/SITCodeIndividual.js',        // base for the Leeuwenberg-code family
     'individuals/SITCode3DIndividual.js',
+    'services/SITAnalysis.js',                 // window.SITAnalysis (music → code: the reverse map)
+    'individuals/SITMusicIndividual.js',       // the auditory half (Leeuwenberg's Table 2)
     'individuals/BlindWatchmakerIndividual.js',
     'individuals/SuperShapeIndividual.js',
     'individuals/RadialSurface3DIndividual.js',   // base for the 3D surface family
@@ -122,6 +125,7 @@ function load() {
         // Browser globals the app itself uses (not just via window.*):
         // AbortController is how an edit session unbinds its pointer listeners.
         AbortController,
+        TextEncoder, TextDecoder,        // MidiExport's provenance chunk
     };
     sandbox.window = {
         framework: { settings: { colorPalette: 'viridis' } },
@@ -212,6 +216,8 @@ function load() {
     combined += `;globalThis.__TerminalNode = TerminalNode;\n`;
     combined += `;globalThis.__drumVoices = (typeof drumVoices === 'function') ? drumVoices : null;\n`;
     combined += `;globalThis.__SITLanguage = SITLanguage;\n`;
+    combined += `;globalThis.__leeEncodeMusic = leeEncodeMusic;\n`;
+    combined += `;globalThis.__SITAnalysis = SITAnalysis;\n`;
     combined += `;globalThis.__ExpressionCompiler = ExpressionCompiler;\n`;
     combined += `;globalThis.__Individual = Individual;\n`;
     combined += `;globalThis.__psRandom = psRandom;\n`;
@@ -234,6 +240,8 @@ function load() {
         TerminalNode: sandbox.__TerminalNode,
         drumVoices: sandbox.__drumVoices,
         SITLanguage: sandbox.__SITLanguage,
+        leeEncodeMusic: sandbox.__leeEncodeMusic,   // the inverse generator (SITMusicIndividual.fromCode)
+        SITAnalysis: sandbox.__SITAnalysis,
         ExpressionCompiler: sandbox.__ExpressionCompiler,
         Individual: sandbox.__Individual,
         psRandom: sandbox.__psRandom,

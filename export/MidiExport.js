@@ -131,6 +131,107 @@ window.MidiExport = {
         return file.arrayBuffer().then((buf) => this.readMetadata(new Uint8Array(buf)));
     },
 
+    // ---- Read a .mid back into notes ----------------------------------------
+    // The inverse of buildSMF, and the only place in the app that PARSES MIDI
+    // rather than writing it: window.SITAnalysis takes a melody apart into a
+    // Leeuwenberg code, and a dropped .mid is where a real melody comes from.
+    // It lives here because this file already owns the format — the chunk
+    // framing, the variable-length quantities and the running-status rule.
+    //
+    // Handles format 0 and 1 (all tracks share one timeline, which is what we
+    // merge onto), running status, and the tempo meta event; ignores everything
+    // else. SMPTE time division (the high bit of `division`) is rejected rather
+    // than guessed at — it is vanishingly rare in files people export.
+    //
+    // Returns { ppq, bpm, notes: [{pitch, velocity, start, dur, channel}] } with
+    // start/dur in TICKS, so the caller decides the grain (a sixteenth is
+    // ppq/4). Note-ons with velocity 0 are note-offs, as the spec allows.
+    parseSMF(bytes) {
+        if (!bytes || bytes.length < 14) return null;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const tag = (o) => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+        if (tag(0) !== 'MThd') return null;
+        const division = view.getUint16(12);
+        if (division & 0x8000) return null;                  // SMPTE, not ticks per quarter
+        const ppq = division || 96;
+
+        const notes = [];
+        let bpm = 120, sawTempo = false;
+        let pos = 8 + view.getUint32(4);
+        while (pos + 8 <= bytes.length) {
+            const type = tag(pos);
+            const len = view.getUint32(pos + 4);
+            const end = Math.min(bytes.length, pos + 8 + len);
+            if (type !== 'MTrk') { pos = pos + 8 + len; continue; }
+
+            let p = pos + 8, tick = 0, status = 0;
+            const open = new Map();                          // channel*128+pitch → {note}
+            while (p < end) {
+                // Delta time (variable-length quantity).
+                let delta = 0;
+                for (let i = 0; i < 4 && p < end; i++) {
+                    const b = bytes[p++];
+                    delta = (delta << 7) | (b & 0x7f);
+                    if (!(b & 0x80)) break;
+                }
+                tick += delta;
+                if (p >= end) break;
+                let byte = bytes[p];
+                if (byte & 0x80) { status = byte; p++; } else if (!status) break;  // running status
+                const cmd = status & 0xf0, channel = status & 0x0f;
+
+                if (status === 0xff) {                       // meta event
+                    const meta = bytes[p++];
+                    let mlen = 0;
+                    for (let i = 0; i < 4 && p < end; i++) {
+                        const b = bytes[p++];
+                        mlen = (mlen << 7) | (b & 0x7f);
+                        if (!(b & 0x80)) break;
+                    }
+                    if (meta === 0x51 && mlen === 3 && !sawTempo) {
+                        const us = (bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2];
+                        if (us > 0) { bpm = 60000000 / us; sawTempo = true; }
+                    }
+                    p += mlen;
+                    if (meta === 0x2f) break;                // end of track
+                    continue;
+                }
+                if (status === 0xf0 || status === 0xf7) {    // sysex: skip by its length
+                    let slen = 0;
+                    for (let i = 0; i < 4 && p < end; i++) {
+                        const b = bytes[p++];
+                        slen = (slen << 7) | (b & 0x7f);
+                        if (!(b & 0x80)) break;
+                    }
+                    p += slen;
+                    continue;
+                }
+
+                const d1 = bytes[p++];
+                const twoBytes = cmd !== 0xc0 && cmd !== 0xd0;
+                const d2 = twoBytes ? bytes[p++] : 0;
+                if (cmd === 0x90 && d2 > 0) {
+                    const key = channel * 128 + d1;
+                    const note = { pitch: d1, velocity: d2, start: tick, dur: 0, channel };
+                    open.set(key, note);
+                    notes.push(note);
+                } else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) {
+                    const key = channel * 128 + d1;
+                    const note = open.get(key);
+                    if (note) { note.dur = Math.max(1, tick - note.start); open.delete(key); }
+                }
+            }
+            for (const note of open.values()) note.dur = Math.max(1, tick - note.start);
+            pos = pos + 8 + len;
+        }
+        notes.sort((a, b) => (a.start - b.start) || (b.pitch - a.pitch));
+        return { ppq, bpm, notes };
+    },
+
+    parseSMFFromFile(file) {
+        return file.arrayBuffer().then((buf) => this.parseSMF(new Uint8Array(buf)));
+    },
+
     // Build + download the individual's sequence as a .mid. Returns the filename.
     downloadMIDI(individual) {
         if (!this.canExport(individual)) throw new Error('Individual has no MIDI sequence');
