@@ -44,9 +44,12 @@
  * cubic. Height (y) drives the palette colour. Rides the shared Three.js pipeline
  * like the other 3D types, so it gets STL export for free.
  *
- * validate() rejects empty and near-solid forms — a CPPN whose threshold lands
- * outside the field's range produces nothing or a full block, and neither is
- * worth a grid tile.
+ * _field() keeps only the largest connected body (_keepLargestBody) — as
+ * EndlessForms rendered a single printable object — so the multiple disjoint
+ * lobes a thresholded CPPN field generically produces don't mesh into separated
+ * floating sheets. validate() then rejects empty and near-solid forms — a CPPN
+ * whose threshold lands outside the field's range produces nothing or a full
+ * block, and neither is worth a grid tile.
  *
  * QA: `node scripts/endlessforms-preview.js [out.png] [--n 9]` renders the real
  * generate3DPoints() mesh to a PNG headlessly (z-buffered, smooth
@@ -80,7 +83,12 @@ const EF_COORD_SCALE = 3.2;
 const EF_COORD_SCALE_RANGE = [1.0, 2.0];
 
 const endlessFormsGenerator = (rnd) => {
-    const numProc = rnd.randint(6, 20);
+    // Node count: a low floor is deliberate — a small CPPN is low-frequency, so it
+    // thresholds into big smooth voluminous bodies (the sculptural EndlessForms
+    // look) rather than the high-frequency, sheet-like level sets a large random
+    // net produces. (The original used NEAT, which starts minimal and complexifies;
+    // we can't, so we bias the initial draw toward simple.)
+    const numProc = rnd.randint(5, 16);
     // Bilateral symmetry: fold x → |x|. Biased ON — most EndlessForms shapes are
     // left-right symmetric, and it reliably produces coherent (non-noisy) forms.
     const symX = rnd.random() < 0.65;
@@ -103,10 +111,11 @@ const endlessFormsGenerator = (rnd) => {
     // evolved network structure actually shows in the form.
     const lastGlobal = EF_NUM_INPUTS + numProc - 1;
     const outputIndex = rnd.randint(EF_NUM_INPUTS + Math.max(0, numProc - 5), lastGlobal);
-    // Positive-biased threshold → sparser, more sculptural forms (thresholding a
-    // CPPN field is bimodal — mostly all-on/all-off — so a higher cut raises the
-    // yield of interesting partial-fill shapes that validate() keeps).
-    const threshold = rnd.uniform(0.1, 0.9);
+    // Threshold band straddling 0 (voxel ON iff output > threshold): a lower cut
+    // than the old positive-only band lets more material through, so bodies come
+    // out thicker/more voluminous rather than as thin shells. validate() still
+    // discards the near-solid tail, so the extra fill lands as chunkier sculptures.
+    const threshold = rnd.uniform(-0.1, 0.7);
     // Coordinate frequency gene (see EF_COORD_SCALE_RANGE): tunes blobby ↔ intricate.
     const coordScale = rnd.uniform(EF_COORD_SCALE_RANGE[0], EF_COORD_SCALE_RANGE[1]);
 
@@ -139,7 +148,7 @@ class EndlessFormsIndividual extends Individual {
     validate() {
         if (this._outputSpatialDeps() < 2) return false;
         const frac = this._field().count / (this.gx * this.gy * this.gz);
-        return frac >= 0.02 && frac <= 0.55;
+        return frac >= 0.02 && frac <= 0.45;
     }
 
     // How many distinct SPATIAL inputs (x,y,z,d — inputs 0..3, excluding the
@@ -211,6 +220,7 @@ class EndlessFormsIndividual extends Individual {
     // Scalar field (cached per phenotype). data[i + gx*(j + gy*k)] holds the SIGNED
     // value (threshold − CPPN output), so <0 means "inside/occupied". Sampled at cell
     // centres over the query domain: x,z ∈ [-1,1], y ∈ [-yspan,yspan]; symX folds x→|x|.
+    // Finally _keepLargestBody prunes everything but the largest connected mass.
     _field() {
         const p = this.phenotype;
         if (this._fieldCache && this._fieldCache.key === p) return this._fieldCache;
@@ -232,8 +242,63 @@ class EndlessFormsIndividual extends Individual {
                 }
             }
         }
+        count = this._keepLargestBody(data);
         this._fieldCache = { key: p, data, count };
         return this._fieldCache;
+    }
+
+    // Keep only the largest connected body, discarding floating material —
+    // EndlessForms rendered a single printable object, whereas a raw CPPN field
+    // generically crosses the threshold in several disjoint lobes, which we'd
+    // otherwise mesh as separated sheets. Occupied cells (data < 0) are
+    // flood-filled with 26-connectivity: diagonally touching cells share a
+    // meshing cube, so counting them as one body means the smooth mesher never
+    // has to bridge an evicted cell (an evicted body is 26-disconnected from the
+    // kept one, so no cube mixes their corners). Evicted cells are marked clearly
+    // "outside" (data = 1); the returned count is the surviving occupancy, which
+    // is what validate() should judge. Strictly the single largest component: a
+    // symX form whose two mirror halves don't touch across the midline would keep
+    // both as separated sheets (the very fragmentation we're removing), so we
+    // keep one lobe — a coherent, if off-centre, single body — over a split pair.
+    _keepLargestBody(data) {
+        const { gx, gy, gz } = this;
+        const N = gx * gy * gz;
+        const occ = (idx) => data[idx] < 0;
+        const label = new Int32Array(N).fill(-1);
+        const stack = [];
+        let best = -1, bestSize = 0, nextLabel = 0;
+
+        for (let start = 0; start < N; start++) {
+            if (label[start] !== -1 || !occ(start)) continue;
+            const lbl = nextLabel++;
+            label[start] = lbl;
+            stack.length = 0;
+            stack.push(start);
+            let size = 0;
+            while (stack.length) {
+                const idx = stack.pop();
+                size++;
+                const i = idx % gx, j = ((idx / gx) | 0) % gy, k = (idx / (gx * gy)) | 0;
+                for (let dk = -1; dk <= 1; dk++)
+                    for (let dj = -1; dj <= 1; dj++)
+                        for (let di = -1; di <= 1; di++) {
+                            if (di === 0 && dj === 0 && dk === 0) continue;
+                            const ni = i + di, nj = j + dj, nk = k + dk;
+                            if (ni < 0 || ni >= gx || nj < 0 || nj >= gy || nk < 0 || nk >= gz) continue;
+                            const nidx = ni + gx * (nj + gy * nk);
+                            if (label[nidx] === -1 && occ(nidx)) { label[nidx] = lbl; stack.push(nidx); }
+                        }
+            }
+            if (size > bestSize) { bestSize = size; best = lbl; }
+        }
+        if (best < 0) return 0; // nothing occupied
+
+        let count = 0;
+        for (let idx = 0; idx < N; idx++) {
+            if (label[idx] === best) count++;
+            else if (data[idx] < 0) data[idx] = 1; // evict → clearly outside
+        }
+        return count;
     }
 
     generate3DPoints() {
@@ -290,8 +355,26 @@ class EndlessFormsIndividual extends Individual {
     // material's computeVertexNormals() gives smooth (non-faceted) shading — the
     // rounded EndlessForms look. Compact and table-free (unlike marching cubes).
     _smoothMesh() {
-        const { gx, gy, gz } = this;
-        const { data } = this._field();
+        const origGy = this.gy;
+        const field = this._field().data;
+        // Pad the field with a one-cell border of "outside" so the isosurface
+        // CLOSES where occupied material meets the grid edge. Without it a hollow
+        // body cut by the boundary is left open — a hole — because there's no
+        // sample beyond the edge to form the sign change that caps it. The padding
+        // adds that virtual empty layer, so the surface seals with a flat wall on
+        // the boundary plane (equivalent to walling the object in with edge
+        // voxels). The blocky mesher already caps at the edge for free — an
+        // out-of-bounds neighbour reads as empty, so its face is emitted. Because
+        // the pad shifts every index by +1 and every half-extent by +1, they
+        // cancel in the world-coordinate offset below — the object doesn't move.
+        const pad = 1;
+        const ogx = this.gx, ogy = this.gy, ogz = this.gz;
+        const gx = ogx + 2 * pad, gy = ogy + 2 * pad, gz = ogz + 2 * pad;
+        const data = new Float32Array(gx * gy * gz).fill(1); // 1 = outside
+        for (let k = 0; k < ogz; k++)
+            for (let j = 0; j < ogy; j++)
+                for (let i = 0; i < ogx; i++)
+                    data[(i + pad) + gx * ((j + pad) + gy * (k + pad))] = field[i + ogx * (j + ogy * k)];
         const at = (i, j, k) => data[i + gx * (j + gy * k)];
 
         const cx = gx - 1, cy = gy - 1, cz = gz - 1;        // cell counts
@@ -339,7 +422,8 @@ class EndlessFormsIndividual extends Individual {
                     const s = 1 / e, wy = j + vy * s;
                     cellVert[cellIdx(i, j, k)] = vertices.length / 3;
                     vertices.push(i + vx * s - hx, wy - hy, k + vz * s - hz);
-                    const col = window.Palette.color(Math.max(0, Math.min(1, wy / (gy - 1))));
+                    // wy is a padded-grid height; shift back to original rows for the palette.
+                    const col = window.Palette.color(Math.max(0, Math.min(1, (wy - pad) / (origGy - 1))));
                     colors.push(col.r / 255, col.g / 255, col.b / 255);
 
                     // For each axis edge from corner0 that changes sign, connect the
