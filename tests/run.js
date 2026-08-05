@@ -33,7 +33,8 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Individual, psRandom, sandbox } = load();
+const env0 = load();
+const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Individual, psRandom, sandbox } = env0;
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -1014,6 +1015,88 @@ console.log('\nLeeuwenberg code music individual:');
         assert(child.genome !== a.genome || child.getPhenotype().length >= 0, 'mutation broke the genome');
         const [c1] = a.crossover(b);
         assert(c1 && c1.getPhenotype, 'crossover produced nothing');
+    });
+}
+
+// --- The play cursor ---
+// One shared contract: the individual says WHERE playback has got to
+// (playheadFraction), the tile draws it (Canvas2DModality.drawPlayhead), and the
+// framework decides when to repaint (startPlayheadAnimation). What has to hold
+// is that the cursor cannot drift from what you hear — it is read off the very
+// clock playback was scheduled against — and that a piece and a loop enter
+// differently.
+console.log('\nPlay cursor:');
+{
+    const validOf = (name, attempts = 200) => {
+        for (let i = 0; i < attempts; i++) {
+            const ind = new classes[name]();
+            if (ind.validate()) return ind;
+        }
+        throw new Error(`no valid ${name}`);
+    };
+    const SEQUENCERS = ['DrumMachineIndividual', 'MelodyIndividual', 'SITMusicIndividual'];
+
+    check('a loop lasts exactly as long as the buffer you hear', () => {
+        // The cursor sweeps loopSeconds(), the ear hears renderToAudioBuffer().
+        // If those two ever disagree the cursor drifts, so pin them together.
+        for (const name of SEQUENCERS) {
+            const ind = validOf(name);
+            const played = ind.renderToAudioBuffer().duration;
+            assert(Math.abs(ind.loopSeconds() - played) < 0.02,
+                `${name}: cursor spans ${ind.loopSeconds()}s but the loop is ${played}s`);
+        }
+    });
+
+    check('there is no cursor unless the individual is sounding', () => {
+        for (const name of SEQUENCERS) {
+            const ind = validOf(name);
+            assert(ind.playheadFraction() === null, `${name} reports a position while silent`);
+            ind.isPlaying = true;
+            const at = ind.playheadFraction();
+            assert(typeof at === 'number' && at >= 0 && at < 1,
+                `${name}: expected a fraction of the loop, got ${at}`);
+            ind.isPlaying = false;
+            assert(ind.playheadFraction() === null, `${name} keeps its cursor after stopping`);
+        }
+        // A type with no loop never animates: that null is what stops the loop.
+        assert(new classes.GridIndividual().playheadFraction() === null, 'a still tile has no cursor');
+    });
+
+    check('a piece starts from the start; a loop enters at the shared phase', () => {
+        const env = load();
+        const audio = env.sandbox.window.framework.sharedAudio;
+        const offsets = {};
+        audio.playBuffer = (buffer, opts) => { offsets[name] = opts.offset; };
+        // Put the shared clock somewhere other than the downbeat, so entering at
+        // the phase is visibly different from entering at zero.
+        env.sandbox.window.Transport.epoch = -1.13;
+        let name;
+        for (name of ['MelodyIndividual', 'SITMusicIndividual']) {
+            let ind = new env.classes[name]();
+            for (let i = 0; i < 200 && !ind.validate(); i++) ind = new env.classes[name]();
+            ind.playMIDI();
+        }
+        assert(offsets.MelodyIndividual > 0,
+            `a bar loop should enter mid-bar, got offset ${offsets.MelodyIndividual}`);
+        assert(offsets.SITMusicIndividual === 0,
+            `a piece should start at 0, got offset ${offsets.SITMusicIndividual}`);
+    });
+
+    check('drawPlayhead puts the cursor where the fraction says', () => {
+        // The stub context records what was filled, so the geometry is checkable
+        // even though nothing is rasterised.
+        const rects = [];
+        const ctx = Object.assign(makeCanvas().getContext(), {
+            fillRect: (x, y, w, h) => rects.push({ x, y, w, h }),
+            createLinearGradient: () => ({ addColorStop: () => {} }),
+            save: () => {}, restore: () => {},
+        });
+        env0.Canvas2DModality.drawPlayhead(ctx, 40, 5, 100, 1);
+        assert(rects.length === 2, `expected a trail and a line, got ${rects.length} fills`);
+        const line = rects[1];
+        assert(Math.abs(line.x + line.w / 2 - 40) < 0.01, `the cursor should sit at x=40, got ${line.x}`);
+        assert(line.y === 5 && line.h === 100, 'the cursor should span the band it was given');
+        assert(rects[0].x < line.x, 'the trail should point backwards in time');
     });
 }
 

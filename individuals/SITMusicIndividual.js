@@ -615,6 +615,19 @@ class SITMusicIndividual extends SITCodeIndividual {
     // code → a genome). This is the only type that can receive one, since it is
     // the only one whose generator can be run backwards (see fromCode).
     usesSITAnalysis() { return true; }
+
+    /**
+     * Start from the beginning, every time — unlike the step sequencers.
+     *
+     * They are one bar repeating, so entering at the shared Transport phase is
+     * what keeps the beat as you move across the grid. A Leeuwenberg code is not
+     * a bar: it is a piece of whatever length its own structure gives it, up to
+     * sixteen bars, and its regularities are heard FROM THE START (an arch, a
+     * sequence, a repeat with a transposed answer). Dropping into the middle of
+     * one at whatever phase the previous tile happened to leave the clock at
+     * would hide exactly what there is to listen for.
+     */
+    usesSharedPhase() { return false; }
     // Like the melody grid, the artefact is the sound; the piano roll is a view of it.
     usesImageSave() { return false; }
 
@@ -746,6 +759,13 @@ class SITMusicIndividual extends SITCodeIndividual {
             ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${0.45 + 0.55 * (n.velocity / 127)})`;
             ctx.fill();
         }
+
+        // The play cursor. It sweeps the whole tile because the tile IS the
+        // whole piece — where a step sequencer's cursor crosses one bar over and
+        // over, this one crosses the piece once and starts again (see
+        // usesSharedPhase).
+        const at = this.playheadFraction();
+        if (at !== null) Canvas2DModality.drawPlayhead(ctx, x(at * grains), pad, gridH, s);
     }
 
     _roundRect(ctx, x, y, w, h, r) {

@@ -199,8 +199,14 @@ class Individual {
         const fw = (typeof window !== 'undefined') && window.framework;
         const midi = (fw && fw.sharedMIDI) || this.midiModality;
         const audio = (fw && fw.sharedAudio) || this.audio;
-        const transport = (typeof window !== 'undefined') && window.Transport;
+        // A LOOP enters at the shared Transport phase, so switching between
+        // tiles keeps the beat. A PIECE starts at its beginning — see
+        // usesSharedPhase(). Both paths (MIDI and synth) read the same decision,
+        // so the two stay aligned either way.
+        const transport = this.usesSharedPhase()
+            ? ((typeof window !== 'undefined') && window.Transport) : null;
         this.stopSequenced();
+        this._playStart = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
         if (midi && midi.midiOutput && typeof this.toMIDISequence === 'function') {
             const seq = this.toMIDISequence();
             if (midi.playSequence(seq, transport)) {
@@ -215,6 +221,55 @@ class Individual {
             this._soundOut = audio;
         }
         this.isPlaying = true;
+    }
+
+    /**
+     * Does playback enter at the shared Transport phase?
+     *
+     * True for a LOOP: the step sequencers are one bar repeating, so entering
+     * mid-bar is what keeps the beat when you switch tiles or edit a cell —
+     * that shared phase is the whole point of the Transport. False for a PIECE:
+     * a type whose phenotype is a piece of its own length (a Leeuwenberg code
+     * can run to sixteen bars) has no bar grid to share, and dropping into the
+     * middle of one is just starting halfway through the tune. Such a type
+     * starts from the beginning each time, and its playhead is measured from
+     * `_playStart` rather than from the global clock.
+     */
+    usesSharedPhase() { return true; }
+
+    /**
+     * How long one time round lasts, in seconds — derived from the note
+     * sequence the type already publishes, so no type has to state it twice.
+     * 0 means "no loop", which is what makes playheadFraction() return null for
+     * every type that isn't a sequencer.
+     */
+    loopSeconds() {
+        if (typeof this.toMIDISequence !== 'function') return 0;
+        const seq = this.toMIDISequence();
+        if (!seq || !(seq.loopTicks > 0) || !(seq.bpm > 0)) return 0;
+        return (seq.loopTicks / (seq.ppq || 96)) * (60 / seq.bpm);
+    }
+
+    /**
+     * Where playback has got to, as a fraction 0…1 of the loop — or null when
+     * this individual isn't sounding, which is also the signal to stop
+     * animating it. The tile draws its own cursor from this (see
+     * Canvas2DModality.drawPlayhead); the framework only decides when to
+     * repaint (startPlayheadAnimation).
+     *
+     * It reads the same clock playback was scheduled against — the shared
+     * Transport for a loop, this individual's own start time for a piece — so
+     * the cursor cannot drift from what you hear, and while an external MIDI
+     * clock is driving, it follows the DAW along with everything else.
+     */
+    playheadFraction() {
+        if (!this.isPlaying) return null;
+        const len = this.loopSeconds();
+        if (!(len > 0)) return null;
+        const transport = (typeof window !== 'undefined') && window.Transport;
+        if (this.usesSharedPhase() && transport) return (transport.phase(len) / len) % 1;
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+        return ((((now - (this._playStart || now)) / len) % 1) + 1) % 1;
     }
 
     stopSequenced() {

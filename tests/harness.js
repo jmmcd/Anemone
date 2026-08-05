@@ -98,6 +98,10 @@ function makeContext() {
         arc: noop, arcTo: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
         fill: noop, stroke: noop, save: noop, restore: noop, clip: noop,
         translate: noop, scale: noop, rotate: noop, setLineDash: noop, fillText: noop,
+        // Gradients are objects with addColorStop, and are assigned to fillStyle
+        // (the play cursor's trail draws one).
+        createLinearGradient: () => ({ addColorStop: noop }),
+        createRadialGradient: () => ({ addColorStop: noop }),
         // settable properties used by the drawing code
         fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt',
         lineJoin: 'miter', font: '10px monospace', textAlign: 'left',

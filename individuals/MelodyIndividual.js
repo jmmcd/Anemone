@@ -202,6 +202,14 @@ class MelodyIndividual extends Individual {
             ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(pad + L * cw, yTop); ctx.lineTo(pad + L * cw, yTop + gridH); ctx.stroke();
         }
+
+        // The play cursor, over the ACTIVE steps only — the loop is L steps long,
+        // so that is the span the fraction runs across. Null unless this is the
+        // individual currently sounding.
+        const at = this.playheadFraction();
+        if (at !== null) {
+            Canvas2DModality.drawPlayhead(ctx, pad + at * L * cw, yTop, gridH, Math.min(W, H) / 128);
+        }
     }
 
     // --- Direct cell editing (folded back into the genome, like the drum machine) ----

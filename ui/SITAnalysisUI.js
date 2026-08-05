@@ -104,6 +104,7 @@ class SITAnalysisUI {
             if (fw.currentlyPlaying && fw.currentlyPlaying.stopMIDI) fw.currentlyPlaying.stopMIDI();
             this.seed.playMIDI();
             fw.currentlyPlaying = this.seed;
+            if (fw.startPlayheadAnimation) fw.startPlayheadAnimation();
             playBtn.textContent = '■ Stop';
             if (fw.refreshPlayButtons) fw.refreshPlayButtons();
         });

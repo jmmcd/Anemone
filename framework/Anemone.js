@@ -507,6 +507,7 @@ class InteractiveEAFramework {
                         }
                         individual.playMIDI();
                         this.currentlyPlaying = individual;
+                        this.startPlayheadAnimation();
                     }
                     this.refreshPlayButtons();
                 });

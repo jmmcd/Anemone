@@ -116,6 +116,43 @@
         animate();
     }
 
+    /**
+     * Keep the PLAY CURSOR moving on whatever is currently sounding.
+     *
+     * Only one individual plays at a time, so this repaints exactly one tile —
+     * plus the zoom canvas when that individual is the one on show. The
+     * individual decides where the cursor goes (playheadFraction, drawn in its
+     * own visualize); the framework only decides when to repaint.
+     *
+     * The loop is self-terminating: it stops as soon as the playing individual
+     * stops reporting a position, and repaints once more on the way out so the
+     * cursor is cleared rather than left frozen mid-tile. That is why nothing
+     * has to be called when playback STOPS — only when it starts.
+     */
+    startPlayheadAnimation() {
+        if (this._playheadRunning) return;               // one loop is enough
+        this._playheadRunning = true;
+        const paint = (individual) => {
+            if (individual._tileCanvas) {
+                try { individual.visualize(individual._tileCanvas); } catch (e) { /* keep the loop alive */ }
+            }
+            const zoomed = this.lightbox && this.lightbox.classList.contains('open')
+                && this.currentIndividual === individual && this.lightboxCanvas;
+            if (zoomed) {
+                try { individual.visualize(this.lightboxCanvas); } catch (e) { /* ditto */ }
+            }
+        };
+        const frame = () => {
+            const individual = this.currentlyPlaying;
+            const playing = individual && typeof individual.playheadFraction === 'function'
+                && individual.playheadFraction() !== null;
+            if (individual) paint(individual);            // the last frame clears the cursor
+            if (!playing) { this._playheadRunning = false; return; }
+            requestAnimationFrame(frame);
+        };
+        frame();
+    }
+
     // Seconds of "rotation time" for the 3D camera. Advances with the wall clock while
     // rotationEnabled; while paused it holds the value at the moment of pausing, and on
     // resume the paused span is added to the offset so the angle continues seamlessly.
@@ -175,6 +212,7 @@
         if (ind && typeof ind.playMIDI === 'function') {
             ind.playMIDI();
             this.currentlyPlaying = ind;
+            this.startPlayheadAnimation();
             this.refreshPlayButtons();
         }
     }
