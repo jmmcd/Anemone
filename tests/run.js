@@ -33,7 +33,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom } = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom, CF } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -1422,6 +1422,136 @@ check('bodySize and legLength are within range (so body/legs render)', () => {
     const p = new classes.SheepIndividual().getPhenotype();
     assert(p.bodySize >= 0.7 && p.bodySize <= 1.3, `bodySize out of range: ${p.bodySize}`);
     assert(p.legLength >= 0.6 && p.legLength <= 1.4, `legLength out of range: ${p.legLength}`);
+});
+
+// --- CartoonFace: the class-conditioned prior ---
+// The point of this type is the genotype prior it borrows from RFL
+// (RFL_MakeRandomFace.c): parts are drawn from frequency-weighted tables keyed on
+// the sex x age class, so a *random* draw already looks like a person. These
+// assert the prior is actually applied, that everything it can produce is
+// drawable, and that mutation behaves like the Mii Channel's look-alike step.
+console.log('\nCartoonFace prior (Wii Mii Channel homage):');
+const CF_CLASSES = ['m-c', 'f-c', 'm-a', 'f-a', 'm-e', 'f-e'];
+
+check('every class table exists and every part it can pick is drawable', () => {
+    for (const cls of CF_CLASSES) {
+        for (const t of ['CF_FACE_BY_CLASS', 'CF_HAIR_BY_CLASS', 'CF_EYE_BY_CLASS',
+            'CF_BROW_BY_CLASS', 'CF_NOSE_BY_CLASS', 'CF_MOUTH_BY_CLASS', 'CF_TEXTURE_BY_CLASS']) {
+            assert(Array.isArray(CF[t][cls]) && CF[t][cls].length > 0, `${t} has no entry for ${cls}`);
+        }
+        // Faceline and hair index shape/style tables by name; a missing key would
+        // silently fall back to a default face for that whole class.
+        for (const id of CF.CF_FACE_BY_CLASS[cls]) {
+            assert(CF.CF_FACE_SHAPES[id], `faceline "${id}" (class ${cls}) has no shape entry`);
+        }
+        for (const id of CF.CF_HAIR_BY_CLASS[cls]) {
+            assert(CF.CF_HAIR_STYLES[id], `hair "${id}" (class ${cls}) has no style entry`);
+        }
+    }
+    for (const age of ['c', 'a', 'e']) {
+        assert(CF.CF_GLASS_BY_AGE[age].length > 0, `no glasses table for age ${age}`);
+    }
+    for (const tone of [0, 1, 2]) {
+        assert(CF.CF_SKIN_BY_TONE[tone].length > 0, `no skin table for tone ${tone}`);
+        assert(CF.CF_EYE_COLORS[tone].length > 0, `no eye-colour table for tone ${tone}`);
+        for (const age of ['c', 'a', 'e']) {
+            assert(CF.CF_HAIR_COLORS[`${age}-${tone}`].length > 0, `no hair colour for ${age}-${tone}`);
+        }
+    }
+});
+
+check('a random draw always comes from its own class\'s tables', () => {
+    for (let i = 0; i < 80; i++) {
+        const p = new classes.CartoonFaceIndividual().phenotype;
+        const cls = p.sex + '-' + p.age;
+        assert(CF_CLASSES.includes(cls), `unexpected class ${cls}`);
+        assert(CF.CF_FACE_BY_CLASS[cls].includes(p.faceline), `faceline ${p.faceline} not in ${cls}`);
+        assert(CF.CF_HAIR_BY_CLASS[cls].includes(p.hair), `hair ${p.hair} not in ${cls}`);
+        assert(CF.CF_EYE_BY_CLASS[cls].includes(p.eye), `eye ${p.eye} not in ${cls}`);
+        assert(CF.CF_MOUTH_BY_CLASS[cls].includes(p.mouth), `mouth ${p.mouth} not in ${cls}`);
+        assert(CF.CF_GLASS_BY_AGE[p.age].includes(p.glasses), `glasses ${p.glasses} not for age ${p.age}`);
+        assert(CF.CF_SKIN_BY_TONE[p.tone].includes(p.skinColor), `skin not from tone ${p.tone}`);
+        assert(CF.CF_HAIR_COLORS[p.age + '-' + p.tone].includes(p.hairColor), 'hair colour off-table');
+    }
+});
+
+check('RFL\'s conditional rule holds: facial hair only on adult/elder males', () => {
+    for (let i = 0; i < 200; i++) {
+        const p = new classes.CartoonFaceIndividual().phenotype;
+        if (p.beard !== 'none') {
+            assert(p.sex === 'm' && p.age !== 'c', `beard on a ${p.sex}-${p.age} face`);
+        }
+    }
+});
+
+check('flipping the sex/age class re-draws the parts into the new vocabulary', () => {
+    // The homeotic cascade: sex and age are ordinary genes, but every part choice
+    // reads a table through them, so PTO's repair re-picks the parts when they
+    // change. Whatever else happens, a face is never left holding a part its own
+    // class cannot produce.
+    let observed = 0;
+    for (let trial = 0; trial < 60 && observed < 8; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.5);
+        const a = parent.phenotype, b = child.phenotype;
+        if (a.sex === b.sex && a.age === b.age) continue;
+        observed++;
+        const cls = b.sex + '-' + b.age;
+        assert(CF.CF_HAIR_BY_CLASS[cls].includes(b.hair), `hair ${b.hair} survived into class ${cls}`);
+        assert(CF.CF_EYE_BY_CLASS[cls].includes(b.eye), `eye ${b.eye} survived into class ${cls}`);
+        assert(CF.CF_FACE_BY_CLASS[cls].includes(b.faceline), `faceline ${b.faceline} survived into ${cls}`);
+        assert(CF.CF_GLASS_BY_AGE[b.age].includes(b.glasses), `glasses ${b.glasses} survived into age ${b.age}`);
+    }
+    assert(observed > 0, 'no class flip observed in 60 trials — the class genes may not be mutating');
+});
+
+check('look-alike: a small mutation keeps most of the face', () => {
+    // The Mii Channel's second screen. With PTO's fine operators a low rate should
+    // leave the great majority of the part types alone.
+    const fields = ['faceline', 'hair', 'eye', 'brow', 'nose', 'mouth', 'glasses', 'texture'];
+    let same = 0, total = 0;
+    for (let trial = 0; trial < 40; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.05);
+        for (const f of fields) {
+            total++;
+            if (parent.phenotype[f] === child.phenotype[f]) same++;
+        }
+    }
+    assert(same / total > 0.75, `only ${(100 * same / total).toFixed(0)}% of parts survived a rate-0.05 mutation`);
+});
+
+check('placement genes creep by one step, they do not jump', () => {
+    // RFL stores scale/rotation/position as small ints and so do we, which is what
+    // makes PTO's fine mutation a *creep* — the reason a mutated face still reads
+    // as the same person rather than a new one.
+    const placements = ['eyeScale', 'eyeRotate', 'eyeX', 'eyeY', 'browScale', 'browRotate',
+        'browX', 'browY', 'noseScale', 'noseY', 'mouthScale', 'mouthY', 'height', 'build'];
+    let moved = 0;
+    for (let trial = 0; trial < 40; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.15);
+        const a = parent.phenotype, b = child.phenotype;
+        if (a.sex !== b.sex || a.age !== b.age) continue;   // a class flip re-rolls everything
+        for (const g of placements) {
+            const d = Math.abs(a[g] - b[g]);
+            assert(d <= 1, `${g} jumped by ${d} under a single mutation`);
+            if (d === 1) moved++;
+        }
+    }
+    assert(moved > 0, 'no placement gene ever moved — mutation is not reaching them');
+});
+
+check('an edited/mutated face still renders at tile and lightbox sizes', () => {
+    const ind = new classes.CartoonFaceIndividual();
+    for (const size of [128, 768]) ind.visualize(makeCanvas(size, size));
+    ind.mutate(0.4);
+    for (const size of [128, 768]) ind.visualize(makeCanvas(size, size));
+    assert(typeof ind.describeExtra() === 'string' && ind.describeExtra().includes('Prior class'),
+        'describeExtra should report the prior class');
 });
 
 // --- Shared MIDI modality ---
