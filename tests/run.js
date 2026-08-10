@@ -33,7 +33,8 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom } = load();
+const harness = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom, roboCat, sandbox } = harness;
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -1422,6 +1423,130 @@ check('bodySize and legLength are within range (so body/legs render)', () => {
     const p = new classes.SheepIndividual().getPhenotype();
     assert(p.bodySize >= 0.7 && p.bodySize <= 1.3, `bodySize out of range: ${p.bodySize}`);
     assert(p.legLength >= 0.6 && p.legLength <= 1.4, `legLength out of range: ${p.legLength}`);
+});
+
+// --- Robohash identikit cats ---
+// The genome is one index per part slot, so the slot table in the individual and
+// the pinned manifest must agree exactly: if they drift, every saved genome
+// silently decodes to a different cat. The rest guards the choices that make the
+// type work visually (see the file header) rather than just not crash.
+console.log('\nRobohash identikit cats:');
+const roboParts = sandbox.window.RoboParts;
+
+check('slot table matches the pinned manifest (names, order and counts)', () => {
+    const manifestSlots = roboParts.slots(roboCat.SET);
+    assert(manifestSlots.length === roboCat.SLOTS.length,
+        `slot count differs: individual ${roboCat.SLOTS.length}, manifest ${manifestSlots.length}`);
+    for (let i = 0; i < manifestSlots.length; i++) {
+        assert(manifestSlots[i].name === roboCat.SLOTS[i].name,
+            `slot ${i}: individual says "${roboCat.SLOTS[i].name}", manifest says "${manifestSlots[i].name}"`);
+        assert(manifestSlots[i].parts.length === roboCat.SLOTS[i].count,
+            `slot "${manifestSlots[i].name}": individual says ${roboCat.SLOTS[i].count} options, manifest has ${manifestSlots[i].parts.length}`);
+    }
+});
+
+check('every manifest part resolves to a file and a pivot', () => {
+    for (const slot of roboParts.slots(roboCat.SET)) {
+        for (const part of slot.parts) {
+            assert(/^\d\d\.webp$/.test(part.file), `${slot.name}: odd filename ${part.file}`);
+            // bbox may be null (a deliberately empty "no pattern" option), but if
+            // present it must be a normalised box the renderer can pivot about.
+            if (part.bbox) {
+                assert(part.bbox.length === 4, `${slot.name}/${part.file}: bad bbox`);
+                assert(part.bbox[0] < part.bbox[2] && part.bbox[1] < part.bbox[3],
+                    `${slot.name}/${part.file}: degenerate bbox`);
+                for (const v of part.bbox) assert(v >= 0 && v <= 1, `${slot.name}/${part.file}: bbox not normalised`);
+            }
+        }
+    }
+});
+
+check('body and fur share one transform group (the coat cannot slide off)', () => {
+    const bySlot = Object.fromEntries(roboCat.SLOTS.map(s => [s.name, s]));
+    assert(bySlot.body.group === bySlot.fur.group,
+        'fur is a pattern painted onto the body silhouette; jittering it separately detaches the markings');
+    assert(bySlot.eyes.group !== bySlot.body.group, 'eyes need their own transform');
+    assert(new Set(roboCat.SLOTS.map(s => s.group)).size === roboCat.JITTER.length,
+        'every group needs a jitter range (and vice versa)');
+});
+
+check('eyes and mouth are never tinted (the face stays readable)', () => {
+    const idx = (name) => roboCat.SLOTS.findIndex(s => s.name === name);
+    assert(!roboCat.TINT_SLOTS.includes(idx('eyes')), 'a tinted sclera reads as damage, not as a choice');
+    assert(!roboCat.TINT_SLOTS.includes(idx('mouth')), 'mouth should keep its drawn colour');
+    assert(roboCat.TINT_SLOTS.includes(idx('body')), 'body should be tintable');
+});
+
+check('jitter stays subtle', () => {
+    for (const r of roboCat.JITTER) {
+        assert(r.dx <= 0.05 && r.dy <= 0.05, `offset ${r.dx}/${r.dy} is too large to read as wonkiness`);
+        assert(r.scale <= 0.15, `scale range ${r.scale} is too large`);
+        assert(r.rot <= 10, `rotation range ${r.rot}° is too large`);
+    }
+});
+
+check('genome has one gene per slot, group and tintable slot; all in range', () => {
+    for (let n = 0; n < 20; n++) {
+        const cat = new classes.RoboHashCatIndividual();
+        const p = cat.phenotype;
+        assert(p.parts.length === roboCat.SLOTS.length, 'wrong number of part genes');
+        for (let i = 0; i < p.parts.length; i++) {
+            assert(Number.isInteger(p.parts[i]) && p.parts[i] >= 0 && p.parts[i] < roboCat.SLOTS[i].count,
+                `part gene ${i} out of range: ${p.parts[i]}`);
+        }
+        assert(p.jitter.length === roboCat.JITTER.length, 'wrong number of jitter groups');
+        for (const j of p.jitter) {
+            for (const k of ['dx', 'dy', 'scale', 'rot']) {
+                assert(j[k] >= -1 && j[k] <= 1, `jitter.${k} is stored normalised: got ${j[k]}`);
+            }
+        }
+        assert(p.tint.length === roboCat.TINT_SLOTS.length, 'wrong number of tint genes');
+    }
+});
+
+check('part genes stay in range after mutation and crossover', () => {
+    const a = new classes.RoboHashCatIndividual();
+    const b = new classes.RoboHashCatIndividual();
+    for (let n = 0; n < 15; n++) a.mutate(0.4);   // mutate is in place
+    const kids = [a, ...a.crossover(b)];
+    for (const kid of kids) {
+        const parts = kid.phenotype.parts;
+        for (let i = 0; i < parts.length; i++) {
+            assert(Number.isInteger(parts[i]) && parts[i] >= 0 && parts[i] < roboCat.SLOTS[i].count,
+                `part gene ${i} left its range after breeding: ${parts[i]}`);
+        }
+    }
+});
+
+check('renders, and caches only once every part has arrived', () => {
+    const cat = new classes.RoboHashCatIndividual();
+    const canvas = makeCanvas(128, 128);
+
+    roboParts._available = false;
+    cat.invalidateImageCache();
+    cat.visualize(canvas);                       // must not throw with nothing loaded
+    assert(cat._cachedImageData === null || cat._cachedImageData === undefined,
+        'a half-loaded tile must not be cached as if it were finished');
+
+    roboParts._available = true;
+    cat.invalidateImageCache();
+    cat.visualize(canvas);
+    assert(cat._cachedImageData, 'a complete render should be cached');
+});
+
+check('renderKey tracks the parts-service version, not just the genome', () => {
+    const cat = new classes.RoboHashCatIndividual();
+    const before = cat.renderKey();
+    roboParts._version++;
+    const after = cat.renderKey();
+    roboParts._version--;
+    assert(before !== after, 'a late-arriving batch of parts must invalidate the cached tile');
+});
+
+check('describe() names the parts and credits the artist (CC-BY)', () => {
+    const text = new classes.RoboHashCatIndividual().describe();
+    assert(/body/.test(text) && /accessories/.test(text), 'part slots should be listed');
+    assert(/David Revoy/.test(text), 'CC-BY artwork must carry attribution in the app');
 });
 
 // --- Shared MIDI modality ---
