@@ -4,8 +4,8 @@
 // cannot drift from the dispatcher: adding a binding to that table is all it
 // takes to document it. Bindings are grouped by their `group`, and only the
 // groups that can apply to the *current* type are shown — [ and ] mean the loop
-// length on a step sequencer, the animation speed on an animated pattern, and
-// the camera zoom otherwise, so showing all three at once would be a lie.
+// length on a step sequencer, the animation speed on a continuously animating
+// type, and the camera zoom otherwise, so showing all three at once would be a lie.
 // General (always-on) rows come first.
 //
 // It also lists the pointer gestures, which have no hotkey binding to generate

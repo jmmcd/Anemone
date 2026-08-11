@@ -13,6 +13,64 @@ class Editable {
 }
 
 /**
+ * AnimationClock — the app's single transport for *continuously animating*
+ * types, exposed as `Individual.AnimationClock`.
+ *
+ * It is the visual sibling of `window.Transport` (the step sequencers' clock in
+ * ui/PerformanceControls.js): one shared clock rather than one per individual,
+ * so a grid of animating tiles pauses and changes speed together, and the
+ * `[` / `]` / `.` hotkeys have a single thing to talk to.
+ *
+ * Time is *accumulated*, not derived from a start timestamp, which is what makes
+ * pause and speed changes seamless: `_sync()` banks the animation-seconds
+ * elapsed so far before any change to `paused`/`scale`, so a new rate applies
+ * from now on instead of retroactively rescaling the whole history (which would
+ * make every tile jump).
+ *
+ * `scale` is a *period* multiplier, matching the sequencers' feel: >1 is slower.
+ * A type reads `seconds()` and divides by its own evolved period, so individuals
+ * keep their own tempos while sharing one transport.
+ */
+const AnimationClock = {
+    _scale: 1.0,       // period multiplier: 2 = half speed. Clamped to [0.25, 8].
+    _paused: false,
+    _elapsed: 0,       // animation-seconds banked up to _wall
+    _wall: null,       // wall-clock ms at the last sync (null until first read)
+
+    _now() {
+        return (typeof performance !== 'undefined' && performance.now)
+            ? performance.now() : Date.now();
+    },
+
+    // Bank the time since the last sync at the rate that was in force for it.
+    _sync() {
+        const w = this._now();
+        if (this._wall !== null && !this._paused) {
+            this._elapsed += (w - this._wall) / 1000 / this._scale;
+        }
+        this._wall = w;
+        return this._elapsed;
+    },
+
+    /** Animation time in seconds — frozen while paused, stretched by `scale`. */
+    seconds() { return this._sync(); },
+
+    get scale() { return this._scale; },
+    get paused() { return this._paused; },
+
+    /** factor > 1 slows down, < 1 speeds up (the [ and ] hotkeys). */
+    adjustScale(factor) {
+        this._sync();
+        this._scale = Math.max(0.25, Math.min(8, this._scale * factor));
+    },
+
+    togglePause() { this._sync(); this._paused = !this._paused; },
+
+    /** Test seam: rewind to a known state. */
+    reset() { this._scale = 1.0; this._paused = false; this._elapsed = 0; this._wall = null; },
+};
+
+/**
  * Individual — base class for all individual types.
  *
  * Holds a representation strategy object (this.representation) and delegates the
@@ -56,6 +114,13 @@ class Individual {
     // has a tempo (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs)
     // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
     usesMIDISync() { return false; }
+    // A type whose tile redraws every frame off `Individual.AnimationClock`
+    // (AnimatedPattern, Cat) rather than rendering once and caching. The
+    // framework reads this to decide what `[` / `]` / `.` mean for the current
+    // type — animation speed and play/pause, rather than loop length or camera
+    // zoom — so the hotkeys and the ? overlay follow the capability, not a
+    // hard-coded list of classes.
+    animatesContinuously() { return false; }
 
     // --- Active intervention (direct manipulation of the phenotype) --------------
     // A type can let the user edit its rendered phenotype *directly* — by pointer,
@@ -579,3 +644,8 @@ class Individual {
         this._cacheKey = null;
     }
 }
+
+// The one shared animation transport (see the AnimationClock definition above).
+// Hung off Individual so every type reaches it the same way it reaches
+// mulberry32, without another window.* service to stub in the test harness.
+Individual.AnimationClock = AnimationClock;

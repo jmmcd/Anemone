@@ -46,6 +46,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'SITCodeIndividual',                        label: 'Leeuwenberg Code 2D' },
     { name: 'SITCode3DIndividual',                      label: 'Leeuwenberg Code 3D' },
     { name: 'BlindWatchmakerIndividual',                label: 'Blind Watchmaker' },
+    { name: 'CatIndividual',                            label: 'Cat (animated)' },
     { name: 'RobotIndividual',                          label: 'Robot' },
     { name: 'WonkyGuysIndividual',                      label: 'Wonky Guys' },
     { name: 'HoxCreatureIndividual',                    label: 'Bug' },
