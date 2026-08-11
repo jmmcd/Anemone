@@ -437,26 +437,29 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     if (hair.bun) hairBlob(cx, cy - hh * 1.04, hw * 0.38, hh * 0.30);
 
     // --- body: neck, shoulders, shirt ----------------------------------------
-    const shoulderY = cy + hh * (shape.chin + 0.34);
+    // Short and sturdy: the neck is about a third of the head's width and barely
+    // clears the chin before the collar, which is the bust proportion this style
+    // wants — a narrow one reads as a stalk at tile size.
+    const shoulderY = cy + hh * (shape.chin + 0.20);
     const shoulderW = hw * (1.20 + p.build * 0.55);
-    const neckW = hw * 0.26;
+    const neckW = hw * 0.34;
     ctx.fillStyle = shade(p.skinColor, 0.93);
     ctx.beginPath();
     // The neck runs *below* the collar's dip (shoulderY + 0.24hh), or the
     // neckline curve leaves a crescent of background under the chin.
     ctx.moveTo(cx - neckW, cy + hh * (shape.chin - 0.12));
-    ctx.lineTo(cx - neckW, shoulderY + hh * 0.34);
-    ctx.lineTo(cx + neckW, shoulderY + hh * 0.34);
+    ctx.lineTo(cx - neckW, shoulderY + hh * 0.30);
+    ctx.lineTo(cx + neckW, shoulderY + hh * 0.30);
     ctx.lineTo(cx + neckW, cy + hh * (shape.chin - 0.12));
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = p.shirtColor;
     ctx.beginPath();
-    ctx.moveTo(cx - neckW * 1.9, shoulderY);
+    ctx.moveTo(cx - neckW * 1.55, shoulderY);
     ctx.bezierCurveTo(cx - shoulderW, shoulderY + hh * 0.12, cx - shoulderW, shoulderY + hh * 0.5, cx - shoulderW, height + hh);
     ctx.lineTo(cx + shoulderW, height + hh);
-    ctx.bezierCurveTo(cx + shoulderW, shoulderY + hh * 0.5, cx + shoulderW, shoulderY + hh * 0.12, cx + neckW * 1.9, shoulderY);
-    ctx.bezierCurveTo(cx + neckW * 0.9, shoulderY + hh * 0.24, cx - neckW * 0.9, shoulderY + hh * 0.24, cx - neckW * 1.9, shoulderY);
+    ctx.bezierCurveTo(cx + shoulderW, shoulderY + hh * 0.5, cx + shoulderW, shoulderY + hh * 0.12, cx + neckW * 1.55, shoulderY);
+    ctx.bezierCurveTo(cx + neckW * 0.8, shoulderY + hh * 0.20, cx - neckW * 0.8, shoulderY + hh * 0.20, cx - neckW * 1.55, shoulderY);
     ctx.closePath();
     ctx.fill();
     // Same reason as the hair outline: a white or very pale shirt is otherwise
