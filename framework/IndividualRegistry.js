@@ -49,6 +49,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'RobotIndividual',                          label: 'Robot' },
     { name: 'WonkyGuysIndividual',                      label: 'Wonky Guys' },
     { name: 'HoxCreatureIndividual',                    label: 'Bug' },
+    { name: 'CartoonFaceIndividual',                    label: 'Cartoon Face' },
     { name: 'SheepIndividual',                          label: 'Sheep' },
     { name: 'PenroseIndividual',                        label: 'Penrose' },
     { name: 'PSystemIndividual',                        label: 'P-System' },
