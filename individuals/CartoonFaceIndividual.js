@@ -563,6 +563,12 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         ctx.ellipse(ex, eyeY, rx, ry, rot, Math.PI * 1.02, Math.PI * 1.98);
         stroke('#2b2b2b', S * 0.010);
         if (p.eye === 'sleepy') {
+            // The lid has to *cover* the eye, not just be a line across it: drawn
+            // as a bare stroke the sclera and iris show through above it, which
+            // reads as a transparent eyelid. (Eyebrows are drawn after the eyes,
+            // so masking with skin here cannot eat into them.)
+            fillPoly([[ex - rx * 1.1, eyeY - ry * 0.35], [ex + rx * 1.1, eyeY - ry * 0.15],
+                [ex + rx * 1.1, eyeY - ry * 1.2], [ex - rx * 1.1, eyeY - ry * 1.2]], p.skinColor);
             ctx.beginPath();
             ctx.moveTo(ex - rx, eyeY - ry * 0.35);
             ctx.lineTo(ex + rx, eyeY - ry * 0.15);
@@ -837,15 +843,30 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         }
     }
     if (hair.ring) {
-        // The elder's horseshoe: hair only around the sides and back.
+        // The elder's horseshoe: hair around the sides only. It has to *follow*
+        // the head — a hand-placed curve ends up arcing inward across the crown
+        // and reads as a bald patch behind the hair rather than a receding
+        // hairline. Each side is a band between the faceline and an inset copy,
+        // tapering out towards the top.
+        const botY = cy + hh * 0.10, topY = cy - hh * 0.60;
+        const band = hw * 0.16;
+        const N = 14;
         for (const s of [-1, 1]) {
             ctx.beginPath();
-            ctx.moveTo(cx + s * shape.cheek * hw * 1.00, cy - hh * 0.06);
-            ctx.quadraticCurveTo(cx + s * hw * 0.94, cy - hh * 0.62, cx + s * hw * 0.62, cy - hh * 0.70);
-            // Outline first, as a slightly fatter stroke underneath: a stroked
-            // shape has no path of its own to trace afterwards.
-            stroke(hairOutline, S * 0.032 + edge * 2);
-            stroke(p.hairColor, S * 0.032);
+            for (let i = 0; i <= N; i++) {
+                const y = botY + (topY - botY) * i / N;
+                const x = cx + s * faceHalfWidth(y) * 1.01;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            for (let i = N; i >= 0; i--) {
+                const y = botY + (topY - botY) * i / N;
+                const taper = 1 - Math.pow(i / N, 2.5) * 0.90;
+                ctx.lineTo(cx + s * (faceHalfWidth(y) * 1.01 - band * taper), y);
+            }
+            ctx.closePath();
+            ctx.fillStyle = p.hairColor;
+            ctx.fill();
+            stroke(hairOutline, edge);
         }
     }
     if (hair.mohawk) {
