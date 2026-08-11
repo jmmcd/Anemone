@@ -340,6 +340,29 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
     };
 
+    // Half-width of the faceline at a given y, over its upper half, found by
+    // sampling the very bezier facePath draws. The hair's side edges have to track
+    // this: the head tapers in towards the crown, so an edge held at a fixed
+    // fraction of the cheek width sits outside the face up there and leaves a
+    // triangle of background between hair and head.
+    const faceHalfWidth = (y) => {
+        const tw = shape.top * hw, cwF = shape.cheek * hw;
+        const px = [0, tw * 0.88, cwF, cwF];
+        const py = [cy - hh, cy - hh, cy - hh * 0.55, cy - hh * 0.05];
+        let prevX = px[0], prevY = py[0];
+        for (let i = 1; i <= 24; i++) {
+            const t = i / 24, u = 1 - t;
+            const bx = u * u * u * px[0] + 3 * u * u * t * px[1] + 3 * u * t * t * px[2] + t * t * t * px[3];
+            const by = u * u * u * py[0] + 3 * u * u * t * py[1] + 3 * u * t * t * py[2] + t * t * t * py[3];
+            if ((y >= prevY && y <= by) || (y <= prevY && y >= by)) {
+                const f = by === prevY ? 0 : (y - prevY) / (by - prevY);
+                return prevX + f * (bx - prevX);
+            }
+            prevX = bx; prevY = by;
+        }
+        return cwF;   // below the sampled span the cheek is the widest point
+    };
+
     // The faceline outline, as a closed path: crown, temples, cheeks, jaw, chin.
     // `round` widens/narrows the flat of the chin, which is what reads as a square
     // jaw versus a pointed one.
@@ -406,9 +429,11 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     const neckW = hw * 0.26;
     ctx.fillStyle = shade(p.skinColor, 0.93);
     ctx.beginPath();
+    // The neck runs *below* the collar's dip (shoulderY + 0.24hh), or the
+    // neckline curve leaves a crescent of background under the chin.
     ctx.moveTo(cx - neckW, cy + hh * (shape.chin - 0.12));
-    ctx.lineTo(cx - neckW, shoulderY + hh * 0.10);
-    ctx.lineTo(cx + neckW, shoulderY + hh * 0.10);
+    ctx.lineTo(cx - neckW, shoulderY + hh * 0.34);
+    ctx.lineTo(cx + neckW, shoulderY + hh * 0.34);
     ctx.lineTo(cx + neckW, cy + hh * (shape.chin - 0.12));
     ctx.closePath();
     ctx.fill();
@@ -706,25 +731,30 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         // instead — the obvious way to avoid that wedge — shaves the sides off and
         // leaves every style looking like a severe undercut.
         const earY = cy + hh * 0.10;
-        const inW = shape.cheek * hw * 0.94;
         const fringeY = fy + hh * 0.06;
+        // Both side edges are pulled *just inside* the faceline at their own
+        // height, so the hair always overlaps the head's outline instead of
+        // standing off it.
+        const inW = faceHalfWidth(fringeY) * 0.96;
+        const midY = (fringeY + earY) / 2;
+        const midW = faceHalfWidth(midY) * 0.97;
         ctx.beginPath();
         ctx.moveTo(cx - cw, earY);
         ctx.bezierCurveTo(cx - cw, cy - hh * 0.74, cx - tw * 0.90, top, cx, top);
         ctx.bezierCurveTo(cx + tw * 0.90, top, cx + cw, cy - hh * 0.74, cx + cw, earY);
-        ctx.quadraticCurveTo(cx + inW * 1.02, fy + hh * 0.34, cx + inW, fringeY);
+        ctx.quadraticCurveTo(cx + midW, midY, cx + inW, fringeY);
         // ...and back along the fringe.
         if (hair.fringe === 'part') {
             ctx.quadraticCurveTo(cx + flip * hw * 0.36, fy - hh * 0.20, cx - flip * hw * 0.28, fy + hh * 0.14);
             ctx.quadraticCurveTo(cx - inW * 0.70, fy + hh * 0.16, cx - inW, fringeY);
         } else if (hair.fringe === 'wavy') {
-            ctx.quadraticCurveTo(cx + hw * 0.52, fy - hh * 0.20, cx + hw * 0.18, fy + hh * 0.04);
-            ctx.quadraticCurveTo(cx - hw * 0.18, fy + hh * 0.20, cx - hw * 0.52, fy - hh * 0.04);
-            ctx.quadraticCurveTo(cx - inW * 0.78, fy - hh * 0.16, cx - inW, fringeY);
+            ctx.quadraticCurveTo(cx + inW * 0.62, fy - hh * 0.20, cx + inW * 0.22, fy + hh * 0.04);
+            ctx.quadraticCurveTo(cx - inW * 0.22, fy + hh * 0.20, cx - inW * 0.62, fy - hh * 0.04);
+            ctx.quadraticCurveTo(cx - inW * 0.90, fy - hh * 0.16, cx - inW, fringeY);
         } else {
             ctx.quadraticCurveTo(cx, fy - hh * 0.24, cx - inW, fringeY);
         }
-        ctx.quadraticCurveTo(cx - inW * 1.02, fy + hh * 0.34, cx - cw, earY);
+        ctx.quadraticCurveTo(cx - midW, midY, cx - cw, earY);
         ctx.closePath();
         ctx.fillStyle = p.hairColor;
         ctx.fill();
