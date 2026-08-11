@@ -252,12 +252,22 @@ class MiniContext {
         const [r, g, b, ca] = parseColor(color);
         const a = ca * this.globalAlpha;
         const W = this.raster.width;
+        // Painting is confined to this canvas's own rect. In a contact sheet many
+        // canvases share one raster, so without that a figure wider than its cell
+        // (a bust's shoulders) bleeds into the neighbour instead of being cropped,
+        // as a real per-tile canvas would crop it. The mask is cleared over the
+        // *whole* touched bounds either way — it is reused by the next draw.
+        const cx0 = this.clipW === undefined ? -Infinity : this.ox;
+        const cx1 = this.clipW === undefined ? Infinity : this.ox + this.clipW - 1;
+        const cy0 = this.clipH === undefined ? -Infinity : this.oy;
+        const cy1 = this.clipH === undefined ? Infinity : this.oy + this.clipH - 1;
         for (let y = y0; y <= y1; y++) {
             const row = y * W;
+            const inRow = y >= cy0 && y <= cy1;
             for (let x = x0; x <= x1; x++) {
                 if (!mask[row + x]) continue;
                 mask[row + x] = 0;
-                if (a > 0) this.raster.setPixel(x, y, [r, g, b], a);
+                if (a > 0 && inRow && x >= cx0 && x <= cx1) this.raster.setPixel(x, y, [r, g, b], a);
             }
         }
     }

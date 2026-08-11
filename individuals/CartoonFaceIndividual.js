@@ -363,7 +363,6 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     // --- background -----------------------------------------------------------
     ctx.fillStyle = '#e9eef2';
     ctx.fillRect(0, 0, width, height);
-    ellipse(cx, cy + hh * 0.1, S * 0.42, S * 0.42, '#dde6ec');
 
     // --- hair, back layer -----------------------------------------------------
     // Before the body: long hair falls *behind* the shoulders, and the neck then
@@ -403,7 +402,7 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
 
     // --- body: neck, shoulders, shirt ----------------------------------------
     const shoulderY = cy + hh * (shape.chin + 0.34);
-    const shoulderW = hw * (1.30 + p.build * 0.70);
+    const shoulderW = hw * (1.20 + p.build * 0.55);
     const neckW = hw * 0.26;
     ctx.fillStyle = shade(p.skinColor, 0.93);
     ctx.beginPath();
@@ -599,11 +598,11 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
 
     // --- mouth ----------------------------------------------------------------
     const mouthY = noseY + hh * shape.chin * (0.20 + p.mouthY * 0.10);
-    const mw = hw * 0.42 * p.mouthScale;
+    const mw = hw * 0.33 * p.mouthScale;
     const lip = '#a8443c';
     const dark = '#5c2b26';
     if (p.mouth === 'smile' || p.mouth === 'wide') {
-        const w = p.mouth === 'wide' ? mw * 1.35 : mw;
+        const w = p.mouth === 'wide' ? mw * 1.22 : mw;
         ctx.beginPath();
         ctx.moveTo(cx - w, mouthY - mw * 0.12);
         ctx.quadraticCurveTo(cx, mouthY + mw * 0.62, cx + w, mouthY - mw * 0.12);
@@ -699,26 +698,33 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         const tw = shape.top * hw * g, cw = shape.cheek * hw * g;
         const top = cy - hh * g;
         const fy = cy + hh * hair.fy;
-        // The cap is a crescent: the crown curve from one temple over the head to
-        // the other, closed by the fringe. Its ends sit *at* the fringe, not lower
-        // down the sides — a cap with side lobes hanging below the fringe leaves a
-        // wedge of background between its straight edge and the curving face.
-        const edgeY = fy + hh * 0.13;
+        // The cap runs from ear level on one side, over the crown, down to ear level
+        // on the other, then back up the side of the head to the fringe and across.
+        // The two *side* edges have to hug the face (inW, just inside the outline)
+        // rather than cut straight across: a straight edge leaves a wedge of
+        // background against the curving face, but ending the cap at the fringe
+        // instead — the obvious way to avoid that wedge — shaves the sides off and
+        // leaves every style looking like a severe undercut.
+        const earY = cy + hh * 0.10;
+        const inW = shape.cheek * hw * 0.94;
+        const fringeY = fy + hh * 0.06;
         ctx.beginPath();
-        ctx.moveTo(cx - cw, edgeY);
+        ctx.moveTo(cx - cw, earY);
         ctx.bezierCurveTo(cx - cw, cy - hh * 0.74, cx - tw * 0.90, top, cx, top);
-        ctx.bezierCurveTo(cx + tw * 0.90, top, cx + cw, cy - hh * 0.74, cx + cw, edgeY);
+        ctx.bezierCurveTo(cx + tw * 0.90, top, cx + cw, cy - hh * 0.74, cx + cw, earY);
+        ctx.quadraticCurveTo(cx + inW * 1.02, fy + hh * 0.34, cx + inW, fringeY);
         // ...and back along the fringe.
         if (hair.fringe === 'part') {
             ctx.quadraticCurveTo(cx + flip * hw * 0.36, fy - hh * 0.20, cx - flip * hw * 0.28, fy + hh * 0.14);
-            ctx.quadraticCurveTo(cx - cw * 0.70, fy + hh * 0.16, cx - cw, edgeY);
+            ctx.quadraticCurveTo(cx - inW * 0.70, fy + hh * 0.16, cx - inW, fringeY);
         } else if (hair.fringe === 'wavy') {
             ctx.quadraticCurveTo(cx + hw * 0.52, fy - hh * 0.20, cx + hw * 0.18, fy + hh * 0.04);
             ctx.quadraticCurveTo(cx - hw * 0.18, fy + hh * 0.20, cx - hw * 0.52, fy - hh * 0.04);
-            ctx.quadraticCurveTo(cx - cw * 0.78, fy - hh * 0.16, cx - cw, edgeY);
+            ctx.quadraticCurveTo(cx - inW * 0.78, fy - hh * 0.16, cx - inW, fringeY);
         } else {
-            ctx.quadraticCurveTo(cx, fy - hh * 0.24, cx - cw, edgeY);
+            ctx.quadraticCurveTo(cx, fy - hh * 0.24, cx - inW, fringeY);
         }
+        ctx.quadraticCurveTo(cx - inW * 1.02, fy + hh * 0.34, cx - cw, earY);
         ctx.closePath();
         ctx.fillStyle = p.hairColor;
         ctx.fill();

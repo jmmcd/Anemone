@@ -78,6 +78,7 @@ const canvas = { width: SIZE, height: SIZE, getContext: () => ctx };
 faces.forEach((ind, i) => {
     ctx.ox = (i % cols) * SIZE * SS;
     ctx.oy = Math.floor(i / cols) * SIZE * SS;
+    ctx.clipW = ctx.clipH = SIZE * SS;   // crop to the cell, as a real tile would
     ctx.m = [1, 0, 0, 1, 0, 0];
     ctx.globalAlpha = 1;
     ind.visualize(canvas);
