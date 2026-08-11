@@ -75,6 +75,15 @@ and the base `beginEditSession` supplies the whole gesture set for you (this is
 how DrumMachine and Melody work): click toggles, a horizontal-first drag paints,
 and a vertical-first drag on an on-cell rides that cell's velocity up or down.
 
+If your phenotype is something else, `CatIndividual` is the reference for rolling
+your own: it binds pointer handlers on the zoom canvas, hit-tests a *region*
+(the leg band — the legs are animating, and a target you have to chase is a bad
+target), and separates click from drag with a dead zone. A click cycles the gait
+gene, a horizontal drag scrubs the stride rate. Note that `setGene` needs an
+individually addressable gene, so any gene you intend to edit must be drawn with
+an explicit `{ name: '…' }` in the generator — a structural name is a
+source-position path and moves the moment you edit the file.
+
 # Parametric animation (evolving a movement, not a picture)
 
 Most types evolve a still image. A type can instead evolve a **movement**, by
@@ -120,7 +129,12 @@ Three rules for the implementation:
 2. Read `Individual.AnimationClock.seconds()`, never `performance.now()`. It is
    the app's one animation transport, shared with every other animating type, so
    the whole grid pauses and changes speed together.
-3. Keep the pose function **pure and stateless**, and put its phase in the
+3. Watch the attachment invariants. Anything that lifts the body must lift the
+   joints it hangs limbs from, and be counted in whatever derives the limb
+   lengths — otherwise a big amplitude leaves the body floating above detached
+   sticks. Prefer a clamp that makes the attachment impossible to break over a
+   gene range tuned until it looks fine.
+4. Keep the pose function **pure and stateless**, and put its phase in the
    genome. That is what makes it testable headlessly, reproducible from a saved
    genome, and renderable at any size. See the Cat tests in `tests/run.js` — feet
    planted on the ground line, stance travel equal to the stride length, IK

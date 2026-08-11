@@ -847,6 +847,10 @@ check('tree / PTO-trace genomes pick the right section', () => {
 // offsets are the only thing separating one gait from another.
 console.log('\nParametric sprite animation (Cat):');
 {
+    // The gait vocabulary, pinned here: adding a gait should make this fail and
+    // prompt an update, rather than silently going untested.
+    const GAITS = ['walk', 'trot', 'pace', 'bound'];
+
     // A cat with the noise and per-segment variation switched off, so the tests
     // below assert the oscillator structure rather than the decoration.
     const plainCat = (over = {}) => {
@@ -968,9 +972,104 @@ console.log('\nParametric sprite animation (Cat):');
         assert(plainCat({ stride: 0 }).validate() === false, 'a motionless cat is not a walk cycle');
     });
 
+    check('the body never floats off its legs', () => {
+        // The hip sockets must stay inside the barrel outline whatever the bob
+        // and arch genes do — an ellipse is shallower at the hip's x than at its
+        // centre, which is what made a naive fixed offset unsafe.
+        for (let i = 0; i < 60; i++) {
+            const ind = new classes.CatIndividual();
+            const P = ind.getParameters();
+            for (let k = 0; k < 12; k++) {
+                const pose = ind.poseAt(k / 12 / P.stride);
+                const half = P.bodyLen / 2;
+                for (const leg of pose.legs) {
+                    const u = Math.min(1, Math.abs(leg.hip[0]) / half);
+                    const halfDepth = (P.bodyDepth / 2) * Math.sqrt(Math.max(0, 1 - u * u));
+                    assert(leg.hip[1] <= pose.body.y + halfDepth + 1e-9,
+                        `${P.gait} cat: hip at ${leg.hip[1]} hangs below the barrel`);
+                }
+            }
+        }
+    });
+
+    check('a bound does not hide its off-side legs behind the near ones', () => {
+        // In a bound the two legs of a pair share a phase exactly, so without a
+        // lateral offset the far pair draws pixel-for-pixel behind the near pair
+        // and the cat reads as two-legged.
+        const ind = plainCat({ gait: 'bound' });
+        const pose = ind.poseAt(0.3);
+        for (const [a, b] of [[0, 1], [2, 3]]) {
+            assert(Math.abs(pose.legs[a].hip[0] - pose.legs[b].hip[0]) > 1e-3,
+                'near and far legs of a pair must not coincide');
+        }
+    });
+
     check('renders at tile and zoom size without throwing', () => {
         const ind = new classes.CatIndividual();
         for (const size of [128, 768]) ind.renderFrame(makeCanvas(size, size), 0.6);
+    });
+
+    // --- Active intervention: the edited gait must be genetic material -------
+    check('gait cycles through every gait and wraps', () => {
+        const ind = new classes.CatIndividual();
+        const seen = [];
+        for (let i = 0; i < 5; i++) seen.push(ind.cycleGait(1));
+        assert(new Set(seen.slice(0, 4)).size === 4, `expected all four gaits, got ${seen}`);
+        assert(seen[4] === seen[0], 'cycling must wrap');
+        assert(ind.cycleGait(-1) === seen[3], 'cycling backwards must retrace');
+    });
+
+    check('an edited gait is heritable, not a cached override', () => {
+        // The contract from DEVELOPERS.md: the edit goes through the
+        // representation, so it survives clone() and the trace stays legal for
+        // the operators. Anything less and the intervention is discarded at the
+        // next evolve, which is the whole point of doing it this way.
+        const ind = new classes.CatIndividual();
+        ind.setGait('bound');
+        ind.setStride(1.4);
+        assert(ind.phenotype.gait === 'bound', 'gait did not take');
+        assert(Math.abs(ind.phenotype.stride - 1.4) < 1e-9, 'stride did not take');
+
+        const clone = ind.clone();
+        assert(clone.phenotype.gait === 'bound', 'edit lost on clone');
+        assert(Math.abs(clone.phenotype.stride - 1.4) < 1e-9, 'stride lost on clone');
+
+        // Still an ordinary gene: crossover and mutation keep working on it.
+        const [c1] = ind.crossover(new classes.CatIndividual());
+        assert(GAITS.includes(c1.phenotype.gait), 'child has a nonsense gait');
+        ind.mutate(1.0);
+        assert(GAITS.includes(ind.phenotype.gait), 'mutation broke the gait gene');
+        assert(ind.validate(), 'an edited-then-mutated cat should still be valid');
+    });
+
+    check('an edited gait actually changes the legs, and stride is clamped', () => {
+        const ind = new classes.CatIndividual();
+        ind.setGait('walk');
+        const before = JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot));
+        ind.setGait('bound');
+        assert(JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot)) !== before,
+            'setting the gait must move the feet, not just relabel');
+        ind.setStride(99);
+        assert(ind.phenotype.stride <= 1.7, 'stride must clamp to the gene range');
+        ind.setStride(-5);
+        assert(ind.phenotype.stride >= 0.35, 'stride must clamp to the gene range');
+    });
+
+    check('opts into direct manipulation and tears its session down', () => {
+        const ind = new classes.CatIndividual();
+        assert(ind.isEditable() === true, 'Cat should be directly editable');
+        const listeners = [];
+        const canvas = Object.assign(makeCanvas(768, 768), {
+            style: {},
+            getBoundingClientRect: () => ({ left: 0, top: 0, width: 768, height: 768 }),
+            addEventListener: (t) => listeners.push(t),
+            removeEventListener: () => {},
+        });
+        const teardown = ind.beginEditSession(canvas, {});
+        assert(listeners.includes('pointerdown') && listeners.includes('pointerup'),
+            'the session must bind its own pointer handling');
+        assert(typeof teardown === 'function', 'must return a teardown function');
+        teardown();
     });
 
     check('exposes all three pipeline stages for editing', () => {

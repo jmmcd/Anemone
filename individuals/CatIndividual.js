@@ -87,6 +87,13 @@ const CAT_GAITS = {
 };
 const CAT_GAIT_NAMES = ['walk', 'trot', 'pace', 'bound'];
 
+// How far the off-side legs are displaced back along the body, as a fraction of
+// bodyLen. Used twice, and the two uses must agree: it sets the far legs' hip x
+// in the pose, and it widens the hip span the body-attachment clamp has to
+// cover (the far hind hip is the outermost socket, where the barrel is
+// shallowest).
+const CAT_FAR_OFFSET = 0.055;
+
 // PTO generator. Structural naming records each decision by its call-site path,
 // so the conditional genes below (`arch` only for a bound, `stripeT` only for a
 // striped cat) align correctly under crossover: parents exchange the genes they
@@ -115,6 +122,9 @@ const catGenerator = (rnd) => {
     p.neckFrac = rnd.uniform(0.04, 0.17);     // neck length, of bodyLen
     p.headFrac = rnd.uniform(0.40, 0.55);     // head radius, of barrel depth
     p.snout = rnd.uniform(0.35, 1.1);
+    p.whiskers = rnd.randint(2, 4);           // per side
+    p.whiskerLen = rnd.uniform(0.8, 2.0);     // of head radius
+    p.whiskerSpread = rnd.uniform(0.35, 0.95); // fan angle
     p.earType = rnd.choice(['pointed', 'round', 'tufted', 'folded']);
     p.earSize = rnd.uniform(0.55, 1.5);
     // Segment *count* is smoothness, not length: the tail's total length is its
@@ -125,12 +135,17 @@ const catGenerator = (rnd) => {
     p.tailLenFrac = rnd.uniform(0.35, 1.0);   // whole tail, of bodyLen
 
     // ---------------- motion genes: how it moves ----------------
-    p.gait = rnd.choice(CAT_GAIT_NAMES);
-    p.stride = rnd.uniform(0.35, 1.7);        // gait cycles per second
+    // gait and stride carry EXPLICIT trace names because the edit session writes
+    // them back with representation.setGene, which needs an addressable gene (the
+    // structural name is a source-position path and would move whenever this file
+    // is edited). Same reason DrumMachine names its per-cell genes. They are
+    // ordinary genes otherwise — mutation and crossover treat them like any other.
+    p.gait = rnd.choice(CAT_GAIT_NAMES, { name: 'gait' });
+    p.stride = rnd.uniform(0.35, 1.7, { name: 'stride' });   // gait cycles per second
     p.stepFrac = rnd.uniform(0.25, 0.80);     // stride length, of the hip separation
     p.liftFrac = rnd.uniform(0.10, 0.40);     // swing height, of the stride length
     p.duty = rnd.uniform(0.5, 0.78);          // fraction of the cycle a foot is planted
-    p.bobFrac = rnd.uniform(0.0, 0.22);       // body bounce, of barrel depth
+    p.bobFrac = rnd.uniform(0.0, 0.13);       // body bounce, of barrel depth
     p.squash = rnd.uniform(0.0, 0.11);
     // Sway is a whole-tail quantity too, for the same reason as length: the
     // per-segment angle is this divided by the segment count, so segments buy
@@ -153,7 +168,7 @@ const catGenerator = (rnd) => {
     // cat carries the gene for how much. Structural naming keeps this aligned
     // under crossover — two bounding parents swap their arch, a bounding and a
     // trotting parent simply have nothing to swap there.
-    if (p.gait === 'bound') p.archFrac = rnd.uniform(0.15, 0.6);   // of barrel depth
+    if (p.gait === 'bound') p.archFrac = rnd.uniform(0.04, 0.18);  // of barrel depth
 
     // Per-segment tail stiffness: a variable-length run of genes, built with a
     // real loop so structural naming gives each element its own counter.
@@ -228,23 +243,46 @@ const catPose = new Editable(function (P, t) {
     // A bounding cat also flexes its spine, on the same clock.
     const arch = -(P.arch || 0) * Math.abs(Math.sin(a));
 
-    const hipY = CAT_GROUND_Y - P.standH + bob;
+    // The bob and the bounding arch lift the WHOLE animal — hips included. An
+    // earlier version raised only the barrel, which at a big arch left the body
+    // floating above four detached sticks. Anything that moves the body has to
+    // move the sockets it hangs its legs from; the legs then stretch to keep the
+    // feet planted, which the IK handles as long as the derived reach allows for
+    // the lift (see getParameters).
+    const hipY = CAT_GROUND_Y - P.standH + bob + arch;
     const half = P.bodyLen / 2;
     const hipX = half * P.hipSpread;
-    const bodyY = hipY - P.bodyDepth * 0.30 + arch;
+
+    // …and the sockets must sit INSIDE the barrel. The barrel is an ellipse, so
+    // at the hip's x it is shallower than at the centre — that narrowing is what
+    // makes a fixed offset unsafe for a wide-hipped cat. Compute the real
+    // half-depth there and never raise the body past it. A guarantee rather than
+    // a tuned range: no gene range, and no edited Pose function, can detach the
+    // legs from the body.
+    const widestHip = Math.min(1, P.hipSpread + 2 * CAT_FAR_OFFSET);   // the far hind socket
+    const halfDepthAtHip = (P.bodyDepth / 2) * Math.sqrt(Math.max(0, 1 - widestHip * widestHip));
+    const maxRise = Math.max(0, halfDepthAtHip - P.bodyDepth * 0.06);   // keep a little overlap
+    const bodyY = hipY - Math.min(P.bodyDepth * 0.30, maxRise);
 
     // --- 2 + 3. four legs: same cycle, four phase offsets, feet on a path ---
     const phases = CAT_GAITS[P.gait] || CAT_GAITS.walk;
     const legs = [];
     for (let i = 0; i < 4; i++) {
         const front = i < 2;
-        const hx = front ? hipX : -hipX;
+        const near = (i % 2) === 0;
+        // The off-side legs are displaced slightly back along the body. In a
+        // *bound* the two legs of a pair share a phase exactly (CAT_GAITS), so
+        // without this the far pair hides pixel-for-pixel behind the near pair
+        // and the cat reads as two-legged. A small parallax is also what a 2D
+        // animator would draw for the far side, so it costs nothing.
+        const side = near ? 0 : -P.bodyLen * CAT_FAR_OFFSET;
+        const hx = (front ? hipX : -hipX) + side;
         const foot = catFootTarget(P, t, phases[i]);
         const tx = hx + foot.x, ty = CAT_GROUND_Y + foot.y;
         const k = catIK(hx, hipY, tx, ty, P.upper, P.lower, front ? 1 : -1);
         legs.push({
             hip: [hx, hipY], knee: [k.kx, k.ky], foot: [tx, ty],
-            near: (i % 2) === 0,      // near-side legs draw in front of the body
+            near,                     // near-side legs draw in front of the body
             planted: foot.planted, reached: k.reached,
         });
     }
@@ -329,8 +367,15 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
     const pal = window.Palette;
     const fur = mix(pal.color(P.furT), WHITE, 0.32);
     const belly = mix(fur, WHITE, 0.45 * P.bellyT);
-    const far = mix(fur, BLACK, 0.34);                 // off-side limbs sit back in depth
     const bg = mix(pal.color(P.bgT), BLACK, 0.82);
+    // Off-side limbs sit back in depth. Shade them toward the BACKGROUND, not
+    // toward black: mixing toward black is what a dark palette turns into a
+    // vanishing act, since a dark fur shaded darker lands on the backdrop and
+    // the cat appears to have two legs. Shading toward the background instead
+    // keeps them a fixed fraction of the fur/ground contrast away from the
+    // ground, whatever the palette does — atmospheric perspective, and a
+    // guaranteed floor on visibility.
+    const far = mix(fur, bg, 0.45);
     const stripe = P.stripes > 0 ? mix(pal.color(P.stripeT), BLACK, 0.45) : fur;
 
     ctx.fillStyle = rgb(bg);
@@ -370,15 +415,42 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
         // and its round cap, plus the paw, hang below the ground line.
         const pawR = 0.014 * P.chunk;
         const ankleY = leg.foot[1] - pawR;
+        const shin = 0.020 * P.chunk;        // lower leg: even, like a stroke
+        const thighTop = shin * 2.1;         // upper leg: meaty at the hip…
+        const thighBot = shin * 1.05;        // …tapering to the knee
+
+        ctx.fillStyle = rgb(colour);
+        // A canvas stroke has one width along its whole length, so the tapered
+        // thigh is a quad: the hip and knee joints offset by their own half-width
+        // along the normal of the bone. Round caps at both joints (drawn as
+        // discs) hide the seam where thigh meets shin and keep the knee a joint
+        // rather than a corner.
+        const hx = X(leg.hip[0]), hy = Y(leg.hip[1]);
+        const kx = X(leg.knee[0]), ky = Y(leg.knee[1]);
+        const dx = kx - hx, dy = ky - hy;
+        const len = Math.max(1e-6, Math.hypot(dx, dy));
+        const nx = -dy / len, ny = dx / len;
+        const wT = L(thighTop) / 2, wB = L(thighBot) / 2;
+        ctx.beginPath();
+        ctx.moveTo(hx + nx * wT, hy + ny * wT);
+        ctx.lineTo(kx + nx * wB, ky + ny * wB);
+        ctx.lineTo(kx - nx * wB, ky - ny * wB);
+        ctx.lineTo(hx - nx * wT, hy - ny * wT);
+        ctx.closePath();
+        ctx.fill();
+        for (const [jx, jy, r] of [[hx, hy, wT], [kx, ky, wB]]) {
+            ctx.beginPath();
+            ctx.arc(jx, jy, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
         ctx.strokeStyle = rgb(colour);
         ctx.lineCap = 'round';
-        ctx.lineWidth = Math.max(1, L(0.022 * P.chunk));
+        ctx.lineWidth = Math.max(1, L(shin));
         ctx.beginPath();
-        ctx.moveTo(X(leg.hip[0]), Y(leg.hip[1]));
-        ctx.lineTo(X(leg.knee[0]), Y(leg.knee[1]));
+        ctx.moveTo(kx, ky);
         ctx.lineTo(X(leg.foot[0]), Y(ankleY));
         ctx.stroke();
-        ctx.fillStyle = rgb(colour);
         ctx.beginPath();
         ctx.ellipse(X(leg.foot[0]), Y(ankleY), L(0.026 * P.chunk), L(pawR), 0, 0, Math.PI * 2);
         ctx.fill();
@@ -497,6 +569,28 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
     ctx.beginPath();                                     // eye — height is the blink
     ctx.ellipse(R * 0.42, -R * 0.15, R * 0.16, R * 0.2 * Math.max(0.04, H.eyeOpen), 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // Whiskers: a fan from the muzzle, hairline-thin and slightly translucent so
+    // they read at 128px without turning into a bristle brush. They ride the
+    // head transform, so the nod carries them for free — and the fan angle drifts
+    // with the same noise as the ear twitch, so they are not a rigid decal.
+    const muzzleX = R * (0.30 + 0.55 * P.snout), muzzleY = R * 0.30;
+    ctx.strokeStyle = rgb(mix(belly, WHITE, 0.5));
+    ctx.lineWidth = Math.max(0.6, L(0.0035));
+    ctx.globalAlpha = 0.75;
+    for (let i = 0; i < P.whiskers; i++) {
+        const f = P.whiskers === 1 ? 0.5 : i / (P.whiskers - 1);
+        const ang = (f - 0.5) * P.whiskerSpread + H.earTwitch * 0.12;
+        const len = R * P.whiskerLen * (1 - 0.18 * Math.abs(f - 0.5));
+        ctx.beginPath();
+        ctx.moveTo(muzzleX, muzzleY);
+        // A slight curve: whiskers droop, and a dead-straight line looks like a pin.
+        ctx.quadraticCurveTo(muzzleX + len * 0.55, muzzleY + Math.sin(ang) * len * 0.45,
+                             muzzleX + len * Math.cos(ang) * 0.95,
+                             muzzleY + Math.sin(ang) * len + len * 0.04);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
 
     for (const leg of pose.legs) if (leg.near) drawLeg(leg, fur);
@@ -553,12 +647,13 @@ class CatIndividual extends Individual {
         const standH = p.bodyLen * p.standFrac;
         const step = p.bodyLen * p.hipSpread * p.stepFrac;
         const bob = bodyDepth * p.bobFrac;
+        const arch = p.archFrac ? bodyDepth * p.archFrac : 0;
         // The worst case the leg has to span: half a stride away horizontally,
-        // and the stance height *plus* the full body bob vertically — the bob
-        // lifts the hip, so it lengthens the leg rather than shortening it. Miss
-        // that term and a bouncy cat's feet tear away from the ground at the top
-        // of every bounce.
-        const reach = Math.hypot(standH + bob, step / 2) * p.legSlack;
+        // and the stance height *plus* every term that lifts the hip (the bob,
+        // and a bounding cat's arch) vertically — a lift lengthens the leg rather
+        // than shortening it. Miss those and a bouncy cat's feet tear away from
+        // the ground at the top of every bounce.
+        const reach = Math.hypot(standH + bob + arch, step / 2) * p.legSlack;
         return Object.assign({}, p, {
             bodyDepth, standH, step, bob,
             lift: step * p.liftFrac,
@@ -566,11 +661,125 @@ class CatIndividual extends Individual {
             headSize: bodyDepth * p.headFrac,
             tailSeg: p.bodyLen * p.tailLenFrac / Math.max(1, p.tailSegs),
             tailAmp: p.tailSway / Math.max(1, p.tailSegs),
-            arch: p.archFrac ? bodyDepth * p.archFrac : 0,
+            arch,
             upper: reach * p.legRatio,
             lower: reach * (1 - p.legRatio),
             phases: CAT_GAITS[p.gait] || CAT_GAITS.walk,
         });
+    }
+
+    // --- Active intervention: edit the walk, and keep the edit ---------------
+    // The gait is a gene, so the only way to change it would otherwise be to
+    // wait for mutation to resample it. This session lets the user set it
+    // directly on the zoom canvas and writes it back into the trace, so the
+    // change is heritable — the edited cat breeds its new gait into its
+    // children instead of the intervention being discarded at the next evolve.
+    // (See DEVELOPERS.md > Active intervention; the step sequencers use the
+    // base grid session, this type supplies its own gesture.)
+    isEditable() { return true; }
+
+    /**
+     * Two gestures, in the leg band below the body — separated by whether the
+     * pointer moved, which is the same click-vs-drag idiom as the base grid
+     * session:
+     *
+     *   click            cycle the gait: walk → trot → pace → bound → walk
+     *   horizontal drag  scrub the stride rate (right = faster)
+     *
+     * Region rather than per-limb hit-testing on purpose: the legs are moving,
+     * so a target you have to chase is a bad target. The band is forgiving and
+     * means the same thing wherever in it you press.
+     *
+     * Both write through `representation.setGene`, which needs the gene to be
+     * individually addressable — hence the explicit `{ name }` on `gait` and
+     * `stride` in the generator.
+     */
+    beginEditSession(canvas, session = {}) {
+        if (!canvas) return () => {};
+        const abort = new AbortController();
+        const { signal } = abort;
+        const prevCursor = canvas.style.cursor;
+        const prevTouch = canvas.style.touchAction;
+        canvas.style.cursor = 'pointer';
+        canvas.style.touchAction = 'none';   // let a drag be a drag, not a page scroll
+        const DEADZONE = 6;
+
+        const self = this;
+        let active = false, moved = false, startX = 0, startStride = 0;
+
+        // Canvas y of the band: below the barrel, down past the ground line.
+        const inLegBand = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const v = ((e.clientY - rect.top) * (canvas.height / rect.height)) / canvas.height;
+            const pose = self.poseAt(0);
+            const top = 0.5 + pose.body.y + self.getParameters().bodyDepth * 0.25;
+            return v >= top;
+        };
+
+        const onDown = (e) => {
+            if (!inLegBand(e)) return;
+            active = true; moved = false;
+            startX = e.clientX;
+            startStride = self.phenotype.stride;
+            canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        };
+
+        const onMove = (e) => {
+            if (!active) return;
+            const dx = e.clientX - startX;
+            if (!moved && Math.abs(dx) < DEADZONE) return;
+            moved = true;
+            // A full canvas width spans roughly the whole legal stride range.
+            const rect = canvas.getBoundingClientRect();
+            const next = Math.max(0.35, Math.min(1.7, startStride + (dx / rect.width) * 2.4));
+            self.setStride(next);
+            if (session.onEdit) session.onEdit();
+        };
+
+        const onUp = () => {
+            if (!active) return;
+            if (!moved) {
+                self.cycleGait(1);
+                if (session.onEdit) session.onEdit();
+            }
+            active = false;
+            if (session.onGestureEnd) session.onGestureEnd();
+        };
+
+        canvas.addEventListener('pointerdown', onDown, { signal });
+        canvas.addEventListener('pointermove', onMove, { signal });
+        canvas.addEventListener('pointerup', onUp, { signal });
+        canvas.addEventListener('pointercancel', onUp, { signal });
+
+        return () => {
+            abort.abort();
+            canvas.style.cursor = prevCursor;
+            canvas.style.touchAction = prevTouch;
+        };
+    }
+
+    /** Advance the gait gene by `dir` places, wrapping. Heritable. */
+    cycleGait(dir = 1) {
+        const i = CAT_GAIT_NAMES.indexOf(this.phenotype.gait);
+        const next = CAT_GAIT_NAMES[((i < 0 ? 0 : i) + dir + CAT_GAIT_NAMES.length) % CAT_GAIT_NAMES.length];
+        this.setGait(next);
+        return next;
+    }
+
+    setGait(gait) {
+        if (!CAT_GAITS[gait]) return false;
+        // Through the representation, not onto a cached phenotype: that is what
+        // makes the edit survive the next mutate/clone (DEVELOPERS.md).
+        this.genome = this.representation.setGene(this.genome, 'gait', gait);
+        this.invalidateImageCache();
+        return true;
+    }
+
+    setStride(hz) {
+        this.genome = this.representation.setGene(this.genome, 'stride',
+            Math.max(0.35, Math.min(1.7, hz)));
+        this.invalidateImageCache();
     }
 
     /** The pose at a given time, in normalised units. Pure — same t, same pose. */
