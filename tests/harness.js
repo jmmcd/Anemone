@@ -73,6 +73,7 @@ const SOURCES = [
     'individuals/RobotIndividual.js',
     'individuals/WonkyGuysIndividual.js',
     'individuals/HoxCreatureIndividual.js',
+    'individuals/CartoonFaceIndividual.js',
     'individuals/SheepIndividual.js',
     'individuals/PenroseIndividual.js',
     'individuals/PSystemIndividual.js',
@@ -270,6 +271,10 @@ function load() {
     combined += `;globalThis.__psRandom = psRandom;\n`;
     combined += `;globalThis.__ROBOCAT_SLOTS = ROBOCAT_SLOTS; globalThis.__ROBOCAT_TINT_SLOTS = ROBOCAT_TINT_SLOTS; globalThis.__ROBOCAT_JITTER = ROBOCAT_JITTER; globalThis.__ROBOCAT_SET = ROBOCAT_SET;\n`;
     combined += `;globalThis.__jennGeometry = jennGeometry; globalThis.__JENN_EDGE_COUNTS = JENN_EDGE_COUNTS; globalThis.__JENN_POLYTOPES = JENN_POLYTOPES;\n`;
+    // CartoonFace's class-conditioned prior tables (the RFL-shaped part of the type).
+    combined += `;globalThis.__CF = { CF_FACE_SHAPES, CF_HAIR_STYLES, CF_FACE_BY_CLASS, CF_HAIR_BY_CLASS,` +
+        ` CF_EYE_BY_CLASS, CF_BROW_BY_CLASS, CF_NOSE_BY_CLASS, CF_MOUTH_BY_CLASS, CF_GLASS_BY_AGE,` +
+        ` CF_TEXTURE_BY_CLASS, CF_SKIN_BY_TONE, CF_HAIR_COLORS, CF_EYE_COLORS };\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
     // Mirror the app: single shared output modalities on the framework, which sound
@@ -300,6 +305,7 @@ function load() {
         jennGeometry: sandbox.__jennGeometry,
         JENN_EDGE_COUNTS: sandbox.__JENN_EDGE_COUNTS,
         JENN_POLYTOPES: sandbox.__JENN_POLYTOPES,
+        CF: sandbox.__CF,
     };
 }
 
