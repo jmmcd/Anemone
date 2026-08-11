@@ -146,7 +146,11 @@ const catGenerator = (rnd) => {
     p.liftFrac = rnd.uniform(0.10, 0.40);     // swing height, of the stride length
     p.duty = rnd.uniform(0.5, 0.78);          // fraction of the cycle a foot is planted
     p.bobFrac = rnd.uniform(0.0, 0.13);       // body bounce, of barrel depth
-    p.squash = rnd.uniform(0.0, 0.11);
+    // Squash is a *ratio* swing, applied to both axes at once (scale(1/s, s)),
+    // so the visible pulse is roughly twice this number — 0.05 already reads
+    // clearly at tile size. Kept deliberately subtle: it is seasoning on the
+    // gait, and at high values the barrel throbs rather than breathes.
+    p.squash = rnd.uniform(0.0, 0.05);
     // Sway is a whole-tail quantity too, for the same reason as length: the
     // per-segment angle is this divided by the segment count, so segments buy
     // smoothness rather than an ever-tighter curl.
