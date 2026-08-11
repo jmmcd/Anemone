@@ -8,6 +8,7 @@
 * Melodies
 * Cartoon bugs
 * Robots
+* Cats
 * Spidery creatures
 * Photo filters
 * Abstract pattern images
@@ -30,5 +31,7 @@
 * A couple of the apps allow you to directly edit, eg you can edit the drum track manually to fix a couple of wrong hits, and then continue evolving!
 
 * Several of the apps also allow you edit the Javascript code which generates the individuals, and the code which visualises them. This is advanced usage, but don't hesitate to try it -- you can't break anything! Take a look at the code that pops up when you click "Edit code" in the menu and you'll find yourself learning some Javascript.
+
+**Artwork credits** The "Robohash Cats" app breeds cats assembled from the [Cat Avatar Generator](https://www.peppercarrot.com/extras/html/2016_cat-generator/) by **David Revoy**, used under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) and packaged by [Robohash](https://robohash.org/). Robots lovingly delivered by Robohash.org. Everything Anemone does with them — which parts, nudged how far, tinted what colour — is under your control, not a hash's.
 
 **Anemone** was designed by James McDermott and almost entirely implemented by Claude Code. Read more at https://github.com/jmmcd/Anemone. 
