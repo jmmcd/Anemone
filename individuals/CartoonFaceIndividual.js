@@ -392,6 +392,18 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     // covers the strands that would otherwise hang under the chin like a beard.
     const hair = CF_HAIR_STYLES[p.hair] || CF_HAIR_STYLES.short;
     const hairDark = shade(p.hairColor, 0.82);
+    // Every hair shape carries a thin darker edge. White and grey hair (elders)
+    // is close enough to the background to vanish into it otherwise; on dark hair
+    // the outline is simply invisible, so one rule covers both.
+    const hairOutline = shade(p.hairColor, 0.76);
+    const edge = S * 0.006;
+    const hairBlob = (x, y, rx, ry, rot) => {
+        ctx.beginPath();
+        ctx.ellipse(x, y, Math.max(0.01, rx), Math.max(0.01, ry), rot || 0, 0, Math.PI * 2);
+        ctx.fillStyle = p.hairColor;
+        ctx.fill();
+        stroke(hairOutline, edge);
+    };
     if (hair.back) {
         const drop = shape.chin * (hair.back === 'bob' ? 0.74 : (hair.back === 'mid' ? 1.08 : 1.55));
         const flare = hair.back === 'bob' ? 1.08 : 1.14;
@@ -403,6 +415,7 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         ctx.bezierCurveTo(cx + hw * (flare * 0.86), cy + hh * drop, cx + hw * flare, cy + hh * drop * 0.5, cx + hw * 1.00, cy - hh * 0.58);
         ctx.closePath();
         ctx.fill();
+        stroke(hairOutline, edge);
         if (hair.back === 'longwave' || hair.back === 'mid') {
             // A couple of curl scallops along the hem, so waves read as waves.
             for (let i = -2; i <= 2; i++) {
@@ -412,16 +425,16 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     }
     if (hair.pigtails) {
         for (const s of [-1, 1]) {
-            ellipse(cx + s * hw * 1.06, cy + hh * 0.02, hw * 0.28, hh * 0.32, p.hairColor);
+            hairBlob(cx + s * hw * 1.06, cy + hh * 0.02, hw * 0.28, hh * 0.32);
             ellipse(cx + s * hw * 0.94, cy - hh * 0.42, hw * 0.18, hh * 0.15, hairDark);
         }
     }
     if (hair.pony) {
         const s = p.hairFlip ? 1 : -1;
-        ellipse(cx + s * hw * 0.98, cy + hh * 0.14, hw * 0.26, hh * 0.48, p.hairColor, s * 0.22);
+        hairBlob(cx + s * hw * 0.98, cy + hh * 0.14, hw * 0.26, hh * 0.48, s * 0.22);
         ellipse(cx + s * hw * 0.86, cy - hh * 0.46, hw * 0.18, hh * 0.14, hairDark);
     }
-    if (hair.bun) ellipse(cx, cy - hh * 1.04, hw * 0.38, hh * 0.30, p.hairColor);
+    if (hair.bun) hairBlob(cx, cy - hh * 1.04, hw * 0.38, hh * 0.30);
 
     // --- body: neck, shoulders, shirt ----------------------------------------
     const shoulderY = cy + hh * (shape.chin + 0.34);
@@ -440,12 +453,16 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
     ctx.fillStyle = p.shirtColor;
     ctx.beginPath();
     ctx.moveTo(cx - neckW * 1.9, shoulderY);
-    ctx.bezierCurveTo(cx - shoulderW, shoulderY + hh * 0.12, cx - shoulderW, shoulderY + hh * 0.5, cx - shoulderW, height);
-    ctx.lineTo(cx + shoulderW, height);
+    ctx.bezierCurveTo(cx - shoulderW, shoulderY + hh * 0.12, cx - shoulderW, shoulderY + hh * 0.5, cx - shoulderW, height + hh);
+    ctx.lineTo(cx + shoulderW, height + hh);
     ctx.bezierCurveTo(cx + shoulderW, shoulderY + hh * 0.5, cx + shoulderW, shoulderY + hh * 0.12, cx + neckW * 1.9, shoulderY);
     ctx.bezierCurveTo(cx + neckW * 0.9, shoulderY + hh * 0.24, cx - neckW * 0.9, shoulderY + hh * 0.24, cx - neckW * 1.9, shoulderY);
     ctx.closePath();
     ctx.fill();
+    // Same reason as the hair outline: a white or very pale shirt is otherwise
+    // indistinguishable from the background. The hem runs below the canvas so
+    // this edge only ever traces the shoulders and collar.
+    stroke(shade(p.shirtColor, 0.80), S * 0.006);
 
     // --- ears -----------------------------------------------------------------
     for (const s of [-1, 1]) {
@@ -694,19 +711,57 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
             ctx.quadraticCurveTo(cx, my - mw * 0.18, cx - mwid, my);
             ctx.closePath();
             ctx.fill();
+            stroke(shade(p.hairColor, 0.76), S * 0.005);
         }
         if (p.beard === 'goatee' || p.beard === 'full') {
             // Anchored to the chin, not hung off the mouth — a low mouth gene would
             // otherwise float the goatee down onto the neck.
-            const chinY = cy + hh * shape.chin;
-            ellipse(cx, Math.min(mouthY + mw * 0.72, chinY - mw * 0.50), mw * 0.38 * bs, mw * 0.40 * bs, p.hairColor);
+            // Fitted into the gap between the mouth and the chin, and shrunk if
+            // that gap is small. Hanging it off the mouth puts it on the chin or
+            // past it; clamping it to the chin puts it on the mouth. The genes
+            // that set mouth height and face length are independent, so only
+            // solving for the gap itself survives both.
+            const gapTop = mouthY + mw * 0.45;
+            const gapBottom = cy + hh * (shape.chin - 0.06);
+            const gr = Math.max(hh * 0.03, Math.min(mw * 0.40 * bs, (gapBottom - gapTop) / 2));
+            const gw = Math.min(mw * 0.38 * bs, gr * 1.2);
+            const gyc = (gapTop + gapBottom) / 2;
+            // A tuft, not a disc: narrow under the lip, rounded at the chin.
+            ctx.beginPath();
+            ctx.moveTo(cx - gw * 0.55, gyc - gr);
+            ctx.quadraticCurveTo(cx - gw * 1.15, gyc + gr * 0.35, cx, gyc + gr);
+            ctx.quadraticCurveTo(cx + gw * 1.15, gyc + gr * 0.35, cx + gw * 0.55, gyc - gr);
+            ctx.closePath();
+            ctx.fillStyle = p.hairColor;
+            ctx.fill();
+            stroke(shade(p.hairColor, 0.76), S * 0.005);
         }
         if (p.beard === 'chinstrap' || p.beard === 'full') {
+            // A ring between the faceline and an inset copy of it, built from the
+            // same control points facePath uses. Stroking a hand-placed curve
+            // instead (the obvious way) puts half the pen width outside the jaw,
+            // so the beard hangs off the side of the face.
+            const cwO = shape.cheek * hw, jwO = shape.jaw * hw;
+            const chinO = cy + hh * shape.chin;
+            const flatO = jwO * (0.30 + 0.55 * (1 - shape.round));
+            const t = 0.16 + 0.14 * (bs - 0.80) / 0.50;          // beardScale → thickness
+            const cwI = cwO * (1 - t), jwI = jwO * (1 - t * 1.3), flatI = flatO * (1 - t * 1.3);
+            const chinI = chinO - hh * t * 1.1;
             ctx.beginPath();
-            ctx.moveTo(cx - shape.cheek * hw * 0.98, cy + hh * 0.02);
-            ctx.quadraticCurveTo(cx - hw * 0.60, cy + hh * (shape.chin + 0.06), cx, cy + hh * (shape.chin + 0.02));
-            ctx.quadraticCurveTo(cx + hw * 0.60, cy + hh * (shape.chin + 0.06), cx + shape.cheek * hw * 0.98, cy + hh * 0.02);
-            stroke(p.hairColor, S * 0.028 * bs);
+            ctx.moveTo(cx + cwO, cy - hh * 0.05);
+            ctx.bezierCurveTo(cx + cwO, cy + hh * 0.20, cx + jwO, cy + hh * 0.40, cx + flatO, chinO - hh * 0.06);
+            ctx.quadraticCurveTo(cx + flatO * 0.5, chinO, cx, chinO);
+            ctx.quadraticCurveTo(cx - flatO * 0.5, chinO, cx - flatO, chinO - hh * 0.06);
+            ctx.bezierCurveTo(cx - jwO, cy + hh * 0.40, cx - cwO, cy + hh * 0.20, cx - cwO, cy - hh * 0.05);
+            ctx.lineTo(cx - cwI, cy + hh * 0.02);
+            ctx.bezierCurveTo(cx - cwI, cy + hh * 0.24, cx - jwI, cy + hh * 0.40, cx - flatI, chinI - hh * 0.05);
+            ctx.quadraticCurveTo(cx - flatI * 0.5, chinI, cx, chinI);
+            ctx.quadraticCurveTo(cx + flatI * 0.5, chinI, cx + flatI, chinI - hh * 0.05);
+            ctx.bezierCurveTo(cx + jwI, cy + hh * 0.40, cx + cwI, cy + hh * 0.24, cx + cwI, cy + hh * 0.02);
+            ctx.closePath();
+            ctx.fillStyle = p.hairColor;
+            ctx.fill();
+            stroke(shade(p.hairColor, 0.76), S * 0.005);
         }
     }
 
@@ -758,8 +813,11 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         ctx.closePath();
         ctx.fillStyle = p.hairColor;
         ctx.fill();
+        stroke(hairOutline, edge);
         if (hair.puff) {
             for (let i = -3; i <= 3; i++) {
+                // Filled only: these overlap, and outlining each one turns the
+                // curls into a row of separate circles.
                 ellipse(cx + i * hw * 0.30, top + hh * (0.06 + Math.abs(i) * 0.12), hw * 0.28, hh * 0.24, p.hairColor);
             }
         }
@@ -771,19 +829,21 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
                 const base = top + hh * 0.26 * (i * i) / 9 + hh * 0.06;
                 fillPoly([[sx - hw * 0.15, base], [sx, base - hh * 0.30],
                     [sx + hw * 0.15, base]], p.hairColor);
+                stroke(hairOutline, edge);
             }
         }
     }
     if (hair.ring) {
         // The elder's horseshoe: hair only around the sides and back.
-        ctx.beginPath();
-        ctx.moveTo(cx - shape.cheek * hw * 1.03, cy - hh * 0.06);
-        ctx.quadraticCurveTo(cx - hw * 0.96, cy - hh * 0.62, cx - hw * 0.62, cy - hh * 0.70);
-        stroke(p.hairColor, S * 0.032);
-        ctx.beginPath();
-        ctx.moveTo(cx + shape.cheek * hw * 1.03, cy - hh * 0.06);
-        ctx.quadraticCurveTo(cx + hw * 0.96, cy - hh * 0.62, cx + hw * 0.62, cy - hh * 0.70);
-        stroke(p.hairColor, S * 0.032);
+        for (const s of [-1, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(cx + s * shape.cheek * hw * 1.00, cy - hh * 0.06);
+            ctx.quadraticCurveTo(cx + s * hw * 0.94, cy - hh * 0.62, cx + s * hw * 0.62, cy - hh * 0.70);
+            // Outline first, as a slightly fatter stroke underneath: a stroked
+            // shape has no path of its own to trace afterwards.
+            stroke(hairOutline, S * 0.032 + edge * 2);
+            stroke(p.hairColor, S * 0.032);
+        }
     }
     if (hair.mohawk) {
         // A crest along the crown, not a rod balanced on top of it.
@@ -794,6 +854,7 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
         ctx.bezierCurveTo(cx + hw * 0.30, cy - hh * 0.94, cx - hw * 0.30, cy - hh * 0.94, cx - hw * 0.62, cy - hh * 0.74);
         ctx.closePath();
         ctx.fill();
+        stroke(hairOutline, edge);
     }
 
     // --- glasses --------------------------------------------------------------
