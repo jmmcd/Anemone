@@ -60,6 +60,16 @@
  *     sine squeezed into a narrow spike — a blink or an ear twitch, periodic but
  *     not metronomic, from one expression and no state machine.
  *
+ *  9. A RUNNING GAIT IS A DUTY CYCLE, NOT A SPEED. The bound is the one gait
+ *     that leaves the ground, and what makes it do so is `duty < 0.5`: below
+ *     half, the front and hind stance windows stop overlapping and leave a gap
+ *     with no foot down. Playing a walk faster never produces that gap. So a
+ *     bound carries its own conditional genes — a longer stride, a sub-50% duty,
+ *     and a flight arc height — and the body follows a closed-form hump over
+ *     each gap (`catFlightRise`) instead of the generic bob. Airborne, the feet
+ *     rise with the body by exactly the body's rise, which keeps the hip-to-foot
+ *     distance at or below its stance value and so needs no extra leg length.
+ *
  * ---------------------------------------------------------------------------
  * Pipeline and editable stages. `editableSections()` exposes all three stages of
  * `generator → pose → draw`, which is the point of the type: Pose is where every
@@ -95,8 +105,8 @@ const CAT_GAIT_NAMES = ['walk', 'trot', 'pace', 'bound'];
 const CAT_FAR_OFFSET = 0.055;
 
 // PTO generator. Structural naming records each decision by its call-site path,
-// so the conditional genes below (`arch` only for a bound, `stripeT` only for a
-// striped cat) align correctly under crossover: parents exchange the genes they
+// so the conditional genes below (a bound's run genes, which no other gait
+// carries) align correctly under crossover: parents exchange the genes they
 // both actually have. The per-segment tail loop is an explicit `for`, not
 // Array.from — with a *variable* segment count that distinction is not
 // cosmetic; see CLAUDE.md > PTORepresentation.
@@ -117,7 +127,10 @@ const catGenerator = (rnd) => {
     p.standFrac = rnd.uniform(0.30, 0.55);    // hip height above the ground, of bodyLen
     p.hipSpread = rnd.uniform(0.52, 0.74);    // hip separation, of bodyLen
     p.legRatio = rnd.uniform(0.42, 0.58);     // upper:lower split of the leg
-    p.legSlack = rnd.uniform(1.05, 1.22);     // >1: bones longer than the reach, so knees keep a bend
+    // >1 so the bones are longer than the reach and the IK never has to clamp.
+    // Kept *just* above 1: the margin is exactly how bent the knee still is at
+    // full extension, so a generous slack reads as a permanent crouch.
+    p.legSlack = rnd.uniform(1.015, 1.075);
     p.chunk = rnd.uniform(0.7, 1.6);          // limb thickness
     p.neckFrac = rnd.uniform(0.04, 0.17);     // neck length, of bodyLen
     p.headFrac = rnd.uniform(0.40, 0.55);     // head radius, of barrel depth
@@ -126,7 +139,7 @@ const catGenerator = (rnd) => {
     p.whiskerLen = rnd.uniform(0.8, 2.0);     // of head radius
     p.whiskerSpread = rnd.uniform(0.35, 0.95); // fan angle
     p.earType = rnd.choice(['pointed', 'round', 'tufted', 'folded']);
-    p.earSize = rnd.uniform(0.55, 1.5);
+    p.earSize = rnd.uniform(0.78, 1.22);
     // Segment *count* is smoothness, not length: the tail's total length is its
     // own gene and the segments divide it up. Evolve them independently and a
     // 13-segment tail is four times the length of a 4-segment one, which is not
@@ -135,13 +148,13 @@ const catGenerator = (rnd) => {
     p.tailLenFrac = rnd.uniform(0.35, 1.0);   // whole tail, of bodyLen
 
     // ---------------- motion genes: how it moves ----------------
-    // gait and stride carry EXPLICIT trace names because the edit session writes
-    // them back with representation.setGene, which needs an addressable gene (the
-    // structural name is a source-position path and would move whenever this file
-    // is edited). Same reason DrumMachine names its per-cell genes. They are
-    // ordinary genes otherwise — mutation and crossover treat them like any other.
+    // `gait` carries an EXPLICIT trace name because the edit session writes it
+    // back with representation.setGene, which needs an addressable gene (a
+    // structural name is a source-position path and would move whenever this
+    // file is edited). Same reason DrumMachine names its per-cell genes. It is
+    // an ordinary gene otherwise — mutation and crossover treat it like any other.
     p.gait = rnd.choice(CAT_GAIT_NAMES, { name: 'gait' });
-    p.stride = rnd.uniform(0.35, 1.7, { name: 'stride' });   // gait cycles per second
+    p.stride = rnd.uniform(0.35, 1.7);        // gait cycles per second
     p.stepFrac = rnd.uniform(0.25, 0.80);     // stride length, of the hip separation
     p.liftFrac = rnd.uniform(0.10, 0.40);     // swing height, of the stride length
     p.duty = rnd.uniform(0.5, 0.78);          // fraction of the cycle a foot is planted
@@ -168,11 +181,22 @@ const catGenerator = (rnd) => {
                                               // so a saved genome reloads to the same pose
     p.seed = rnd.randint(1, 1e6);             // seeds the render-time noise (not the genome)
 
-    // Conditional gene: only a bounding cat arches its spine, so only a bounding
-    // cat carries the gene for how much. Structural naming keeps this aligned
-    // under crossover — two bounding parents swap their arch, a bounding and a
-    // trotting parent simply have nothing to swap there.
-    if (p.gait === 'bound') p.archFrac = rnd.uniform(0.04, 0.18);  // of barrel depth
+    // Conditional genes: a bound is not a walk with different phases, it is a
+    // RUN, and only a bounding cat carries the genes that make it one. Structural
+    // naming keeps these aligned under crossover — two bounding parents swap
+    // them, a bounding and a trotting parent simply have nothing to swap here.
+    //
+    // What makes it a run rather than a fast walk is `boundDuty < 0.5`. The front
+    // pair is planted for `duty` of the cycle and the hind pair for the same
+    // window half a cycle later, so below 50% the two stance windows stop
+    // overlapping and leave a gap where NO foot is down: the cat is airborne for
+    // `1 - 2·duty` of every stride, twice. Above 50% there is always a foot on
+    // the ground and no amount of stride length will read as running.
+    if (p.gait === 'bound') {
+        p.boundDuty = rnd.uniform(0.26, 0.43);     // <0.5 ⇒ two flight phases per stride
+        p.boundStep = rnd.uniform(1.5, 2.4);       // × the normal stride length
+        p.hopFrac = rnd.uniform(0.06, 0.17);       // flight arc height, of bodyLen
+    }
 
     // Per-segment tail stiffness: a variable-length run of genes, built with a
     // real loop so structural naming gives each element its own counter.
@@ -183,8 +207,6 @@ const catGenerator = (rnd) => {
     p.furT = rnd.uniform(0, 1);               // position in the current palette
     p.bellyT = rnd.uniform(0.3, 1.0);         // how far the underside is lightened
     p.bgT = rnd.uniform(0, 1);
-    p.stripes = rnd.choice([0, 0, 0, 2, 3, 4, 5, 6]);
-    if (p.stripes > 0) p.stripeT = rnd.uniform(0, 1);
 
     return p;
 };
@@ -244,16 +266,27 @@ const catPose = new Editable(function (P, t) {
     const bob = -P.bob * Math.abs(Math.sin(a));
     const squash = 1 + P.squash * Math.sin(2 * a);        // 2nd harmonic
     const breath = 1 + 0.02 * Math.sin(TAU * P.breathe * t);
-    // A bounding cat also flexes its spine, on the same clock.
-    const arch = -(P.arch || 0) * Math.abs(Math.sin(a));
+    // --- the flight arc: what makes a bound a RUN ---
+    // A running gait has moments with no foot on the ground, and the body then
+    // follows a ballistic arc. Here that is closed-form rather than integrated:
+    // the two pairs are planted over [0,duty) and [0.5,0.5+duty), so when
+    // duty < 0.5 the gaps between those windows are flight, and the body rises
+    // over each gap on a sine hump. The hump is zero at both ends of the window,
+    // which is what keeps it continuous with the grounded parts of the stride —
+    // no jolt at take-off or landing, and no need to track state.
+    const cyc = ((P.stride * t + P.phase) % 1 + 1) % 1;
+    const rise = catFlightRise(P, cyc);
 
-    // The bob and the bounding arch lift the WHOLE animal — hips included. An
-    // earlier version raised only the barrel, which at a big arch left the body
-    // floating above four detached sticks. Anything that moves the body has to
-    // move the sockets it hangs its legs from; the legs then stretch to keep the
-    // feet planted, which the IK handles as long as the derived reach allows for
-    // the lift (see getParameters).
-    const hipY = CAT_GROUND_Y - P.standH + bob + arch;
+    // The bob and the flight arc lift the WHOLE animal — hips included. An
+    // earlier version raised only the barrel, which left the body floating above
+    // four detached sticks. Anything that moves the body has to move the sockets
+    // it hangs its legs from; the legs then stretch to keep the feet planted,
+    // which the IK handles as long as the derived reach allows for the lift (see
+    // getParameters). There is deliberately no separate spine-arch term: with the
+    // hips riding the body it would be indistinguishable from the flight arc, and
+    // having both gave a bound two humps per stride — one mid-stance, one in the
+    // air — which reads as a limp rather than a run.
+    const hipY = CAT_GROUND_Y - P.standH + bob - rise;
     const half = P.bodyLen / 2;
     const hipX = half * P.hipSpread;
 
@@ -282,7 +315,17 @@ const catPose = new Editable(function (P, t) {
         const side = near ? 0 : -P.bodyLen * CAT_FAR_OFFSET;
         const hx = (front ? hipX : -hipX) + side;
         const foot = catFootTarget(P, t, phases[i]);
-        const tx = hx + foot.x, ty = CAT_GROUND_Y + foot.y;
+        const tx = hx + foot.x;
+        // While airborne the whole leg travels up WITH the body — subtract the
+        // body's rise from the foot target too. Without this the feet stay pinned
+        // near the ground, the legs stretch to a target they cannot reach, and
+        // the IK clamps to a straight limb. Taking the FULL rise (rather than
+        // some fraction of it) also bounds the problem exactly: the hip-to-foot
+        // distance in flight can never exceed its stance value, so the reach
+        // derived in getParameters still covers it. Continuity is free — `rise`
+        // is zero at both ends of each flight window, where a foot really is on
+        // the ground.
+        const ty = CAT_GROUND_Y + foot.y - rise;
         const k = catIK(hx, hipY, tx, ty, P.upper, P.lower, front ? 1 : -1);
         legs.push({
             hip: [hx, hipY], knee: [k.kx, k.ky], foot: [tx, ty],
@@ -340,13 +383,33 @@ const catPose = new Editable(function (P, t) {
 // `duty` splits the two, and is what separates a plodding walk (long stance)
 // from a springy one.
 function catFootTarget(P, t, phase) {
-    const u = (P.stride * t + P.phase + phase) % 1;
+    const u = ((P.stride * t + P.phase + phase) % 1 + 1) % 1;
     if (u < P.duty) {
         const k = u / P.duty;
         return { x: P.step * (0.5 - k), y: 0, planted: true };
     }
     const k = (u - P.duty) / (1 - P.duty);
     return { x: P.step * (k - 0.5), y: -P.lift * Math.sin(Math.PI * k), planted: false };
+}
+
+/**
+ * How high the body is off its stance height at cycle position `u`, for a gait
+ * that actually leaves the ground. Zero for every gait with `duty >= 0.5`, since
+ * those always have a foot down.
+ *
+ * With the bound's phases the front pair is planted over [0, duty) and the hind
+ * pair over [0.5, 0.5 + duty). Below 50% duty those windows leave two gaps —
+ * (duty, 0.5) and (duty + 0.5, 1) — and in each the cat is airborne. A sine hump
+ * over the gap is zero at both edges, so the body meets the ground exactly when a
+ * foot does.
+ */
+function catFlightRise(P, u) {
+    if (!(P.hop > 0) || P.duty >= 0.5) return 0;
+    const gap = 0.5 - P.duty;                       // length of each flight window
+    const from = (u >= 0.5) ? 0.5 + P.duty : P.duty;
+    const k = (u - from) / gap;
+    if (k <= 0 || k >= 1) return 0;
+    return P.hop * Math.sin(Math.PI * k);
 }
 
 /**
@@ -380,7 +443,6 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
     // ground, whatever the palette does — atmospheric perspective, and a
     // guaranteed floor on visibility.
     const far = mix(fur, bg, 0.45);
-    const stripe = P.stripes > 0 ? mix(pal.color(P.stripeT), BLACK, 0.45) : fur;
 
     ctx.fillStyle = rgb(bg);
     ctx.fillRect(0, 0, width, height);
@@ -420,8 +482,8 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
         const pawR = 0.014 * P.chunk;
         const ankleY = leg.foot[1] - pawR;
         const shin = 0.020 * P.chunk;        // lower leg: even, like a stroke
-        const thighTop = shin * 2.1;         // upper leg: meaty at the hip…
-        const thighBot = shin * 1.05;        // …tapering to the knee
+        const thighTop = shin * 3.0;         // upper leg: meaty at the hip…
+        const thighBot = shin * 1.35;        // …tapering to the knee
 
         ctx.fillStyle = rgb(colour);
         // A canvas stroke has one width along its whole length, so the tapered
@@ -487,27 +549,10 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
     ctx.beginPath();
     ctx.ellipse(L(B.len * 0.24), L(B.depth * 0.04), L(B.depth * 0.42 * P.chest), L(B.depth * 0.46), 0, 0, Math.PI * 2);
     ctx.fill();
-    // Belly, then stripes clipped to the barrel.
-    ctx.fillStyle = rgb(belly);
+    ctx.fillStyle = rgb(belly);                    // pale underside
     ctx.beginPath();
     ctx.ellipse(0, L(B.depth * 0.22), L(B.len * 0.40), L(B.depth * 0.22), 0, 0, Math.PI * 2);
     ctx.fill();
-    if (P.stripes > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.ellipse(0, 0, L(B.len / 2), L(B.depth / 2), 0, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.strokeStyle = rgb(stripe);
-        ctx.lineWidth = Math.max(1, L(B.len * 0.035));
-        for (let i = 0; i < P.stripes; i++) {
-            const x = L(B.len * (-0.36 + 0.72 * (i + 0.5) / P.stripes));
-            ctx.beginPath();
-            ctx.moveTo(x, -L(B.depth));
-            ctx.lineTo(x + L(B.depth * 0.18), L(B.depth));
-            ctx.stroke();
-        }
-        ctx.restore();
-    }
     ctx.restore();
 
     // Neck: drawn before the head so the head caps it. Thick enough to read as
@@ -574,25 +619,34 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
     ctx.ellipse(R * 0.42, -R * 0.15, R * 0.16, R * 0.2 * Math.max(0.04, H.eyeOpen), 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Whiskers: a fan from the muzzle, hairline-thin and slightly translucent so
-    // they read at 128px without turning into a bristle brush. They ride the
-    // head transform, so the nod carries them for free — and the fan angle drifts
-    // with the same noise as the ear twitch, so they are not a rigid decal.
-    const muzzleX = R * (0.30 + 0.55 * P.snout), muzzleY = R * 0.30;
+    // Whiskers: TWO fans, one from each side of the nose, sweeping outwards away
+    // from it — the near-side pad forwards, the far-side pad back across the
+    // cheek. One fan alone reads as if the whiskers grow out of one nostril.
+    // Hairline-thin and slightly translucent so they read at 128px without
+    // turning into a bristle brush. They ride the head transform, so the nod
+    // carries them for free, and the fan drifts with the same noise as the ear
+    // twitch so it is not a rigid decal.
+    const noseX = R * (0.35 + 0.6 * P.snout), noseY = R * 0.28;
     ctx.strokeStyle = rgb(mix(belly, WHITE, 0.5));
     ctx.lineWidth = Math.max(0.6, L(0.0035));
     ctx.globalAlpha = 0.75;
-    for (let i = 0; i < P.whiskers; i++) {
-        const f = P.whiskers === 1 ? 0.5 : i / (P.whiskers - 1);
-        const ang = (f - 0.5) * P.whiskerSpread + H.earTwitch * 0.12;
-        const len = R * P.whiskerLen * (1 - 0.18 * Math.abs(f - 0.5));
-        ctx.beginPath();
-        ctx.moveTo(muzzleX, muzzleY);
-        // A slight curve: whiskers droop, and a dead-straight line looks like a pin.
-        ctx.quadraticCurveTo(muzzleX + len * 0.55, muzzleY + Math.sin(ang) * len * 0.45,
-                             muzzleX + len * Math.cos(ang) * 0.95,
-                             muzzleY + Math.sin(ang) * len + len * 0.04);
-        ctx.stroke();
+    for (const dir of [1, -1]) {                         // +1 forwards, -1 back over the cheek
+        const rootX = noseX + dir * R * 0.1, rootY = noseY;
+        for (let i = 0; i < P.whiskers; i++) {
+            const f = P.whiskers === 1 ? 0.5 : i / (P.whiskers - 1);
+            const ang = (f - 0.5) * P.whiskerSpread + H.earTwitch * 0.12;
+            // The far-side fan is shorter, so the two read as near and far
+            // rather than as one symmetrical moustache.
+            const len = R * P.whiskerLen * (dir > 0 ? 1 : 0.72) * (1 - 0.18 * Math.abs(f - 0.5));
+            const tipX = rootX + dir * len * Math.cos(ang) * 0.95;
+            const tipY = rootY + Math.sin(ang) * len + len * 0.04;
+            ctx.beginPath();
+            ctx.moveTo(rootX, rootY);
+            // A slight curve: whiskers droop, and a dead-straight line looks like a pin.
+            ctx.quadraticCurveTo(rootX + dir * len * 0.55, rootY + Math.sin(ang) * len * 0.45,
+                                 tipX, tipY);
+            ctx.stroke();
+        }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -649,23 +703,35 @@ class CatIndividual extends Individual {
         const p = this.phenotype;
         const bodyDepth = p.bodyLen * p.depthFrac;
         const standH = p.bodyLen * p.standFrac;
-        const step = p.bodyLen * p.hipSpread * p.stepFrac;
-        const bob = bodyDepth * p.bobFrac;
-        const arch = p.archFrac ? bodyDepth * p.archFrac : 0;
+        const running = p.gait === 'bound' && p.boundDuty !== undefined;
+        // A running gait gets NO generic bob: its vertical motion is the flight
+        // arc, and a sinusoidal bounce on top of that competes with it — with a
+        // big bobFrac and a small hop the cat ends up bobbing higher with a foot
+        // planted than it does in mid-air, which reads as a limp.
+        const bob = running ? 0 : bodyDepth * p.bobFrac;
+        // A bound is a run: it overrides the stride length and the duty cycle
+        // with its own genes, because a "fast walk" set of numbers cannot leave
+        // the ground however fast you play it. Reaching further also means the
+        // stride is no longer bounded by the hip separation, so the legs can and
+        // should swing past each other — that overlap is what running looks like.
+        const step = p.bodyLen * p.hipSpread * p.stepFrac * (running ? p.boundStep : 1);
+        const duty = running ? p.boundDuty : p.duty;
+        const hop = running ? p.bodyLen * p.hopFrac : 0;
         // The worst case the leg has to span: half a stride away horizontally,
-        // and the stance height *plus* every term that lifts the hip (the bob,
-        // and a bounding cat's arch) vertically — a lift lengthens the leg rather
-        // than shortening it. Miss those and a bouncy cat's feet tear away from
-        // the ground at the top of every bounce.
-        const reach = Math.hypot(standH + bob + arch, step / 2) * p.legSlack;
+        // and the stance height *plus* the bob vertically — a lift lengthens the
+        // leg rather than shortening it. Miss that and a bouncy cat's feet tear
+        // away from the ground at the top of every bounce. The flight arc needs
+        // no allowance here: airborne, the foot rises with the body by exactly
+        // the same amount (see the pose), so the hip-to-foot distance only ever
+        // shrinks.
+        const reach = Math.hypot(standH + bob, step / 2) * p.legSlack;
         return Object.assign({}, p, {
-            bodyDepth, standH, step, bob,
+            bodyDepth, standH, step, bob, duty, hop,
             lift: step * p.liftFrac,
             neck: p.bodyLen * p.neckFrac,
             headSize: bodyDepth * p.headFrac,
             tailSeg: p.bodyLen * p.tailLenFrac / Math.max(1, p.tailSegs),
             tailAmp: p.tailSway / Math.max(1, p.tailSegs),
-            arch,
             upper: reach * p.legRatio,
             lower: reach * (1 - p.legRatio),
             phases: CAT_GAITS[p.gait] || CAT_GAITS.walk,
@@ -683,20 +749,19 @@ class CatIndividual extends Individual {
     isEditable() { return true; }
 
     /**
-     * Two gestures, in the leg band below the body — separated by whether the
-     * pointer moved, which is the same click-vs-drag idiom as the base grid
-     * session:
+     * One gesture: a click in the leg band below the body cycles the gait,
+     * walk → trot → pace → bound → walk.
      *
-     *   click            cycle the gait: walk → trot → pace → bound → walk
-     *   horizontal drag  scrub the stride rate (right = faster)
-     *
-     * Region rather than per-limb hit-testing on purpose: the legs are moving,
+     * Region rather than per-limb hit-testing on purpose — the legs are moving,
      * so a target you have to chase is a bad target. The band is forgiving and
      * means the same thing wherever in it you press.
      *
-     * Both write through `representation.setGene`, which needs the gene to be
-     * individually addressable — hence the explicit `{ name }` on `gait` and
-     * `stride` in the generator.
+     * The movement dead zone is not a second gesture, just a guard: a press that
+     * turns into a drag is discarded rather than counted as a click.
+     *
+     * Writes through `representation.setGene`, which needs the gene to be
+     * individually addressable — hence the explicit `{ name: 'gait' }` in the
+     * generator.
      */
     beginEditSession(canvas, session = {}) {
         if (!canvas) return () => {};
@@ -705,11 +770,11 @@ class CatIndividual extends Individual {
         const prevCursor = canvas.style.cursor;
         const prevTouch = canvas.style.touchAction;
         canvas.style.cursor = 'pointer';
-        canvas.style.touchAction = 'none';   // let a drag be a drag, not a page scroll
-        const DEADZONE = 6;
+        canvas.style.touchAction = 'none';
+        const DEADZONE = 6;   // client px: past this it was a drag, not a click
 
         const self = this;
-        let active = false, moved = false, startX = 0, startStride = 0;
+        let active = false, moved = false, startX = 0, startY = 0;
 
         // Canvas y of the band: below the barrel, down past the ground line.
         const inLegBand = (e) => {
@@ -723,22 +788,14 @@ class CatIndividual extends Individual {
         const onDown = (e) => {
             if (!inLegBand(e)) return;
             active = true; moved = false;
-            startX = e.clientX;
-            startStride = self.phenotype.stride;
+            startX = e.clientX; startY = e.clientY;
             canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
             e.preventDefault();
         };
 
         const onMove = (e) => {
-            if (!active) return;
-            const dx = e.clientX - startX;
-            if (!moved && Math.abs(dx) < DEADZONE) return;
-            moved = true;
-            // A full canvas width spans roughly the whole legal stride range.
-            const rect = canvas.getBoundingClientRect();
-            const next = Math.max(0.35, Math.min(1.7, startStride + (dx / rect.width) * 2.4));
-            self.setStride(next);
-            if (session.onEdit) session.onEdit();
+            if (!active || moved) return;
+            if (Math.hypot(e.clientX - startX, e.clientY - startY) > DEADZONE) moved = true;
         };
 
         const onUp = () => {
@@ -778,12 +835,6 @@ class CatIndividual extends Individual {
         this.genome = this.representation.setGene(this.genome, 'gait', gait);
         this.invalidateImageCache();
         return true;
-    }
-
-    setStride(hz) {
-        this.genome = this.representation.setGene(this.genome, 'stride',
-            Math.max(0.35, Math.min(1.7, hz)));
-        this.invalidateImageCache();
     }
 
     /** The pose at a given time, in normalised units. Pure — same t, same pose. */
@@ -856,8 +907,10 @@ class CatIndividual extends Individual {
 
     getPhenotype() {
         const p = this.phenotype;
+        const P = this.getParameters();
+        const air = P.duty < 0.5 ? `, airborne ${Math.round((1 - 2 * P.duty) * 100)}% of the stride` : '';
         return `Cat: ${p.gait} at ${p.stride.toFixed(2)} Hz, ${p.earType} ears, ` +
-               `${p.tailSegs}-segment tail` + (p.stripes ? `, ${p.stripes} stripes` : ', plain');
+               `${p.tailSegs}-segment tail${air}`;
     }
 
     describeExtra() {

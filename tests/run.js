@@ -992,6 +992,43 @@ console.log('\nParametric sprite animation (Cat):');
         }
     });
 
+    check('a bound is a run: it actually leaves the ground', () => {
+        // What separates a run from a fast walk is a duty cycle below 50%: the
+        // front and hind stance windows stop overlapping and leave a gap with no
+        // foot down. The airborne fraction must match 1 - 2·duty, and the body
+        // must rise during it — and be back on its stance height the instant a
+        // foot lands, or the gait jolts at every touchdown.
+        let checked = 0;
+        for (let i = 0; i < 400 && checked < 12; i++) {
+            const ind = new classes.CatIndividual();
+            if (ind.phenotype.gait !== 'bound') continue;
+            checked++;
+            const P = ind.getParameters();
+            assert(P.duty < 0.5, 'a bound must have a sub-50% duty cycle');
+            assert(P.hop > 0, 'a bound must have a flight arc');
+
+            // Highest point reached while airborne vs. while any foot is down.
+            // (y grows downwards, so "highest" is the minimum.) Comparing the two
+            // peaks isolates the flight arc without having to unpick the bob and
+            // arch terms that are also folded into the body height.
+            const N = 400;
+            let airborne = 0, topFlying = Infinity, topGrounded = Infinity;
+            for (let k = 0; k < N; k++) {
+                const pose = ind.poseAt(k / N / P.stride);
+                const flying = pose.legs.every(l => !l.planted);
+                if (flying) { airborne++; topFlying = Math.min(topFlying, pose.body.y); }
+                else topGrounded = Math.min(topGrounded, pose.body.y);
+                for (const leg of pose.legs) assert(leg.reached, 'IK clamped mid-run');
+            }
+            const expected = 1 - 2 * P.duty;
+            assert(Math.abs(airborne / N - expected) < 0.02,
+                `airborne ${(airborne / N).toFixed(2)}, expected ${expected.toFixed(2)}`);
+            assert(topGrounded - topFlying > P.hop * 0.7,
+                'the cat should be markedly higher airborne than with a foot down');
+        }
+        assert(checked > 0, 'no bounding cats were generated');
+    });
+
     check('a bound does not hide its off-side legs behind the near ones', () => {
         // In a bound the two legs of a pair share a phase exactly, so without a
         // lateral offset the far pair draws pixel-for-pixel behind the near pair
@@ -1026,13 +1063,10 @@ console.log('\nParametric sprite animation (Cat):');
         // next evolve, which is the whole point of doing it this way.
         const ind = new classes.CatIndividual();
         ind.setGait('bound');
-        ind.setStride(1.4);
         assert(ind.phenotype.gait === 'bound', 'gait did not take');
-        assert(Math.abs(ind.phenotype.stride - 1.4) < 1e-9, 'stride did not take');
 
         const clone = ind.clone();
         assert(clone.phenotype.gait === 'bound', 'edit lost on clone');
-        assert(Math.abs(clone.phenotype.stride - 1.4) < 1e-9, 'stride lost on clone');
 
         // Still an ordinary gene: crossover and mutation keep working on it.
         const [c1] = ind.crossover(new classes.CatIndividual());
@@ -1042,17 +1076,13 @@ console.log('\nParametric sprite animation (Cat):');
         assert(ind.validate(), 'an edited-then-mutated cat should still be valid');
     });
 
-    check('an edited gait actually changes the legs, and stride is clamped', () => {
+    check('an edited gait actually changes the legs', () => {
         const ind = new classes.CatIndividual();
         ind.setGait('walk');
         const before = JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot));
         ind.setGait('bound');
         assert(JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot)) !== before,
             'setting the gait must move the feet, not just relabel');
-        ind.setStride(99);
-        assert(ind.phenotype.stride <= 1.7, 'stride must clamp to the gene range');
-        ind.setStride(-5);
-        assert(ind.phenotype.stride >= 0.35, 'stride must clamp to the gene range');
     });
 
     check('opts into direct manipulation and tears its session down', () => {

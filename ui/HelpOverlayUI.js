@@ -20,7 +20,6 @@ const HELP_GESTURES = [
     ['Drag in the zoom', 'Edit the phenotype directly, where a type allows it (the step sequencers, Cat)'],
     ['Drag up / down', 'On a step sequencer cell: its velocity'],
     ['Click the legs', 'On a Cat, in the zoom: cycle its gait — walk, trot, pace, bound'],
-    ['Drag the legs', 'On a Cat: left / right to slow or quicken its stride'],
     ['Shift+click a tile', 'Lock it — kept unchanged next generation, and not bred from'],
     ['Padlock button', 'The same lock, for touch (no Shift key)'],
 ];

@@ -78,8 +78,8 @@ and a vertical-first drag on an on-cell rides that cell's velocity up or down.
 If your phenotype is something else, `CatIndividual` is the reference for rolling
 your own: it binds pointer handlers on the zoom canvas, hit-tests a *region*
 (the leg band — the legs are animating, and a target you have to chase is a bad
-target), and separates click from drag with a dead zone. A click cycles the gait
-gene, a horizontal drag scrubs the stride rate. Note that `setGene` needs an
+target), and uses a dead zone to discard a press that turns into a drag. A click
+cycles the gait gene. Note that `setGene` needs an
 individually addressable gene, so any gene you intend to edit must be drawn with
 an explicit `{ name: '…' }` in the generator — a structural name is a
 source-position path and moves the moment you edit the file.

@@ -79,10 +79,11 @@ const dot = (cx, cy, r, colour, a = 1) => {
 const cats = [];
 while (cats.length < ROWS) {
     const ind = new classes.CatIndividual();
-    if (GAIT) {
-        const p = Object.assign({}, ind.phenotype, { gait: GAIT });
-        Object.defineProperty(ind, 'phenotype', { value: p, configurable: true });
-    }
+    // Force the gait the same way the edit session does — through setGene, which
+    // replays the generator. Overwriting the phenotype object instead would set
+    // the label without generating the gait's *conditional* genes, so a forced
+    // bound would come out as a walk wearing a bound's name.
+    if (GAIT) ind.setGait(GAIT);
     if (ind.validate()) cats.push(ind);
 }
 
