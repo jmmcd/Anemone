@@ -97,6 +97,10 @@ class Individual {
     usesColorPalette() { return false; }
     usesPhoto()        { return false; }
     usesAudio()        { return false; }
+    // Whether the type draws from the shared identikit part library
+    // (window.RoboParts). Those parts arrive asynchronously, so the service uses
+    // this to decide whether a late-arriving batch is worth a re-render.
+    usesRoboParts()    { return false; }
     // Whether the lightbox offers a PNG "Save" of the tile. Default true; a type
     // whose artefact is really the sound (e.g. MelodyIndividual → MIDI only) can
     // opt out so its lightbox shows just the relevant export.

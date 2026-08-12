@@ -33,7 +33,7 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
-const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom } = load();
+const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom, CF, roboCat, sandbox } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
@@ -1749,6 +1749,260 @@ check('bodySize and legLength are within range (so body/legs render)', () => {
     const p = new classes.SheepIndividual().getPhenotype();
     assert(p.bodySize >= 0.7 && p.bodySize <= 1.3, `bodySize out of range: ${p.bodySize}`);
     assert(p.legLength >= 0.6 && p.legLength <= 1.4, `legLength out of range: ${p.legLength}`);
+});
+
+// --- CartoonFace: the class-conditioned prior ---
+// The point of this type is the genotype prior it borrows from RFL
+// (RFL_MakeRandomFace.c): parts are drawn from frequency-weighted tables keyed on
+// the sex x age class, so a *random* draw already looks like a person. These
+// assert the prior is actually applied, that everything it can produce is
+// drawable, and that mutation behaves like the Mii Channel's look-alike step.
+console.log('\nCartoonFace prior (Wii Mii Channel homage):');
+const CF_CLASSES = ['m-c', 'f-c', 'm-a', 'f-a', 'm-e', 'f-e'];
+
+check('every class table exists and every part it can pick is drawable', () => {
+    for (const cls of CF_CLASSES) {
+        for (const t of ['CF_FACE_BY_CLASS', 'CF_HAIR_BY_CLASS', 'CF_EYE_BY_CLASS',
+            'CF_BROW_BY_CLASS', 'CF_NOSE_BY_CLASS', 'CF_MOUTH_BY_CLASS', 'CF_TEXTURE_BY_CLASS']) {
+            assert(Array.isArray(CF[t][cls]) && CF[t][cls].length > 0, `${t} has no entry for ${cls}`);
+        }
+        // Faceline and hair index shape/style tables by name; a missing key would
+        // silently fall back to a default face for that whole class.
+        for (const id of CF.CF_FACE_BY_CLASS[cls]) {
+            assert(CF.CF_FACE_SHAPES[id], `faceline "${id}" (class ${cls}) has no shape entry`);
+        }
+        for (const id of CF.CF_HAIR_BY_CLASS[cls]) {
+            assert(CF.CF_HAIR_STYLES[id], `hair "${id}" (class ${cls}) has no style entry`);
+        }
+    }
+    for (const age of ['c', 'a', 'e']) {
+        assert(CF.CF_GLASS_BY_AGE[age].length > 0, `no glasses table for age ${age}`);
+    }
+    for (const tone of [0, 1, 2]) {
+        assert(CF.CF_SKIN_BY_TONE[tone].length > 0, `no skin table for tone ${tone}`);
+        assert(CF.CF_EYE_COLORS[tone].length > 0, `no eye-colour table for tone ${tone}`);
+        for (const age of ['c', 'a', 'e']) {
+            assert(CF.CF_HAIR_COLORS[`${age}-${tone}`].length > 0, `no hair colour for ${age}-${tone}`);
+        }
+    }
+});
+
+check('a random draw always comes from its own class\'s tables', () => {
+    for (let i = 0; i < 80; i++) {
+        const p = new classes.CartoonFaceIndividual().phenotype;
+        const cls = p.sex + '-' + p.age;
+        assert(CF_CLASSES.includes(cls), `unexpected class ${cls}`);
+        assert(CF.CF_FACE_BY_CLASS[cls].includes(p.faceline), `faceline ${p.faceline} not in ${cls}`);
+        assert(CF.CF_HAIR_BY_CLASS[cls].includes(p.hair), `hair ${p.hair} not in ${cls}`);
+        assert(CF.CF_EYE_BY_CLASS[cls].includes(p.eye), `eye ${p.eye} not in ${cls}`);
+        assert(CF.CF_MOUTH_BY_CLASS[cls].includes(p.mouth), `mouth ${p.mouth} not in ${cls}`);
+        assert(CF.CF_GLASS_BY_AGE[p.age].includes(p.glasses), `glasses ${p.glasses} not for age ${p.age}`);
+        assert(CF.CF_SKIN_BY_TONE[p.tone].includes(p.skinColor), `skin not from tone ${p.tone}`);
+        assert(CF.CF_HAIR_COLORS[p.age + '-' + p.tone].includes(p.hairColor), 'hair colour off-table');
+    }
+});
+
+check('RFL\'s conditional rule holds: facial hair only on adult/elder males', () => {
+    for (let i = 0; i < 200; i++) {
+        const p = new classes.CartoonFaceIndividual().phenotype;
+        if (p.beard !== 'none') {
+            assert(p.sex === 'm' && p.age !== 'c', `beard on a ${p.sex}-${p.age} face`);
+        }
+    }
+});
+
+check('flipping the sex/age class re-draws the parts into the new vocabulary', () => {
+    // The homeotic cascade: sex and age are ordinary genes, but every part choice
+    // reads a table through them, so PTO's repair re-picks the parts when they
+    // change. Whatever else happens, a face is never left holding a part its own
+    // class cannot produce.
+    let observed = 0;
+    for (let trial = 0; trial < 60 && observed < 8; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.5);
+        const a = parent.phenotype, b = child.phenotype;
+        if (a.sex === b.sex && a.age === b.age) continue;
+        observed++;
+        const cls = b.sex + '-' + b.age;
+        assert(CF.CF_HAIR_BY_CLASS[cls].includes(b.hair), `hair ${b.hair} survived into class ${cls}`);
+        assert(CF.CF_EYE_BY_CLASS[cls].includes(b.eye), `eye ${b.eye} survived into class ${cls}`);
+        assert(CF.CF_FACE_BY_CLASS[cls].includes(b.faceline), `faceline ${b.faceline} survived into ${cls}`);
+        assert(CF.CF_GLASS_BY_AGE[b.age].includes(b.glasses), `glasses ${b.glasses} survived into age ${b.age}`);
+    }
+    assert(observed > 0, 'no class flip observed in 60 trials — the class genes may not be mutating');
+});
+
+check('look-alike: a small mutation keeps most of the face', () => {
+    // The Mii Channel's second screen. With PTO's fine operators a low rate should
+    // leave the great majority of the part types alone.
+    const fields = ['faceline', 'hair', 'eye', 'brow', 'nose', 'mouth', 'glasses', 'texture'];
+    let same = 0, total = 0;
+    for (let trial = 0; trial < 40; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.05);
+        for (const f of fields) {
+            total++;
+            if (parent.phenotype[f] === child.phenotype[f]) same++;
+        }
+    }
+    assert(same / total > 0.75, `only ${(100 * same / total).toFixed(0)}% of parts survived a rate-0.05 mutation`);
+});
+
+check('placement genes creep by one step, they do not jump', () => {
+    // RFL stores scale/rotation/position as small ints and so do we, which is what
+    // makes PTO's fine mutation a *creep* — the reason a mutated face still reads
+    // as the same person rather than a new one.
+    const placements = ['eyeScale', 'eyeRotate', 'eyeX', 'eyeY', 'browScale', 'browRotate',
+        'browX', 'browY', 'noseScale', 'noseY', 'mouthScale', 'mouthY', 'height', 'build'];
+    let moved = 0;
+    for (let trial = 0; trial < 40; trial++) {
+        const parent = new classes.CartoonFaceIndividual();
+        const child = parent.clone();
+        child.mutate(0.15);
+        const a = parent.phenotype, b = child.phenotype;
+        if (a.sex !== b.sex || a.age !== b.age) continue;   // a class flip re-rolls everything
+        for (const g of placements) {
+            const d = Math.abs(a[g] - b[g]);
+            assert(d <= 1, `${g} jumped by ${d} under a single mutation`);
+            if (d === 1) moved++;
+        }
+    }
+    assert(moved > 0, 'no placement gene ever moved — mutation is not reaching them');
+});
+
+check('an edited/mutated face still renders at tile and lightbox sizes', () => {
+    const ind = new classes.CartoonFaceIndividual();
+    for (const size of [128, 768]) ind.visualize(makeCanvas(size, size));
+    ind.mutate(0.4);
+    for (const size of [128, 768]) ind.visualize(makeCanvas(size, size));
+    assert(typeof ind.describeExtra() === 'string' && ind.describeExtra().includes('Prior class'),
+        'describeExtra should report the prior class');
+});
+
+// --- Robohash identikit cats ---
+// The genome is one index per part slot, so the slot table in the individual and
+// the pinned manifest must agree exactly: if they drift, every saved genome
+// silently decodes to a different cat. The rest guards the choices that make the
+// type work visually (see the file header) rather than just not crash.
+console.log('\nRobohash identikit cats:');
+const roboParts = sandbox.window.RoboParts;
+
+check('slot table matches the pinned manifest (names, order and counts)', () => {
+    const manifestSlots = roboParts.slots(roboCat.SET);
+    assert(manifestSlots.length === roboCat.SLOTS.length,
+        `slot count differs: individual ${roboCat.SLOTS.length}, manifest ${manifestSlots.length}`);
+    for (let i = 0; i < manifestSlots.length; i++) {
+        assert(manifestSlots[i].name === roboCat.SLOTS[i].name,
+            `slot ${i}: individual says "${roboCat.SLOTS[i].name}", manifest says "${manifestSlots[i].name}"`);
+        assert(manifestSlots[i].parts.length === roboCat.SLOTS[i].count,
+            `slot "${manifestSlots[i].name}": individual says ${roboCat.SLOTS[i].count} options, manifest has ${manifestSlots[i].parts.length}`);
+    }
+});
+
+check('every manifest part resolves to a file and a pivot', () => {
+    for (const slot of roboParts.slots(roboCat.SET)) {
+        for (const part of slot.parts) {
+            assert(/^\d\d\.webp$/.test(part.file), `${slot.name}: odd filename ${part.file}`);
+            // bbox may be null (a deliberately empty "no pattern" option), but if
+            // present it must be a normalised box the renderer can pivot about.
+            if (part.bbox) {
+                assert(part.bbox.length === 4, `${slot.name}/${part.file}: bad bbox`);
+                assert(part.bbox[0] < part.bbox[2] && part.bbox[1] < part.bbox[3],
+                    `${slot.name}/${part.file}: degenerate bbox`);
+                for (const v of part.bbox) assert(v >= 0 && v <= 1, `${slot.name}/${part.file}: bbox not normalised`);
+            }
+        }
+    }
+});
+
+check('body and fur share one transform group (the coat cannot slide off)', () => {
+    const bySlot = Object.fromEntries(roboCat.SLOTS.map(s => [s.name, s]));
+    assert(bySlot.body.group === bySlot.fur.group,
+        'fur is a pattern painted onto the body silhouette; jittering it separately detaches the markings');
+    assert(bySlot.eyes.group !== bySlot.body.group, 'eyes need their own transform');
+    assert(new Set(roboCat.SLOTS.map(s => s.group)).size === roboCat.JITTER.length,
+        'every group needs a jitter range (and vice versa)');
+});
+
+check('eyes and mouth are never tinted (the face stays readable)', () => {
+    const idx = (name) => roboCat.SLOTS.findIndex(s => s.name === name);
+    assert(!roboCat.TINT_SLOTS.includes(idx('eyes')), 'a tinted sclera reads as damage, not as a choice');
+    assert(!roboCat.TINT_SLOTS.includes(idx('mouth')), 'mouth should keep its drawn colour');
+    assert(roboCat.TINT_SLOTS.includes(idx('body')), 'body should be tintable');
+});
+
+check('jitter stays subtle', () => {
+    for (const r of roboCat.JITTER) {
+        assert(r.dx <= 0.05 && r.dy <= 0.05, `offset ${r.dx}/${r.dy} is too large to read as wonkiness`);
+        assert(r.scale <= 0.15, `scale range ${r.scale} is too large`);
+        assert(r.rot <= 10, `rotation range ${r.rot}° is too large`);
+    }
+});
+
+check('genome has one gene per slot, group and tintable slot; all in range', () => {
+    for (let n = 0; n < 20; n++) {
+        const cat = new classes.RoboHashCatIndividual();
+        const p = cat.phenotype;
+        assert(p.parts.length === roboCat.SLOTS.length, 'wrong number of part genes');
+        for (let i = 0; i < p.parts.length; i++) {
+            assert(Number.isInteger(p.parts[i]) && p.parts[i] >= 0 && p.parts[i] < roboCat.SLOTS[i].count,
+                `part gene ${i} out of range: ${p.parts[i]}`);
+        }
+        assert(p.jitter.length === roboCat.JITTER.length, 'wrong number of jitter groups');
+        for (const j of p.jitter) {
+            for (const k of ['dx', 'dy', 'scale', 'rot']) {
+                assert(j[k] >= -1 && j[k] <= 1, `jitter.${k} is stored normalised: got ${j[k]}`);
+            }
+        }
+        assert(p.tint.length === roboCat.TINT_SLOTS.length, 'wrong number of tint genes');
+    }
+});
+
+check('part genes stay in range after mutation and crossover', () => {
+    const a = new classes.RoboHashCatIndividual();
+    const b = new classes.RoboHashCatIndividual();
+    for (let n = 0; n < 15; n++) a.mutate(0.4);   // mutate is in place
+    const kids = [a, ...a.crossover(b)];
+    for (const kid of kids) {
+        const parts = kid.phenotype.parts;
+        for (let i = 0; i < parts.length; i++) {
+            assert(Number.isInteger(parts[i]) && parts[i] >= 0 && parts[i] < roboCat.SLOTS[i].count,
+                `part gene ${i} left its range after breeding: ${parts[i]}`);
+        }
+    }
+});
+
+check('renders, and caches only once every part has arrived', () => {
+    const cat = new classes.RoboHashCatIndividual();
+    const canvas = makeCanvas(128, 128);
+
+    roboParts._available = false;
+    cat.invalidateImageCache();
+    cat.visualize(canvas);                       // must not throw with nothing loaded
+    assert(cat._cachedImageData === null || cat._cachedImageData === undefined,
+        'a half-loaded tile must not be cached as if it were finished');
+
+    roboParts._available = true;
+    cat.invalidateImageCache();
+    cat.visualize(canvas);
+    assert(cat._cachedImageData, 'a complete render should be cached');
+});
+
+check('renderKey tracks the parts-service version, not just the genome', () => {
+    const cat = new classes.RoboHashCatIndividual();
+    const before = cat.renderKey();
+    roboParts._version++;
+    const after = cat.renderKey();
+    roboParts._version--;
+    assert(before !== after, 'a late-arriving batch of parts must invalidate the cached tile');
+});
+
+check('describe() names the parts and credits the artist (CC-BY)', () => {
+    const text = new classes.RoboHashCatIndividual().describe();
+    assert(/body/.test(text) && /accessories/.test(text), 'part slots should be listed');
+    assert(/David Revoy/.test(text), 'CC-BY artwork must carry attribution in the app');
 });
 
 // --- Shared MIDI modality ---

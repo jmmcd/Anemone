@@ -70,9 +70,11 @@ const SOURCES = [
     'individuals/JennPolytopeIndividual.js',
     'individuals/EndlessFormsIndividual.js',
     'individuals/CatIndividual.js',
+    'individuals/RoboHashCatIndividual.js',
     'individuals/RobotIndividual.js',
     'individuals/WonkyGuysIndividual.js',
     'individuals/HoxCreatureIndividual.js',
+    'individuals/CartoonFaceIndividual.js',
     'individuals/SheepIndividual.js',
     'individuals/PenroseIndividual.js',
     'individuals/PSystemIndividual.js',
@@ -96,16 +98,27 @@ function makeContext() {
         arc: noop, arcTo: noop, ellipse: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
         fill: noop, stroke: noop, save: noop, restore: noop, clip: noop,
         translate: noop, scale: noop, rotate: noop, setLineDash: noop, fillText: noop,
+        drawImage: noop,
         // settable properties used by the drawing code
         fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt',
         lineJoin: 'miter', font: '10px monospace', textAlign: 'left',
-        globalAlpha: 1, imageSmoothingEnabled: true,
+        globalAlpha: 1, imageSmoothingEnabled: true, globalCompositeOperation: 'source-over',
     };
 }
 
 /** A stub canvas of the given size. */
 function makeCanvas(width = 64, height = 64) {
     return { width, height, getContext: () => makeContext() };
+}
+
+/**
+ * Read img/robohash/manifest.js — the pinned part index -> file mapping.
+ * It is a plain <script> assigning a global (so the app works over file://),
+ * so unwrap the object literal rather than require()ing it.
+ */
+function readRobohashManifest() {
+    const src = fs.readFileSync(path.join(ROOT, 'img', 'robohash', 'manifest.js'), 'utf8');
+    return JSON.parse(src.slice(src.indexOf('{'), src.lastIndexOf('}') + 1));
 }
 
 /**
@@ -163,6 +176,41 @@ function load() {
             version() { return 1; },
             sourceImageData(w, h) { return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h }; },
         },
+        // Shared identikit part library (RoboHashCatIndividual). Reads the REAL
+        // manifest so a test can check the individual's slot table against it,
+        // but hands back stand-in images: the point headlessly is the assembly
+        // logic, not the pixels. Set `_available = false` to exercise the
+        // not-yet-loaded path (visualize must stay null-safe).
+        RoboParts: {
+            _manifest: readRobohashManifest(),
+            _available: true,
+            _version: 1,
+            version() { return this._version; },
+            set(name) { return (this._manifest.sets && this._manifest.sets[name]) || null; },
+            slots(name) { const s = this.set(name); return s ? s.slots : []; },
+            slotCounts(name) { return this.slots(name).map(sl => sl.parts.length); },
+            credit(name) { const s = this.set(name); return s ? `${s.label} by ${s.artist} (${s.license}), via Robohash` : ''; },
+            ensureLoaded() { },
+            ready() { return this._available; },
+            _part(name, slotIndex, partIndex) {
+                const slot = this.slots(name)[slotIndex];
+                if (!slot) return null;
+                const n = slot.parts.length;
+                return slot.parts[((Math.floor(partIndex) % n) + n) % n];
+            },
+            image(name, slotIndex, partIndex) {
+                if (!this._available || !this._part(name, slotIndex, partIndex)) return null;
+                return { width: 384, height: 384 };
+            },
+            bbox(name, slotIndex, partIndex) {
+                const p = this._part(name, slotIndex, partIndex);
+                return (p && p.bbox) || null;
+            },
+            partName(name, slotIndex, partIndex) {
+                const p = this._part(name, slotIndex, partIndex);
+                return p ? p.src : '?';
+            },
+        },
         // Shared source-clip service (AudioFilterIndividual waveform tile). The
         // context stub is a tiny Web Audio recorder — enough for AudioModality's
         // play/stop lifecycle (createBufferSource/createGain/connect/start/stop).
@@ -195,7 +243,13 @@ function load() {
             },
         },
     };
-    sandbox.document = { addEventListener: () => {}, getElementById: () => null };
+    // createElement('canvas') is how a type gets a scratch buffer (e.g. the
+    // identikit tint layer), so it has to exist rather than be guarded around.
+    sandbox.document = {
+        addEventListener: () => {},
+        getElementById: () => null,
+        createElement: (tag) => (tag === 'canvas' ? makeCanvas(1, 1) : {}),
+    };
     sandbox.navigator = {};
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
@@ -216,7 +270,12 @@ function load() {
     combined += `;globalThis.__ExpressionCompiler = ExpressionCompiler;\n`;
     combined += `;globalThis.__Individual = Individual;\n`;
     combined += `;globalThis.__psRandom = psRandom;\n`;
+    combined += `;globalThis.__ROBOCAT_SLOTS = ROBOCAT_SLOTS; globalThis.__ROBOCAT_TINT_SLOTS = ROBOCAT_TINT_SLOTS; globalThis.__ROBOCAT_JITTER = ROBOCAT_JITTER; globalThis.__ROBOCAT_SET = ROBOCAT_SET;\n`;
     combined += `;globalThis.__jennGeometry = jennGeometry; globalThis.__JENN_EDGE_COUNTS = JENN_EDGE_COUNTS; globalThis.__JENN_POLYTOPES = JENN_POLYTOPES;\n`;
+    // CartoonFace's class-conditioned prior tables (the RFL-shaped part of the type).
+    combined += `;globalThis.__CF = { CF_FACE_SHAPES, CF_HAIR_STYLES, CF_FACE_BY_CLASS, CF_HAIR_BY_CLASS,` +
+        ` CF_EYE_BY_CLASS, CF_BROW_BY_CLASS, CF_NOSE_BY_CLASS, CF_MOUTH_BY_CLASS, CF_GLASS_BY_AGE,` +
+        ` CF_TEXTURE_BY_CLASS, CF_SKIN_BY_TONE, CF_HAIR_COLORS, CF_EYE_COLORS };\n`;
     vm.runInContext(combined, sandbox, { filename: 'anemone-bundle.js' });
 
     // Mirror the app: single shared output modalities on the framework, which sound
@@ -238,9 +297,16 @@ function load() {
         ExpressionCompiler: sandbox.__ExpressionCompiler,
         Individual: sandbox.__Individual,
         psRandom: sandbox.__psRandom,
+        roboCat: {
+            SET: sandbox.__ROBOCAT_SET,
+            SLOTS: sandbox.__ROBOCAT_SLOTS,
+            TINT_SLOTS: sandbox.__ROBOCAT_TINT_SLOTS,
+            JITTER: sandbox.__ROBOCAT_JITTER,
+        },
         jennGeometry: sandbox.__jennGeometry,
         JENN_EDGE_COUNTS: sandbox.__JENN_EDGE_COUNTS,
         JENN_POLYTOPES: sandbox.__JENN_POLYTOPES,
+        CF: sandbox.__CF,
     };
 }
 

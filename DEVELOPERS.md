@@ -35,6 +35,45 @@ I deploy this to Surge just by running this in the current directory:
 # Adding a new problem
 
 The goal is to design Anemone so that adding a new problems is easy. With PTO we don't need to define a new representation (encoding and search operators) for every problem. Instead the user only has to supply a **generator function** which samples from the solution space. It should go into a new `individuals/XYZIndividual.js` class where XYZ is your application name. Then add an entry to `framework/IndividualRegistry.js` (the single source of truth for the type list) and a `<script>` tag in `index.html`; `npm test` will tell you if you missed either. There are several audio, MIDI and graphics rendering examples already provided, so many new applications won't need much code. 
+# Vendored artwork (the identikit types)
+
+Most types draw themselves from numbers. `RoboHashCatIndividual` instead
+assembles third-party artwork: the cat parts under `img/robohash/set4/`, taken
+from [Robohash](https://github.com/e1ven/Robohash) (`set4` is David Revoy's Cat
+Avatar Generator, CC-BY-4.0 — see `img/robohash/CREDITS.md`). Three things to
+know before touching any of it:
+
+* **The images are committed, not fetched.** Anemone gets handed to a whole room
+  at once, so a third-party host that is slow, filtered or blocked is an
+  unrecoverable failure with no fallback. Same-origin images also keep the canvas
+  untainted, so PNG export keeps working. `surge .` uploads `img/` along with
+  everything else, so there is nothing extra to deploy.
+* **`img/robohash/manifest.js` is a pinned mapping and must not be reordered.** A
+  genome stores one part *index* per slot, so changing the index→file order would
+  silently reinterpret every saved individual — including the PTO trace embedded
+  in an exported PNG. `npm test` asserts the manifest against the individual's
+  slot table, so drift is a test failure rather than a mystery.
+* **Serve over HTTP while working on these types.** Opened over `file://`, local
+  images count as cross-origin and taint the canvas: the tiles still draw, but
+  PNG export fails and the render cache silently disables itself (the individual
+  catches the `SecurityError` and carries on uncached). `python -m http.server`
+  is enough.
+
+To import another set, run the one-off pipeline — it needs Pillow and a Robohash
+checkout, and is deliberately **not** part of `npm test`:
+
+```
+pip install pillow
+git clone --depth 1 https://github.com/e1ven/Robohash.git /tmp/Robohash
+python3 scripts/build-robohash-parts.py /tmp/Robohash --set set2
+```
+
+Then write a slot table for it in a new individual (copy `RoboHashCatIndividual`)
+and add a row to `img/robohash/CREDITS.md` — the sets carry *different* licences,
+and CC-BY attribution is a condition of redistribution, not a courtesy. Note
+`set1` is nested per colour upstream and the importer does not handle that yet;
+it exits with an explanation rather than producing a wrong manifest.
+
 # Active intervention (direct manipulation)
 
 A type can let the user edit its rendered phenotype **directly** — by pointer, on
@@ -151,8 +190,8 @@ Three rules for the implementation:
    loops rather than `Array.from` — see CLAUDE.md > PTORepresentation for why.)
 3. Implement `visualize(canvas)`, reading `this.phenotype`.
 4. Opt into what you need with the capability flags: `is3D()`,
-   `usesColorPalette()`, `usesPhoto()`, `usesPerformanceControls()`,
-   `usesMIDISync()`, `isGridEditable()`, …
+   `usesColorPalette()`, `usesPhoto()`, `usesRoboParts()`,
+   `usesPerformanceControls()`, `usesMIDISync()`, `isGridEditable()`, …
 5. Register it in `framework/IndividualRegistry.js` (the single source of truth
    for the type list — the menu and the tests both read it).
 6. Add a `<script>` tag in `index.html`, and the same path to `SOURCES` in
