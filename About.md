@@ -7,6 +7,7 @@
 * Drumbeats
 * Melodies
 * Cartoon bugs
+* Walking cats — where what you're breeding is the *walk* as much as the cat
 * Robots
 * Cats
 * Spidery creatures

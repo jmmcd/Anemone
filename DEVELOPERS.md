@@ -114,6 +114,72 @@ and the base `beginEditSession` supplies the whole gesture set for you (this is
 how DrumMachine and Melody work): click toggles, a horizontal-first drag paints,
 and a vertical-first drag on an on-cell rides that cell's velocity up or down.
 
+If your phenotype is something else, `CatIndividual` is the reference for rolling
+your own: it binds pointer handlers on the zoom canvas, hit-tests a *region*
+(the leg band — the legs are animating, and a target you have to chase is a bad
+target), and uses a dead zone to discard a press that turns into a drag. A click
+cycles the gait gene. Note that `setGene` needs an
+individually addressable gene, so any gene you intend to edit must be drawn with
+an explicit `{ name: '…' }` in the generator — a structural name is a
+source-position path and moves the moment you edit the file.
+
+# Parametric animation (evolving a movement, not a picture)
+
+Most types evolve a still image. A type can instead evolve a **movement**, by
+making the rendered pose a pure function of a clock:
+
+```
+generator → params → pose(params, t) → pixels
+```
+
+`CatIndividual` is the worked example (an articulated quadruped and its walk
+cycle), and `examples/parametric-cat.html` is the same technique as a standalone
+p5 sketch with no framework around it, if you want to read it in one file.
+
+Why it is worth the trouble: a sprite sheet is opaque to mutation, but a
+parameter vector is not, so an animation expressed this way can be evolved
+exactly like anything else here. There are no keyframes and no frame storage —
+the whole cycle is a handful of oscillators.
+
+The techniques that matter, all visible in `CatIndividual`'s header:
+
+- **Phase-offset oscillators.** One clock, four legs, four offsets into the same
+  cycle. A walk, trot, pace and bound differ in nothing but those four numbers.
+- **Procedural path + inverse kinematics.** Do not oscillate the joint angles
+  directly — feet then skate and sink, and no gene tuning fixes it. Drive the
+  *foot* around a closed path in world space and solve the bones backwards
+  (closed-form, ~10 lines for two bones).
+- **Constrain the map, not the search.** Derive bone lengths from stance height
+  and stride so every genome can reach the ground, rather than evolving them
+  freely and rejecting most of the population in `validate()`.
+- **Relative geometry.** One absolute size, everything else a fraction of it, so
+  a mutated gene rescales the figure instead of dislocating it. (`RobotIndividual`
+  makes the same argument for a static figure.)
+- **Delay chains** (`t - i*lag` down a chain of segments) for follow-through,
+  **rectified/harmonic sines** for bounce and squash & stretch, **seeded noise**
+  for drift, and **exponentiated sines** (`max(0,sin)^n`) as sparse impulses for
+  blinks and twitches.
+
+Three rules for the implementation:
+
+1. `animatesContinuously() { return true; }` — this is what makes `[` / `]` mean
+   animation speed and `.` mean play/pause for your type, in both the dispatcher
+   and the `?` overlay.
+2. Read `Individual.AnimationClock.seconds()`, never `performance.now()`. It is
+   the app's one animation transport, shared with every other animating type, so
+   the whole grid pauses and changes speed together.
+3. Watch the attachment invariants. Anything that lifts the body must lift the
+   joints it hangs limbs from, and be counted in whatever derives the limb
+   lengths — otherwise a big amplitude leaves the body floating above detached
+   sticks. Prefer a clamp that makes the attachment impossible to break over a
+   gene range tuned until it looks fine.
+4. Keep the pose function **pure and stateless**, and put its phase in the
+   genome. That is what makes it testable headlessly, reproducible from a saved
+   genome, and renderable at any size. See the Cat tests in `tests/run.js` — feet
+   planted on the ground line, stance travel equal to the stride length, IK
+   always reaching — and `node scripts/cat-preview.js`, which draws a filmstrip
+   of the gait cycle offline (a still frame tells you nothing about a walk).
+
 # Adding a new individual type — checklist
 
 1. Extend `Individual` in `individuals/XYZIndividual.js`.

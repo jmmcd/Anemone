@@ -18,7 +18,11 @@ You should see a grid of images. Click the ones you like, then click "Evolve", a
 
 If you select zero, then "Evolve" throws them all away to make totally new ones. If you select one, it makes new ones by mutating that good one. If you select two or more, it uses crossover to make children and mutation as well.
 
-You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Some of the best ones: Anemone, SuperShape3D, Pattern, Robot, Drum Machine, L-System.
+You can also change the palette (drop-down menu), or try a different "domain" for evolution (a different drop-down). Some of the best ones: Anemone, SuperShape3D, Pattern, Robot, Drum Machine, L-System, Cat.
+
+# Evolving a movement
+
+Most of the apps evolve a picture. "Cat (animated)" evolves a *movement*: the genome describes a little animal **and** the way it walks, and every tile is a live walk cycle rather than a still. There are no keyframes and no sprite sheets — the pose is worked out from a handful of oscillators every frame, which is precisely what lets it be bred like anything else here. Click the ones that move the way you like. `.` pauses them all, and `[` / `]` slow them down and speed them up. Double-click a cat to zoom in, then **click its legs** to cycle the gait — walk, trot, pace, or a bounding run that actually leaves the ground. That edit goes into the genome, so the cat passes its new walk on to its kittens. `examples/parametric-cat.html` is the same idea as a single self-contained p5.js sketch, with no evolution around it, if you want to see how it works.
 
 # Program Trace Optimisation
 
@@ -45,6 +49,7 @@ You can double-click an individual to zoom in on it. You'll then see a button fo
 * `=` and `-` change the focal length of the 3D individuals, and 
 * `\` resets all of the above to default.
 * `[` and `]` shorten or lengthen the music sequences.
+* `[` and `]` slow down and speed up the animated apps (Cat), and `.` pauses them.
 * `p` cycles the palette.
 
 # MIDI?

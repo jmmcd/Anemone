@@ -157,9 +157,9 @@ console.log('\nFramework hotkey table + partial-class split:');
         // that no binding hides from the overlay by having an unsatisfiable when.)
         const q = F.HOTKEYS.find(b => b.keys.includes('?'));
         assert(q && q.group === 'General', '"?" must be bound and listed under General');
-        const seq = { sequencer: true, animatedPattern: false };
-        const anim = { sequencer: false, animatedPattern: true };
-        const def = { sequencer: false, animatedPattern: false };
+        const seq = { sequencer: true, animated: false };
+        const anim = { sequencer: false, animated: true };
+        const def = { sequencer: false, animated: false };
         for (const b of F.HOTKEYS) {
             const reachable = !b.when || [seq, anim, def].some(c => b.when(c));
             assert(reachable, `binding "${b.keys.join('/')}" (${b.desc}) can never be shown`);
@@ -169,13 +169,13 @@ console.log('\nFramework hotkey table + partial-class split:');
     check('the table reproduces the old context-sensitive dispatch', () => {
         // First binding whose key matches and whose when() holds — the dispatcher's rule.
         const pick = (key, c) => F.HOTKEYS.find(b => b.keys.includes(key) && (!b.when || b.when(c)));
-        const seq = { sequencer: true, animatedPattern: false };
-        const anim = { sequencer: false, animatedPattern: true };
-        const def = { sequencer: false, animatedPattern: false };
+        const seq = { sequencer: true, animated: false };
+        const anim = { sequencer: false, animated: true };
+        const def = { sequencer: false, animated: false };
         const cases = [
             ['[', seq, 'Step sequencer'], [']', seq, 'Step sequencer'],
-            ['[', anim, 'Animated pattern'], ['[', def, '3D camera'],
-            ['.', anim, 'Animated pattern'], ['.', seq, 'Playback'], ['.', def, 'Playback'],
+            ['[', anim, 'Animation'], ['[', def, '3D camera'],
+            ['.', anim, 'Animation'], ['.', seq, 'Playback'], ['.', def, 'Playback'],
             ['-', def, '3D camera'], [' ', def, 'General'],
             ['a', def, 'General'], ['F', def, 'General'], ['Escape', def, 'General'],
         ];
@@ -274,7 +274,7 @@ const expectedPalette = {
     PolarCurveIndividual: true, ShapesIndividual: true,
     SuperShapeIndividual: true, SuperShape3DIndividual: true,
     AnemoneIndividual: true,
-    GridIndividual: true, RobotIndividual: false,
+    GridIndividual: true, RobotIndividual: false, CatIndividual: true,
     HoxCreatureIndividual: true,
     SheepIndividual: false, PenroseIndividual: false,
     MelodyIndividual: true, MouseMusicIndividual: false, EEGSonificationIndividual: false,
@@ -839,6 +839,333 @@ check('tree / PTO-trace genomes pick the right section', () => {
     assert(new classes.GridIndividual().describe().includes('PTO trace'), 'PTO genome shows its trace');
     assert(new classes.MouseMusicIndividual().describe().includes('PTO trace'), 'DAG (PTO) genome shows its trace');
 });
+
+// --- Parametric sprite animation (CatIndividual) ---
+// The contract that makes a keyframe-free walk cycle work: the pose is a pure
+// function of time, feet stay planted on the ground while in stance and travel
+// at exactly the ground-scroll rate, the IK always reaches, and the phase
+// offsets are the only thing separating one gait from another.
+console.log('\nParametric sprite animation (Cat):');
+{
+    // The gait vocabulary, pinned here: adding a gait should make this fail and
+    // prompt an update, rather than silently going untested.
+    const GAITS = ['walk', 'trot', 'pace', 'bound'];
+
+    // A cat with the noise and per-segment variation switched off, so the tests
+    // below assert the oscillator structure rather than the decoration.
+    const plainCat = (over = {}) => {
+        const ind = new classes.CatIndividual();
+        const p = Object.assign({}, ind.phenotype, { wobble: 0, phase: 0 }, over);
+        p.tailStiff = p.tailStiff.map(() => 1);
+        Object.defineProperty(ind, 'phenotype', { value: p, configurable: true });
+        return ind;
+    };
+
+    check('pose is a pure function of time (same t → same pose)', () => {
+        const ind = new classes.CatIndividual();
+        for (const t of [0, 0.31, 1.7, 9.25]) {
+            assert(JSON.stringify(ind.poseAt(t)) === JSON.stringify(ind.poseAt(t)),
+                `pose at t=${t} is not reproducible`);
+        }
+        // …and a clone poses identically: phase is a gene, not wall-clock state.
+        const clone = ind.clone();
+        assert(JSON.stringify(clone.poseAt(2.4)) === JSON.stringify(ind.poseAt(2.4)),
+            'a clone must pose identically at the same time');
+    });
+
+    check('planted feet sit exactly on the ground line (no sinking)', () => {
+        for (let i = 0; i < 40; i++) {
+            const ind = new classes.CatIndividual();
+            const P = ind.getParameters();
+            for (let k = 0; k < 24; k++) {
+                const pose = ind.poseAt(k / 24 / P.stride);
+                for (const leg of pose.legs) {
+                    if (leg.planted) {
+                        assert(leg.foot[1] === pose.groundY,
+                            `planted foot at y=${leg.foot[1]}, ground at ${pose.groundY}`);
+                    } else {
+                        assert(leg.foot[1] <= pose.groundY, 'a swinging foot must not go below ground');
+                    }
+                }
+            }
+        }
+    });
+
+    check('a stance foot travels exactly one stride length (no skating)', () => {
+        // The foot path and the ground scroll are driven by the same numbers, so
+        // a planted foot must move back by exactly `step` over its stance phase.
+        const ind = plainCat();
+        const P = ind.getParameters();
+        const at = (u) => ind.poseAt(u / P.stride).legs[0].foot[0];
+        const travel = at(0) - at(P.duty - 1e-9);
+        assert(Math.abs(travel - P.step) < 1e-6,
+            `stance travel ${travel} should equal the step length ${P.step}`);
+    });
+
+    check('IK reaches for every genome the generator can produce', () => {
+        // Bone lengths are *derived* from stance height, stride and bob, so reach
+        // is structural — this asserts the derivation covers the whole cycle,
+        // including the top of the bounce where the hip is highest.
+        for (let i = 0; i < 60; i++) {
+            const ind = new classes.CatIndividual();
+            const P = ind.getParameters();
+            for (let k = 0; k < 16; k++) {
+                for (const leg of ind.poseAt(k / 16 / P.stride).legs) {
+                    assert(leg.reached, `${P.gait} cat could not reach its foot target`);
+                    assert(isFinite(leg.knee[0]) && isFinite(leg.knee[1]), 'IK produced a non-finite knee');
+                }
+            }
+        }
+    });
+
+    check('gait is nothing but four phase offsets', () => {
+        const phasesOf = (gait) => plainCat({ gait }).getParameters().phases;
+        const walk = phasesOf('walk'), trot = phasesOf('trot');
+        const bound = phasesOf('bound'), pace = phasesOf('pace');
+        assert(new Set(walk).size === 4, 'a walk lands each foot separately');
+        assert(trot[0] === trot[3] && trot[1] === trot[2], 'a trot moves diagonal pairs together');
+        assert(pace[0] === pace[2] && pace[1] === pace[3], 'a pace moves lateral pairs together');
+        assert(bound[0] === bound[1] && bound[2] === bound[3], 'a bound moves front and hind pairs together');
+        // Two cats identical but for the gait gene must actually move differently.
+        const a = plainCat({ gait: 'walk' }), b = plainCat({ gait: 'bound' });
+        b.genome = a.genome;   // same trace; only the forced phenotype differs
+        assert(JSON.stringify(a.poseAt(0.4).legs) !== JSON.stringify(b.poseAt(0.4).legs),
+            'changing the gait must change the leg positions');
+    });
+
+    check('the tail is a delay chain: segment i lags segment 0 by i × tailLag', () => {
+        // Technique 6 — follow-through with no physics. With noise and
+        // per-segment stiffness neutralised, the angular increment applied to
+        // segment i at time t must be the increment the *first* segment made
+        // i·lag earlier: the wave travels outward, so the tip is showing older
+        // motion than the base. That delay is the whole effect.
+        const ind = plainCat({ tailLag: 0.05, tailSway: 1.2, tailFreq: 0.8, tailSegs: 6 });
+        const incs = (t) => {
+            const tail = ind.poseAt(t).tail;
+            const angs = [];
+            for (let i = 1; i < tail.length; i++) {
+                angs.push(Math.atan2(tail[i][1] - tail[i - 1][1], tail[i][0] - tail[i - 1][0]));
+            }
+            const d = [];
+            for (let i = 1; i < angs.length; i++) {
+                let x = angs[i] - angs[i - 1];
+                while (x > Math.PI) x -= 2 * Math.PI;
+                while (x < -Math.PI) x += 2 * Math.PI;
+                d.push(x);
+            }
+            return d;
+        };
+        const P = ind.getParameters();
+        const t0 = 1.0;
+        const here = incs(t0);
+        for (let i = 1; i < here.length; i++) {
+            const earlier = incs(t0 - i * P.tailLag);
+            assert(Math.abs(here[i] - earlier[0]) < 1e-9,
+                `segment ${i + 1} should be repeating segment 1's motion from ${i}×lag ago`);
+        }
+    });
+
+    check('validate() rejects a cat whose legs cannot reach the ground', () => {
+        const ind = plainCat({ legSlack: 0.55 });   // bones far shorter than the reach
+        assert(ind.validate() === false, 'short-legged cat should be rejected');
+        assert(plainCat().validate() === true, 'a generated cat should be valid');
+        assert(plainCat({ stride: 0 }).validate() === false, 'a motionless cat is not a walk cycle');
+    });
+
+    check('the body never floats off its legs', () => {
+        // The hip sockets must stay inside the barrel outline whatever the bob
+        // and arch genes do — an ellipse is shallower at the hip's x than at its
+        // centre, which is what made a naive fixed offset unsafe.
+        for (let i = 0; i < 60; i++) {
+            const ind = new classes.CatIndividual();
+            const P = ind.getParameters();
+            for (let k = 0; k < 12; k++) {
+                const pose = ind.poseAt(k / 12 / P.stride);
+                const half = P.bodyLen / 2;
+                for (const leg of pose.legs) {
+                    const u = Math.min(1, Math.abs(leg.hip[0]) / half);
+                    const halfDepth = (P.bodyDepth / 2) * Math.sqrt(Math.max(0, 1 - u * u));
+                    assert(leg.hip[1] <= pose.body.y + halfDepth + 1e-9,
+                        `${P.gait} cat: hip at ${leg.hip[1]} hangs below the barrel`);
+                }
+            }
+        }
+    });
+
+    check('a bound is a run: it actually leaves the ground', () => {
+        // What separates a run from a fast walk is a duty cycle below 50%: the
+        // front and hind stance windows stop overlapping and leave a gap with no
+        // foot down. The airborne fraction must match 1 - 2·duty, and the body
+        // must rise during it — and be back on its stance height the instant a
+        // foot lands, or the gait jolts at every touchdown.
+        let checked = 0;
+        for (let i = 0; i < 400 && checked < 12; i++) {
+            const ind = new classes.CatIndividual();
+            if (ind.phenotype.gait !== 'bound') continue;
+            checked++;
+            const P = ind.getParameters();
+            assert(P.duty < 0.5, 'a bound must have a sub-50% duty cycle');
+            assert(P.hop > 0, 'a bound must have a flight arc');
+
+            // Highest point reached while airborne vs. while any foot is down.
+            // (y grows downwards, so "highest" is the minimum.) Comparing the two
+            // peaks isolates the flight arc without having to unpick the bob and
+            // arch terms that are also folded into the body height.
+            const N = 400;
+            let airborne = 0, topFlying = Infinity, topGrounded = Infinity;
+            for (let k = 0; k < N; k++) {
+                const pose = ind.poseAt(k / N / P.stride);
+                const flying = pose.legs.every(l => !l.planted);
+                if (flying) { airborne++; topFlying = Math.min(topFlying, pose.body.y); }
+                else topGrounded = Math.min(topGrounded, pose.body.y);
+                for (const leg of pose.legs) assert(leg.reached, 'IK clamped mid-run');
+            }
+            const expected = 1 - 2 * P.duty;
+            assert(Math.abs(airborne / N - expected) < 0.02,
+                `airborne ${(airborne / N).toFixed(2)}, expected ${expected.toFixed(2)}`);
+            assert(topGrounded - topFlying > P.hop * 0.7,
+                'the cat should be markedly higher airborne than with a foot down');
+        }
+        assert(checked > 0, 'no bounding cats were generated');
+    });
+
+    check('a bound does not hide its off-side legs behind the near ones', () => {
+        // In a bound the two legs of a pair share a phase exactly, so without a
+        // lateral offset the far pair draws pixel-for-pixel behind the near pair
+        // and the cat reads as two-legged.
+        const ind = plainCat({ gait: 'bound' });
+        const pose = ind.poseAt(0.3);
+        for (const [a, b] of [[0, 1], [2, 3]]) {
+            assert(Math.abs(pose.legs[a].hip[0] - pose.legs[b].hip[0]) > 1e-3,
+                'near and far legs of a pair must not coincide');
+        }
+    });
+
+    check('renders at tile and zoom size without throwing', () => {
+        const ind = new classes.CatIndividual();
+        for (const size of [128, 768]) ind.renderFrame(makeCanvas(size, size), 0.6);
+    });
+
+    // --- Active intervention: the edited gait must be genetic material -------
+    check('gait cycles through every gait and wraps', () => {
+        const ind = new classes.CatIndividual();
+        const seen = [];
+        for (let i = 0; i < 5; i++) seen.push(ind.cycleGait(1));
+        assert(new Set(seen.slice(0, 4)).size === 4, `expected all four gaits, got ${seen}`);
+        assert(seen[4] === seen[0], 'cycling must wrap');
+        assert(ind.cycleGait(-1) === seen[3], 'cycling backwards must retrace');
+    });
+
+    check('an edited gait is heritable, not a cached override', () => {
+        // The contract from DEVELOPERS.md: the edit goes through the
+        // representation, so it survives clone() and the trace stays legal for
+        // the operators. Anything less and the intervention is discarded at the
+        // next evolve, which is the whole point of doing it this way.
+        const ind = new classes.CatIndividual();
+        ind.setGait('bound');
+        assert(ind.phenotype.gait === 'bound', 'gait did not take');
+
+        const clone = ind.clone();
+        assert(clone.phenotype.gait === 'bound', 'edit lost on clone');
+
+        // Still an ordinary gene: crossover and mutation keep working on it.
+        const [c1] = ind.crossover(new classes.CatIndividual());
+        assert(GAITS.includes(c1.phenotype.gait), 'child has a nonsense gait');
+        ind.mutate(1.0);
+        assert(GAITS.includes(ind.phenotype.gait), 'mutation broke the gait gene');
+        assert(ind.validate(), 'an edited-then-mutated cat should still be valid');
+    });
+
+    check('an edited gait actually changes the legs', () => {
+        const ind = new classes.CatIndividual();
+        ind.setGait('walk');
+        const before = JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot));
+        ind.setGait('bound');
+        assert(JSON.stringify(ind.poseAt(0.4).legs.map(l => l.foot)) !== before,
+            'setting the gait must move the feet, not just relabel');
+    });
+
+    check('opts into direct manipulation and tears its session down', () => {
+        const ind = new classes.CatIndividual();
+        assert(ind.isEditable() === true, 'Cat should be directly editable');
+        const listeners = [];
+        const canvas = Object.assign(makeCanvas(768, 768), {
+            style: {},
+            getBoundingClientRect: () => ({ left: 0, top: 0, width: 768, height: 768 }),
+            addEventListener: (t) => listeners.push(t),
+            removeEventListener: () => {},
+        });
+        const teardown = ind.beginEditSession(canvas, {});
+        assert(listeners.includes('pointerdown') && listeners.includes('pointerup'),
+            'the session must bind its own pointer handling');
+        assert(typeof teardown === 'function', 'must return a teardown function');
+        teardown();
+    });
+
+    check('exposes all three pipeline stages for editing', () => {
+        const labels = new classes.CatIndividual().editableSections().map(s => s.label);
+        assert(JSON.stringify(labels) === JSON.stringify(['Pose', 'Draw', 'Generator']),
+            `unexpected editable sections: ${labels.join(', ')}`);
+    });
+}
+
+// --- Shared animation transport ---
+console.log('\nShared animation clock:');
+{
+    // A private sandbox: the clock is app-wide state, so mutating the shared one
+    // would leak into other tests.
+    const env = load();
+    const clock = env.Individual.AnimationClock;
+    const at = (ms) => { clock._now = () => ms; };
+
+    check('accumulates animation-seconds from wall-clock time', () => {
+        clock.reset(); at(1000); clock.seconds();
+        at(3000);
+        assert(Math.abs(clock.seconds() - 2) < 1e-9, 'two wall seconds should be two animation seconds');
+    });
+
+    check('pause freezes the clock and resume continues from where it stopped', () => {
+        clock.reset(); at(0); clock.seconds();
+        at(1000); assert(Math.abs(clock.seconds() - 1) < 1e-9, 'should have run for 1s');
+        clock.togglePause();
+        at(5000);
+        assert(Math.abs(clock.seconds() - 1) < 1e-9, 'paused time must not accumulate');
+        clock.togglePause();
+        at(6000);
+        assert(Math.abs(clock.seconds() - 2) < 1e-9, 'resumed clock continues, it does not jump');
+        clock.reset();
+    });
+
+    check('speed changes apply from now on, not retroactively', () => {
+        // The whole reason time is accumulated rather than derived from a start
+        // stamp: rescaling the past would make every animating tile jump.
+        clock.reset(); at(0); clock.seconds();
+        at(2000);                                  // 2 animation-seconds at scale 1
+        clock.adjustScale(2);                      // half speed from here
+        at(4000);                                  // +2 wall seconds → +1 animation second
+        assert(Math.abs(clock.seconds() - 3) < 1e-9, `expected 3s, got ${clock.seconds()}`);
+        assert(clock.scale === 2, 'scale should be 2');
+        clock.reset();
+    });
+
+    check('scale is clamped to a usable range', () => {
+        clock.reset();
+        for (let i = 0; i < 30; i++) clock.adjustScale(1.3);
+        assert(clock.scale === 8, 'should clamp at 8× slower');
+        for (let i = 0; i < 60; i++) clock.adjustScale(1 / 1.3);
+        assert(clock.scale === 0.25, 'should clamp at 4× faster');
+        clock.reset();
+    });
+
+    check('only the continuously-animating types declare the capability', () => {
+        const animated = new Set(['AnimatedPatternIndividual', 'CatIndividual']);
+        for (const name of INDIVIDUAL_CLASSES) {
+            const ind = new env.classes[name]();
+            assert(ind.animatesContinuously() === animated.has(name),
+                `${name}.animatesContinuously() should be ${animated.has(name)}`);
+        }
+    });
+}
 
 // --- Bloom post-filter ---
 console.log('\nBloom post-filter:');
