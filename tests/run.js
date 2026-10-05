@@ -34,8 +34,7 @@ function assert(cond, msg) {
 }
 
 const env0 = load();
-const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Individual, psRandom, sandbox } = env0;
-const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom, CF, roboCat, sandbox } = load();
+const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Individual, psRandom, CF, roboCat, sandbox } = env0;
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
 // These tests convert the previously-silent "forgot to register / forgot a
