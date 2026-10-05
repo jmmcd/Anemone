@@ -33,6 +33,8 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
 
+const env0 = load();
+const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Individual, psRandom, sandbox } = env0;
 const { classes, makeCanvas, SITLanguage, ExpressionCompiler, Individual, psRandom, CF, roboCat, sandbox } = load();
 
 // --- Individual-type registry (IndividualRegistry.js is the single source of truth) ---
@@ -813,6 +815,522 @@ check('validate() rejects empty and effectively-collinear figures', () => {
     Object.defineProperty(ind, 'phenotype', { value: { family: 4, root: { k: 'num', a: 0 } } });
     assert(!ind.validate(), 'a bare straight run should be rejected');
 });
+
+// --- The auditory half: SITLanguage.interpretMusic + SITMusicIndividual ---
+// The claim these assert is the paper's own: one algebra, two readings. Nothing
+// in evaluate() changes for music, so what has to be true is that each
+// construct MEANS the musical thing its header says it does — a `n·(0)` run is
+// one held note, R is retrograde, ± is inversion, a parallel structure is a
+// second voice, and so on. If one of these fails, the mapping has drifted from
+// the language, which is the whole claim of SITMusicIndividual.
+console.log('\nLeeuwenberg coding language, read as music:');
+{
+    const num = (a) => ({ k: 'num', a });
+    const seq = (...items) => ({ k: 'seq', items });
+    const chunk = (child) => ({ k: 'chunk', child });
+    const iter = (m, child) => ({ k: 'iter', ns: [m], child });
+    const run = (n) => iter(n, num(0));
+    const leaf = (a, len) => seq(num(a), run(len));
+    const music = (node, unit = 30) => SITLanguage.interpretMusic(SITLanguage.evaluate(node, unit));
+    // The pitch line, as (degree, start, dur) triples — what a listener follows.
+    const line = (node) => music(node).notes
+        .slice().sort((a, b) => a.start - b.start || a.degree - b.degree)
+        .map(n => `${n.degree}@${n.start}+${n.dur}`).join(' ');
+
+    check('a, n·(0) is ONE note held n+1 grains (length is not a primitive)', () => {
+        // The interval itself occupies a grain — `a` is the angle AT a grain, and
+        // the run of 0s continues in the same direction, i.e. at the same pitch.
+        const notes = music(leaf(2, 4)).notes;
+        assert(notes.length === 1, `expected one note, got ${notes.length}`);
+        assert(notes[0].dur === 5, `expected a 5-grain note, got ${notes[0].dur}`);
+        assert(notes[0].degree === 2, `expected degree 2, got ${notes[0].degree}`);
+    });
+    check('the vanishing sign is a rest: time passes, nothing sounds', () => {
+        const piece = music(seq(leaf(1, 2), { k: 'hide', child: run(2) }, leaf(1, 2)));
+        assert(piece.notes.length === 2, `expected two notes around the rest, got ${piece.notes.length}`);
+        assert(piece.notes[0].dur === 3, `the first note should stop at the rest, got ${piece.notes[0].dur}`);
+        assert(piece.notes[1].start === 5, `the second note should start after the rest, got ${piece.notes[1].start}`);
+        assert(piece.grains === 8, `the rest should still take time, got ${piece.grains} grains`);
+    });
+    check('R is the MIRROR: read backwards, the melody is its own inversion', () => {
+        // Easy to get wrong, so pin it exactly. R reverses the stream of
+        // INTERVALS (R{a,b,c} = a,b,c,c,b,a) — while a melody's true retrograde
+        // has its intervals reversed AND negated. What R writes is therefore the
+        // paper's symmetry: a contour mirrored about its midpoint, whose formal
+        // signature is that playing it backwards gives its inversion.
+        const degs = [0].concat(music({ k: 'rev', child: seq(num(2), num(1), num(-1)) })
+            .notes.slice().sort((a, b) => a.start - b.start).map(n => n.degree));
+        assert(degs.length === 7, `expected six notes from the tonic, got ${degs.length - 1}`);
+        const steps = (line) => line.slice(1).map((d, i) => d - line[i]);
+        const forward = steps(degs);
+        assert(forward.join() === forward.slice().reverse().join(),
+            `R must make the interval stream a palindrome: ${forward.join()}`);
+        assert(steps(degs.slice().reverse()).join() === forward.map(d => -d).join(),
+            `played backwards it should be the inversion: ${degs.join()}`);
+    });
+    check('± is INVERSION — the same phrase with every interval negated', () => {
+        const notes = music({ k: 'pm', child: seq(leaf(1, 1), leaf(1, 1)) })
+            .notes.slice().sort((a, b) => a.start - b.start).map(n => n.degree);
+        assert(notes.join() === '1,2,1,0', `expected the rise then its fall, got ${notes.join()}`);
+    });
+    check('k·{X} + (0,c) is the classical SEQUENCE (a transposed repeat)', () => {
+        // The paper's rule a + {b,c} = {a+b,c} lands the constant on the chunk's
+        // head; pitch accumulates, so that transposes the whole copy.
+        const phrase = seq(leaf(1, 1), leaf(1, 1), leaf(-2, 1));
+        const code = { k: 'op', op: '+', a: iter(2, chunk(phrase)), b: seq(num(0), num(3)) };
+        const degs = music(code).notes.slice().sort((a, b) => a.start - b.start).map(n => n.degree);
+        const first = degs.slice(0, 3), second = degs.slice(3);
+        assert(first.join() === '1,2,0', `first phrase wrong: ${first.join()}`);
+        assert(second.every((d, i) => d - first[i] === 3),
+            `the second copy should be a constant 3 degrees above the first, got ${second.join()}`);
+    });
+    check('a parallel continuation is a CHORD: one onset, stacked by one interval', () => {
+        // The copies fan by the child's own leading interval, as many as close
+        // the octave: a step of 2 in a 7-note family gives 4 copies — a stack of
+        // thirds, i.e. a seventh chord.
+        const piece = music({ k: 'parcont', child: leaf(2, 2) }, 360 / 7);
+        const starts = new Set(piece.notes.map(n => n.start));
+        assert(starts.size === 1 && starts.has(0), 'every voice of a chord must share the onset');
+        const degrees = piece.notes.map(n => n.degree).sort((a, b) => a - b);
+        assert(degrees.length === 4, `a step of 2 in 7 should close in 4 copies, got ${degrees.length}`);
+        for (let i = 1; i < degrees.length; i++) {
+            assert(degrees[i] - degrees[i - 1] === 2, `not a constant stack: ${degrees.join()}`);
+        }
+    });
+    check('a parallel structure is POLYPHONY: a branch sounds with the trunk', () => {
+        const trunk = seq(leaf(1, 2), leaf(1, 2));
+        const branch = leaf(-3, 2);
+        const piece = music({ k: 'par', rows: [trunk, branch], indep: [false, false], every: [false, false] });
+        assert(piece.voices > 1, 'a branch must be its own voice');
+        // The branch hangs off the note it is attached to, so the two overlap.
+        const overlaps = piece.notes.some(a => piece.notes.some(b =>
+            a !== b && a.voice !== b.voice && a.start < b.start + b.dur && b.start < a.start + a.dur));
+        assert(overlaps, 'the branch should sound at the same time as the trunk');
+    });
+    check('‖ makes a branch answer from the tonic (tonal, not real)', () => {
+        const trunk = seq(leaf(4, 1), leaf(0, 1));
+        const branch = leaf(1, 1);
+        const at = (indep) => SITLanguage.interpretMusic(SITLanguage.evaluate(
+            { k: 'par', rows: [trunk, branch], indep: [false, indep], every: [false, false] }, 30))
+            .notes.filter(n => n.depth > 0).map(n => n.degree).sort((a, b) => a - b);
+        const real = at(false), tonal = at(true);
+        assert(real[0] === 5, `a real answer transposes with the trunk, got ${real.join()}`);
+        assert(tonal.every(d => d === 1), `a tonal answer starts from the tonic, got ${tonal.join()}`);
+    });
+    check('⟨v⟩ moves in TIME, not pitch (augmentation / diminution)', () => {
+        const plain = music(seq(leaf(1, 1), leaf(1, 1)));
+        const aug = music(seq({ k: 'out', child: num(1) }, leaf(1, 1), leaf(1, 1)));
+        const pitchOf = (p) => p.notes.slice().sort((a, b) => a.start - b.start).map(n => n.degree);
+        // ⟨1⟩ doubles the grain: the same notes, twice as long. (The ⟨ ⟩ item
+        // sounds a grain of its own at the current pitch, so compare the tail.)
+        assert(pitchOf(aug).slice(1).join() === pitchOf(plain).join(),
+            'an outerproduct must not change the pitches');
+        assert(aug.grains > plain.grains, 'augmentation must lengthen the piece');
+        const dim = music(seq({ k: 'out', child: num(-1) }, leaf(1, 1), leaf(1, 1)));
+        assert(dim.notes.some(n => n.dur < 1), 'diminution must shorten a grain below one');
+    });
+    check('| | measures pitch from the TONIC, not from the previous note', () => {
+        const drift = music(seq(leaf(3, 1), leaf(3, 1), leaf(3, 1)));
+        const fixed = music({ k: 'abs', child: seq(leaf(3, 1), leaf(3, 1), leaf(3, 1)) });
+        assert(drift.notes.map(n => n.degree).join() === '3,6,9', 'relative intervals should accumulate');
+        assert(fixed.notes.every(n => n.degree === 3 || n.degree === 0),
+            'absolute values should be measured from the tonic every time');
+    });
+    check('⦃ ⦄ repeats until the melody closes on its starting pitch class', () => {
+        // A rising third in a 12-note family: 4 of them make an octave, so the
+        // continuation stops when the line comes back to where it began.
+        const piece = music({ k: 'cont', child: leaf(3, 1) }, 30);
+        const degrees = piece.notes.map(n => n.degree);
+        assert(degrees.length === 4, `expected 4 repeats to close the octave, got ${degrees.length}`);
+        assert(degrees[degrees.length - 1] % 12 === 0, `should land on the tonic, got ${degrees.join()}`);
+    });
+    check('a shared branch is counted once, not once per path (DAG guard)', () => {
+        // A parallel structure attaches ONE evaluated branch at every node, so
+        // the item stream is a DAG. Walking it as a tree costs the product of
+        // the row lengths, which stalled the whole interpreter before a note was
+        // sounded; the palette-scaling count must memoise by array identity.
+        const row = () => iter(6, seq(num(1), num(0), num(-1)));
+        const code = { k: 'par', rows: [row(), row(), row()], indep: [false, false, false], every: [false, true, true] };
+        const items = SITLanguage.evaluate(code, 30);
+        const t0 = Date.now();
+        const piece = SITLanguage.interpretMusic(items);
+        const ms = Date.now() - t0;
+        assert(piece.notes.length > 0, 'nested parallel rows should still sound');
+        assert(ms < 2000, `interpreting nested parallel rows took ${ms}ms — the DAG is being walked as a tree`);
+    });
+}
+
+console.log('\nLeeuwenberg code music individual:');
+{
+    const valid = (attempts = 200) => {
+        for (let i = 0; i < attempts; i++) {
+            const ind = new classes.SITMusicIndividual();
+            if (ind.validate()) return ind;
+        }
+        throw new Error('no valid SITMusicIndividual');
+    };
+    check('a validated individual is a playable piece', () => {
+        const ind = valid();
+        const notes = ind.getPhenotype();
+        assert(notes.length >= 6, `expected a piece, got ${notes.length} notes`);
+        for (const n of notes) {
+            assert(n.pitch >= 36 && n.pitch <= 96, `pitch ${n.pitch} outside the playable range`);
+            assert(n.velocity >= 1 && n.velocity <= 127, `velocity ${n.velocity} out of range`);
+            assert(n.dur > 0, 'a note must have duration');
+        }
+        assert(ind.polyphony() <= 8, 'validate() must reject clusters');
+    });
+    check('the scale gene really is a scale (an octave is `family` degrees)', () => {
+        const ind = valid();
+        const N = ind.scale().length;
+        assert(N === ind.phenotype.family, 'the scale table must match the family');
+        assert(ind.midiFor(N) - ind.midiFor(0) === 12 || ind.midiFor(0) - ind.midiFor(-N) === 12,
+            'stepping `family` degrees must move exactly one octave');
+    });
+    check('toMIDISequence lands on integer ticks, triplets included', () => {
+        const ind = valid();
+        const seq = ind.toMIDISequence();
+        assert(seq.ppq % 12 === 0, 'the PPQ must divide by 12 for the ⟨ ⟩ triplet grains');
+        assert(seq.loopTicks > 0, 'no loop length');
+        for (const n of seq.notes) {
+            assert(Number.isInteger(n.start) && Number.isInteger(n.duration), 'non-integer ticks');
+            assert(n.channel >= 0 && n.channel <= 3, `voice channel ${n.channel} out of range`);
+        }
+    });
+    check('it renders a loop buffer and a piano-roll tile', () => {
+        const ind = valid();
+        const buffer = ind.renderToAudioBuffer();
+        assert(buffer.length > 0, 'empty audio buffer');
+        const data = buffer.getChannelData(0);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
+        assert(peak > 0, 'the loop is silent');
+        assert(peak <= 1, 'the loop clips');
+        ind.visualize(makeCanvas(128, 128));   // must not throw
+        assert(ind.describeExtra().includes('Structural information load'), 'no genome panel');
+    });
+    check('an edited genome still evolves (mutate / clone / crossover)', () => {
+        const a = valid(), b = valid();
+        const child = a.clone();
+        child.mutate(0.2);
+        assert(child.genome !== a.genome || child.getPhenotype().length >= 0, 'mutation broke the genome');
+        const [c1] = a.crossover(b);
+        assert(c1 && c1.getPhenotype, 'crossover produced nothing');
+    });
+}
+
+// --- The play cursor ---
+// One shared contract: the individual says WHERE playback has got to
+// (playheadFraction), the tile draws it (Canvas2DModality.drawPlayhead), and the
+// framework decides when to repaint (startPlayheadAnimation). What has to hold
+// is that the cursor cannot drift from what you hear — it is read off the very
+// clock playback was scheduled against — and that a piece and a loop enter
+// differently.
+console.log('\nPlay cursor:');
+{
+    const validOf = (name, attempts = 200) => {
+        for (let i = 0; i < attempts; i++) {
+            const ind = new classes[name]();
+            if (ind.validate()) return ind;
+        }
+        throw new Error(`no valid ${name}`);
+    };
+    const SEQUENCERS = ['DrumMachineIndividual', 'MelodyIndividual', 'SITMusicIndividual'];
+
+    check('a loop lasts exactly as long as the buffer you hear', () => {
+        // The cursor sweeps loopSeconds(), the ear hears renderToAudioBuffer().
+        // If those two ever disagree the cursor drifts, so pin them together.
+        for (const name of SEQUENCERS) {
+            const ind = validOf(name);
+            const played = ind.renderToAudioBuffer().duration;
+            assert(Math.abs(ind.loopSeconds() - played) < 0.02,
+                `${name}: cursor spans ${ind.loopSeconds()}s but the loop is ${played}s`);
+        }
+    });
+
+    check('there is no cursor unless the individual is sounding', () => {
+        for (const name of SEQUENCERS) {
+            const ind = validOf(name);
+            assert(ind.playheadFraction() === null, `${name} reports a position while silent`);
+            ind.isPlaying = true;
+            const at = ind.playheadFraction();
+            assert(typeof at === 'number' && at >= 0 && at < 1,
+                `${name}: expected a fraction of the loop, got ${at}`);
+            ind.isPlaying = false;
+            assert(ind.playheadFraction() === null, `${name} keeps its cursor after stopping`);
+        }
+        // A type with no loop never animates: that null is what stops the loop.
+        assert(new classes.GridIndividual().playheadFraction() === null, 'a still tile has no cursor');
+    });
+
+    check('a piece starts from the start; a loop enters at the shared phase', () => {
+        const env = load();
+        const audio = env.sandbox.window.framework.sharedAudio;
+        const offsets = {};
+        audio.playBuffer = (buffer, opts) => { offsets[name] = opts.offset; };
+        // Put the shared clock somewhere other than the downbeat, so entering at
+        // the phase is visibly different from entering at zero.
+        env.sandbox.window.Transport.epoch = -1.13;
+        let name;
+        for (name of ['MelodyIndividual', 'SITMusicIndividual']) {
+            let ind = new env.classes[name]();
+            for (let i = 0; i < 200 && !ind.validate(); i++) ind = new env.classes[name]();
+            ind.playMIDI();
+        }
+        assert(offsets.MelodyIndividual > 0,
+            `a bar loop should enter mid-bar, got offset ${offsets.MelodyIndividual}`);
+        assert(offsets.SITMusicIndividual === 0,
+            `a piece should start at 0, got offset ${offsets.SITMusicIndividual}`);
+    });
+
+    check('drawPlayhead puts the cursor where the fraction says', () => {
+        // The stub context records what was filled, so the geometry is checkable
+        // even though nothing is rasterised.
+        const rects = [];
+        const ctx = Object.assign(makeCanvas().getContext(), {
+            fillRect: (x, y, w, h) => rects.push({ x, y, w, h }),
+            createLinearGradient: () => ({ addColorStop: () => {} }),
+            save: () => {}, restore: () => {},
+        });
+        env0.Canvas2DModality.drawPlayhead(ctx, 40, 5, 100, 1);
+        assert(rects.length === 2, `expected a trail and a line, got ${rects.length} fills`);
+        const line = rects[1];
+        assert(Math.abs(line.x + line.w / 2 - 40) < 0.01, `the cursor should sit at x=40, got ${line.x}`);
+        assert(line.y === 5 && line.h === 100, 'the cursor should span the band it was given');
+        assert(rects[0].x < line.x, 'the trail should point backwards in time');
+    });
+}
+
+// --- The reverse map: music → code → genome (SITAnalysis.js) ---
+// SIT is natively an ANALYSIS theory — the shortest code IS the claim about what
+// a listener hears — so this direction is the one the theory was built for. Two
+// things have to hold: the code must replay to EXACTLY the melody it was found
+// from (an inexact analysis is a bug, not an approximation), and it must survive
+// the trip back into a PTO genome, or an imported tune could be read but never
+// evolved.
+console.log('\nLeeuwenberg analysis (music → code → genome):');
+{
+    check('MidiExport parses back what it writes', () => {
+        const seq = { bpm: 108, ppq: 96, notes: [
+            { pitch: 60, velocity: 100, start: 0, duration: 96, channel: 0 },
+            { pitch: 64, velocity: 90, start: 96, duration: 48, channel: 0 },
+            { pitch: 67, velocity: 80, start: 144, duration: 192, channel: 1 },
+        ] };
+        const midiExport = sandbox.window.MidiExport;
+        const back = midiExport ? midiExport.parseSMF(midiExport.buildSMF(seq, null)) : null;
+        assert(back, 'MidiExport is not loaded in the harness');
+        assert(back.ppq === 96 && Math.abs(back.bpm - 108) < 0.5, 'header lost in the round trip');
+        assert(back.notes.length === 3, `expected 3 notes, got ${back.notes.length}`);
+        for (let i = 0; i < 3; i++) {
+            assert(back.notes[i].pitch === seq.notes[i].pitch
+                && back.notes[i].start === seq.notes[i].start
+                && back.notes[i].dur === seq.notes[i].duration, `note ${i} differs after the round trip`);
+        }
+    });
+
+    for (const title of Object.keys(SITAnalysis.melodies)) {
+        check(`"${title}" codes exactly, compresses, and seeds a genome`, () => {
+            const result = SITAnalysis.analyseMelody(title);
+            assert(result, 'no analysis');
+            // 1. EXACT: the code replays to the very stream it was found from.
+            assert(result.exact, 'the code does not replay to the melody it was analysed from');
+            // 2. COMPRESSION: a code longer than writing the tune out is no code at all.
+            assert(result.load <= result.literalLoad,
+                `I=${result.load} exceeds the literal ${result.literalLoad}`);
+            // 3. SEEDABLE: the analysis becomes a real PTO genome...
+            const seed = classes.SITMusicIndividual.fromCode(result.code);
+            assert(seed, 'the analysed code could not be turned into a genome');
+            // 4. ...and that genome decodes to the melody we started from, note
+            // for note. This is the end-to-end claim: notes → code → trace →
+            // notes, with nothing lost on the way round.
+            const want = SITAnalysis.monophonic(SITAnalysis.parseMelody(SITAnalysis.melodies[title].notes));
+            const got = seed.getPhenotype().slice().sort((a, b) => a.start - b.start);
+            assert(got.length === want.length, `${want.length} notes in, ${got.length} out`);
+            for (let i = 0; i < want.length; i++) {
+                assert(got[i].start === want[i].start,
+                    `note ${i}: onset ${got[i].start} ≠ ${want[i].start}`);
+                // A repeated note is articulated by clipping a grain off the one
+                // before it (see SITAnalysis.atoms), so a duration may be one
+                // grain short — never anything else.
+                const short = want[i].dur - got[i].dur;
+                assert(short === 0 || short === 1,
+                    `note ${i}: duration ${got[i].dur} ≠ ${want[i].dur}`);
+                // Pitch is checked RELATIVELY: a code is a structure of
+                // intervals, and the register comes from the tonic gene, which
+                // fromCode folds into the range a genome can hold. So the melody
+                // may come back an octave up — but never a note out of shape.
+                assert(got[i].pitch - got[0].pitch === want[i].pitch - want[0].pitch,
+                    `note ${i}: interval ${got[i].pitch - got[0].pitch} ≠ ${want[i].pitch - want[0].pitch}`);
+            }
+            assert((got[0].pitch - want[0].pitch) % 12 === 0,
+                'the seeded melody must be in the same key, up to octaves');
+            // 5. HERITABLE: a seeded genome is an ordinary one, so it evolves.
+            const child = seed.clone();
+            child.mutate(0.15);
+            assert(child.getPhenotype().length >= 0, 'a seeded genome must survive mutation');
+        });
+    }
+
+    check('the regularities are actually FOUND, not just re-written', () => {
+        // A pure repeat, a pure retrograde and a pure sequence each have to
+        // collapse to their operator — if the DP misses them it still produces
+        // an exact code, just a literal one, and the compression is the tell.
+        const atoms = (vs) => vs.map(v => ({ v, hide: false }));
+        const notation = (vs) => SITLanguage.notation(SITAnalysis.encode(atoms(vs)).node);
+        const repeat = SITAnalysis.encode(atoms([1, 2, 3, 1, 2, 3, 1, 2, 3]));
+        assert(repeat.cost === 4, `a threefold repeat should cost 1+3, got ${repeat.cost}`);
+        assert(notation([1, 2, 3, 1, 2, 3, 1, 2, 3]).includes('·'), 'iteration not found');
+        const retro = SITAnalysis.encode(atoms([1, 2, 3, 3, 2, 1]));
+        assert(retro.cost === 4, `a retrograde should cost 1+3, got ${retro.cost}`);
+        assert(notation([1, 2, 3, 3, 2, 1]).startsWith('R'), 'reversal not found');
+        const inv = SITAnalysis.encode(atoms([1, 2, 3, -1, -2, -3]));
+        assert(inv.cost === 4, `an inversion should cost 1+3, got ${inv.cost}`);
+        assert(notation([1, 2, 3, -1, -2, -3]).startsWith('±'), 'left-right variation not found');
+        // A motif of net-zero shape, transposed up two steps twice. The idiom
+        // costs 1 (the operation) + 1 (the iteration) + one unit per non-zero
+        // offset + I(motif) = 2 + 2 + 3 = 7, against 9 written out.
+        const seqv = [1, 1, -2, 3, 1, -2, 3, 1, -2];
+        const found = SITAnalysis.encode(atoms(seqv));
+        assert(found.cost === 7, `a sequence should cost 7, got I=${found.cost}`);
+        assert(notation(seqv).includes('+'), 'the transposed repeat was not found');
+    });
+
+    check('an analysis of a held-note melody keeps its rhythm', () => {
+        // Held notes are `n·(0)` runs and repeated notes need articulating, so a
+        // tune of repeated crotchets must come back as separate notes, not one
+        // long tone (the one place the grain reading needs care).
+        const notes = SITAnalysis.parseMelody('C4:4 C4:4 C4:4 C4:4');
+        const result = SITAnalysis.analyse(notes);
+        assert(result.exact, 'inexact');
+        const seed = classes.SITMusicIndividual.fromCode(result.code);
+        assert(seed, 'not seedable');
+        assert(seed.getPhenotype().length === 4,
+            `four repeated notes must stay four notes, got ${seed.getPhenotype().length}`);
+    });
+
+    check('chooseKey picks the smallest scale that holds the tune', () => {
+        const penta = SITAnalysis.chooseKey([60, 62, 64, 67, 69, 72]);
+        assert(penta.family === 5, `expected pentatonic, got ${penta.family}`);
+        const dia = SITAnalysis.chooseKey([60, 62, 64, 65, 67, 69, 71]);
+        assert(dia.family === 7, `expected diatonic, got ${dia.family}`);
+        const chrom = SITAnalysis.chooseKey([60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]);
+        assert(chrom.family === 12, `expected chromatic, got ${chrom.family}`);
+    });
+
+    check('a code the generator cannot write is refused, not fudged', () => {
+        // The seeding contract: fromCode returns an individual whose genome
+        // really does express the code, or null. Never a near miss.
+        const tooWide = { family: 7, tonic: 60, bpm: 100, swing: 0,
+            root: { k: 'seq', items: [{ k: 'num', a: 99 }, { k: 'num', a: 1 }] } };
+        assert(classes.SITMusicIndividual.fromCode(tooWide) === null,
+            'an interval outside the generator\'s pool must refuse to seed');
+        assert(classes.SITMusicIndividual.fromCode(null) === null, 'a missing code must refuse to seed');
+    });
+}
+
+// --- Reflective sketch ---
+// Construction is a pure function of the generator's choices (rsConstruct), so
+// these drive it with hand-written specs and check each reference rule.
+console.log('\nReflective sketch (references resolve against the drawing so far):');
+{
+    const rsConstruct = sandbox.rsConstruct;
+    // A stroke spec with neutral defaults: polar end straight ahead, chord handles.
+    const st = (from, extra = {}) => ({
+        from, to: null, turn: 0, len: 1, h0: 'chord', a0: 0, k0: 0.3,
+        h1: 'chord', a1: 0, k1: 0.3, side: 1, w: 1, ...extra,
+    });
+    const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+
+    check('an unresolvable reference falls back (first stroke → origin, later → continue)', () => {
+        const d = rsConstruct({ strokes: [st({ kind: 'crossRanked', r: 0 }), st({ kind: 'freeEnd', r: 2 })] });
+        assert(d.strokes[0].fromFell && near(d.strokes[0].c[0], [0, 0]), 'first stroke must fall back to the origin');
+        // stroke 0 has two free ends, so free end #3 does not exist → continue.
+        assert(d.strokes[1].fromFell && near(d.strokes[1].c[0], d.strokes[0].c[3]),
+            'a missing free end must fall back to the last end');
+    });
+
+    check("'continue' starts at the last end and leaves along its tangent (a smooth join)", () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { turn: 60, a0: 40, a1: -30 }),
+            st({ kind: 'continue' }, { turn: 90 }),
+        ] });
+        const [a, b] = d.strokes;
+        assert(near(b.c[0], a.c[3]), 'must start where the last stroke ended');
+        const t1 = [a.c[3][0] - a.c[2][0], a.c[3][1] - a.c[2][1]];
+        const t2 = [b.c[1][0] - b.c[0][0], b.c[1][1] - b.c[0][1]];
+        const cross = t1[0] * t2[1] - t1[1] * t2[0], dot = t1[0] * t2[0] + t1[1] * t2[1];
+        assert(Math.abs(cross) < 1e-9 && dot > 0, 'start handle must continue the previous end tangent (G1)');
+    });
+
+    check('attaching to a stroke credits it, and anchorUsed follows the credit', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),           // 0: longest
+            st({ kind: 'point', x: 0, y: 1, h: 0 }, { len: 0.5 }),         // 1
+            st({ kind: 'recent', k: 0, end: 'end' }),                      // credits 1
+            st({ kind: 'recent', k: 1, end: 'start' }),                    // credits 1
+            st({ kind: 'anchorUsed', t: 0.5 }),                            // on 1, not 0
+            st({ kind: 'anchorLongest', t: 0.5 }),                         // on 0
+        ] });
+        assert(d.strokes[1].uses === 3, `stroke 1 should have 3 attachments, got ${d.strokes[1].uses}`);
+        assert(near(d.strokes[4].c[0], [0.25, 1]), `anchorUsed @½ should be the middle of stroke 1, got ${d.strokes[4].c[0]}`);
+        assert(Math.abs(d.strokes[5].c[0][0] - 1) < 1e-9 && Math.abs(d.strokes[5].c[0][1]) < 1e-9,
+            `anchorLongest @½ should be the middle of stroke 0, got ${d.strokes[5].c[0]}`);
+    });
+
+    check('crossings are registered and ranked (a perpendicular crossing outranks a shallow one)', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),
+            st({ kind: 'point', x: 0.5, y: -0.5, h: 90 }),                  // perpendicular at (0.5, 0)
+            st({ kind: 'point', x: 1.0, y: -0.2, h: 20 }, { len: 1.2 }),    // shallow, crosses later
+            st({ kind: 'crossRanked', r: 0 }),
+            st({ kind: 'crossLast' }),
+        ] });
+        assert(d.crosses.length >= 2, `expected at least two crossings, got ${d.crosses.length}`);
+        const p = d.strokes[3].c[0];
+        assert(Math.abs(p[0] - 0.5) < 1e-6 && Math.abs(p[1]) < 1e-6, `crossRanked #1 should be the perpendicular one, got ${p}`);
+        assert(!near(d.strokes[4].c[0], p), 'crossLast should be the newer (shallow) crossing');
+    });
+
+    check('free ends exclude endpoints that touch another stroke', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),
+            st({ kind: 'anchorLongest', t: 0.5 }, { turn: -90 }),           // T-junction off stroke 0
+        ] });
+        const ends = sandbox.rsFreeEnds(d.strokes);
+        assert(ends.length === 3, `the junction end is attached, so 3 free ends remain, got ${ends.length}`);
+    });
+
+    check('an end that lands on the start makes a loop (closed, non-degenerate, smooth after continue)', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { turn: 30, a1: 20 }),
+            st({ kind: 'continue' }, { to: { kind: 'recent', k: 0, end: 'end' }, a0: 40, a1: 60 }),
+        ] });
+        const [a, b] = d.strokes;
+        assert(b.loop && !b.toFell, 'the coincident end should make a loop, not fall back');
+        assert(near(b.c[0], b.c[3]) && near(b.c[0], a.c[3]), 'a loop must start and end at the same point');
+        assert(b.len > 0.3, `a loop must have real extent, got length ${b.len}`);
+        const t1 = [a.c[3][0] - a.c[2][0], a.c[3][1] - a.c[2][1]];
+        const t2 = [b.c[1][0] - b.c[0][0], b.c[1][1] - b.c[0][1]];
+        assert(Math.abs(t1[0] * t2[1] - t1[1] * t2[0]) < 1e-9 && t1[0] * t2[0] + t1[1] * t2[1] > 0,
+            'a loop after continue must leave along the previous tangent');
+        const ends = sandbox.rsFreeEnds(d.strokes);
+        assert(ends.length === 1, `only stroke 0's start should be free (a loop has no free ends), got ${ends.length}`);
+    });
+
+    check('the same genome constructs the same drawing, and paint() lays down ink', () => {
+        const T = classes.ReflectiveSketchIndividual;
+        let ind; do { ind = new T(); } while (!ind.validate());
+        const twin = new T(ind.genome);
+        assert(JSON.stringify(twin.drawing().strokes.map(s => s.c)) === JSON.stringify(ind.drawing().strokes.map(s => s.c)),
+            'construction must be deterministic in the genome');
+        const img = { data: new Uint8ClampedArray(128 * 128 * 4), width: 128, height: 128 };
+        T.paint(img, ind.drawing(), ind.phenotype);
+        let dark = 0;
+        for (let i = 0; i < img.data.length; i += 4) if (img.data[i] < 128) dark++;
+        assert(dark > 20, `expected inked pixels, got ${dark}`);
+        assert(ind.describe().includes('Construction:'), 'describe() should list the construction');
+    });
+}
 
 // --- Self-description ---
 // Each individual owns its display: toString() (concise summary) and describe()
@@ -2418,6 +2936,22 @@ check('a saved MIDI reconstructs the same individual (the load path)', () => {
     assert(ImageSave.phenotypeSignature(recon) === meta.phenoSig,
         'reconstructed phenotype must match the saved signature');
 });
+check('a saved MIDI reconstructs a VARIABLE-structure genome too (revive)', () => {
+    // Melody's trace has a fixed shape; a Leeuwenberg code's does not, and a
+    // JSON round trip leaves its entries as plain objects with no Dist
+    // operators. They still express, so the reconstruction must match — and the
+    // load path's revive() is what makes the result evolvable again.
+    let orig = new classes.SITMusicIndividual();
+    for (let i = 0; i < 200 && !orig.validate(); i++) orig = new classes.SITMusicIndividual();
+    const meta = ImageSave.metaFor(orig);
+    const read = MidiExport.readMetadata(MidiExport.buildSMF(orig.toMIDISequence(), JSON.stringify(meta)));
+    assert(read && read.type === 'SITMusicIndividual', 'type recovered from the file');
+    const recon = new classes.SITMusicIndividual(JSON.parse(JSON.stringify(read.genome)));
+    assert(ImageSave.phenotypeSignature(recon) === meta.phenoSig,
+        'reconstructed phenotype must match the saved signature');
+    recon.genome = recon.representation.revive(recon.genome);
+    recon.mutate(0.1);                                    // must not throw on a revived trace
+});
 check('a saved WAV reconstructs the same individual (the load path)', () => {
     const orig = new classes.DrumMachineIndividual();     // fixed-structure ⇒ round-trips
     const meta = ImageSave.metaFor(orig);
@@ -2443,7 +2977,8 @@ check('MelodyIndividual opts out of PNG save (MIDI-only)', () => {
 console.log('\nMIDI Clock Sync:');
 check('usesMIDISync() only on step sequencers and mouse/EEG DAG individuals', () => {
     const env = load();
-    for (const name of ['DrumMachineIndividual', 'MelodyIndividual', 'MouseMusicIndividual', 'EEGSonificationIndividual']) {
+    for (const name of ['DrumMachineIndividual', 'MelodyIndividual', 'MouseMusicIndividual',
+        'EEGSonificationIndividual', 'SITMusicIndividual']) {
         assert(new env.classes[name]().usesMIDISync() === true, `${name} should opt into MIDI sync`);
     }
     assert(new env.classes.GridIndividual().usesMIDISync() === false, 'a non-sound type should not opt in');

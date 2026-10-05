@@ -79,6 +79,35 @@ class Canvas2DModality {
     // These operate directly on an ImageData `data` buffer (Uint8ClampedArray),
     // for individuals that draw paths/shapes rather than evaluating per pixel.
 
+    /**
+     * The PLAY CURSOR: a bright vertical line, with a short trail behind it, at
+     * `x` over the band from `y` to `y + h`.
+     *
+     * Unlike its neighbours this one draws through a 2D *context* rather than an
+     * ImageData buffer, because the tiles that want it (the step sequencers and
+     * the Leeuwenberg piano roll) are drawn with the context too — and it lives
+     * here, shared, so all three cursors look and behave alike rather than each
+     * type inventing one. It is deliberately drawn last, over the notes.
+     *
+     * The trail points backwards in time, which reads as motion at 128px where a
+     * bare 1px line reads as a static tick. `scale` is the caller's
+     * resolution-independent pixel unit (1 at tile size, 6 at zoom), so the
+     * cursor keeps its weight when the same tile is drawn large.
+     */
+    static drawPlayhead(ctx, x, y, h, scale = 1) {
+        const w = Math.max(1, 1.5 * scale);
+        const trail = 10 * scale;
+        ctx.save();
+        const grad = ctx.createLinearGradient(x - trail, 0, x, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(1, 'rgba(255,255,255,0.22)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x - trail, y, trail, h);
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillRect(x - w / 2, y, w, h);
+        ctx.restore();
+    }
+
     /** Filled circle centred at (cx, cy). */
     static drawCircle(data, width, height, cx, cy, radius, color) {
         const r2 = radius * radius;

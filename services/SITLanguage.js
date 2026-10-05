@@ -110,9 +110,13 @@
 //    the grain length is notional, so an angle with nothing joined to it is a
 //    dot. This is what makes Table 1's C and G dot patterns rather than dashed
 //    figures, and the paper distinguishes those from its dashed ones.
-//  * Auditory patterns (Table 2) are out of scope, as are the paper's
-//    *measures* (preferred dimensionality, hierarchy, substructural order);
-//    only structural information load I is reported.
+//  * The paper's *measures* (preferred dimensionality, hierarchy, substructural
+//    order) are out of scope; only structural information load I is reported.
+//
+// AUDITORY PATTERNS. The paper's title is "…for Visual AND AUDITORY Patterns",
+// and its claim is that one algebra covers both. `interpretMusic` (below) is
+// that half: it reads the very same item stream as a piece of music instead of
+// a figure — nothing in `evaluate` changes. See its header for the mapping.
 //
 // The engine is used generatively, not analytically: we write codes and decode
 // them, rather than searching for the minimal code of a given figure. The
@@ -127,6 +131,12 @@ const LEE_CONT_MAX = 24;         // largest repeat count a continuation may take
 const LEE_CONT_STRAIGHT = 6;     // repeats for a continuation with no net turn
 const LEE_MAX_BRANCH_DEPTH = 4;  // nesting depth of parallel-structure branches
 const LEE_FIELD_SAMPLES = 256;   // segments sampled when building a ⊛ direction field
+const LEE_MAX_NOTES = 600;       // notes produced by one musical interpretation
+const LEE_MAX_GRAINS = 256;      // grains of time one piece may run to
+// Grain augmentation/diminution factors for ⟨v⟩, indexed by v ∈ [-2,2] (see
+// interpretMusic). Kept rational and small so voices stay commensurable: the
+// triplet ratios are what let a code write 3-against-2.
+const LEE_DUR_RATIOS = [1 / 3, 1 / 2, 1, 2, 3];
 
 const SITLanguage = {
 
@@ -889,6 +899,230 @@ const SITLanguage = {
         }
     },
 
+    // =======================================================================
+    // INTERPRETATION:  item stream -> music
+    // =======================================================================
+
+    /**
+     * Auditory turtle — the paper's other half (its title is "…for Visual and
+     * Auditory Patterns"), reading the SAME item stream as a piece of music.
+     * Nothing in `evaluate` changes; only what the values are taken to mean.
+     *
+     * THE MAPPING. In the visual case the stream is angles, one per elementary
+     * grain of *contour*. Here it is pitch intervals, one per elementary grain
+     * of *time*. Everything else follows from that one substitution, and the
+     * correspondence is exact rather than analogical because ANGLE ↔ PITCH
+     * CLASS and FULL TURN ↔ OCTAVE — the chroma circle. A code's rotational
+     * family N is therefore its scale: N notes to the octave, one unit = one
+     * scale degree, and the engine's own 360°-based arithmetic already does
+     * pitch arithmetic when `evaluate` is passed unit = 360/N.
+     *
+     *   n·(0)         a straight edge of n grains  →  ONE NOTE held n grains.
+     *                 Length is never a primitive in either reading; that is
+     *                 the paper's central reduction (p. 332), and it is why
+     *                 note durations need no notation of their own.
+     *   ‾ ‾           the vanishing sign           →  a REST: the grain still
+     *                 functions (it advances time and carries its interval)
+     *                 but sounds nothing, exactly as it draws nothing.
+     *   a lone grain  a dot rather than a dash     →  a one-grain note, i.e.
+     *                 staccato. Falls out of run-length; no special case.
+     *   | |           angles from the base axis    →  pitch from the TONIC
+     *                 rather than from the previous note.
+     *   ∫             integration                  →  intervals to absolute pitches.
+     *   ±             left-right variation         →  INVERSION: the phrase,
+     *                 then the same phrase with every interval negated.
+     *   R             reversal                     →  MIRROR SYMMETRY, which in
+     *                 pitch is the phrase followed by its RETROGRADE INVERSION.
+     *                 Worth being exact about, since it is easy to call it a
+     *                 retrograde and be wrong: R reverses the stream of
+     *                 INTERVALS, and a melody's true retrograde has its
+     *                 intervals reversed AND negated. What R gives is the
+     *                 paper's own symmetry — an arch, the contour mirrored
+     *                 about its midpoint. Both of the language's symmetry
+     *                 operations APPEND rather than transform, so a bare
+     *                 retrograde (the phrase replaced by its reverse) is not
+     *                 something this algebra says; the phrase plus its mirror
+     *                 is.
+     *   +             addition                     →  TRANSPOSITION. The
+     *                 paper's own rule a + {b,c} = {a+b,c} lands the constant on
+     *                 the chunk's head only, and since pitch accumulates, bumping
+     *                 a repeat's leading interval transposes the whole copy — so
+     *                 `2·{X} + (0,c)` is precisely the classical SEQUENCE.
+     *   ×             multiplication               →  interval expansion.
+     *   ⦃ ⦄           "repeat until it closes"     →  repeat until the melody
+     *                 returns to its starting PITCH CLASS (the same round(360/Δ),
+     *                 now reading the octave as the closed circle).
+     *   parallel ⦃ ⦄  a rosette about one point    →  a CHORD: copies from one
+     *                 onset, stacked at a constant interval, as many as close the
+     *                 octave (step 2 of 7 → 4 copies, a seventh chord).
+     *   parallel str. branches at the nodes        →  POLYPHONY. A branch saves
+     *                 (time, pitch), sounds as its own voice, and restores — the
+     *                 spatial turtle's push/pop, heard as counterpoint.
+     *   ‖             independence of angles       →  the branch answers from the
+     *                 tonic instead of from the parent note: a TONAL answer where
+     *                 the default is a real (transposed) one.
+     *   ⊛             addition of coincident angles→  the left figure becomes a
+     *                 moving reference line and the right one's absolute
+     *                 intervals are measured against it: a melody over a CANTUS
+     *                 FIRMUS. Same rule as the visual case (| |'s base axis is
+     *                 replaced by a field derived from the left operand), with
+     *                 pitch-at-this-instant in place of direction-at-this-point.
+     *   ⟨ ⟩           the outerproduct, out of the →  the TIME dimension:
+     *                 current plane                   augmentation/diminution of
+     *                 the grain (see LEE_DUR_RATIOS). This is the one liberty
+     *                 taken: the paper's ⟨ ⟩ is spatial, but its move — "a
+     *                 dimension orthogonal to the plane the code has been
+     *                 working in" — is what is borrowed, and for a stream of
+     *                 pitches that dimension is duration. It makes × mean
+     *                 augmentation when it lands on a ⟨ ⟩ operand.
+     *
+     * Values are in SCALE DEGREES here, not degrees of arc: `unit` is needed
+     * only by `evaluate` (for continuation closure), so this takes none.
+     * Mapping a degree to a MIDI pitch is the individual's business, as
+     * choosing a palette is for the visual half.
+     *
+     * @param {Array} items  evaluated item stream
+     * @returns {{notes: Array, grains: number, voices: number}}
+     *   notes  [{degree, start, dur, voice, depth, t}] — start/dur in grains,
+     *          `degree` in scale steps from the tonic, `t` palette position
+     *   grains total length of the piece, in grains
+     */
+    interpretMusic(items) {
+        const out = { notes: [], grains: 0, voices: 0 };
+        const st = {
+            t: 0, p: 0, dur: 1, voice: 0, nextVoice: 0, n: 0,
+            field: null, collect: null, open: new Map(),
+        };
+        const total = Math.max(1, this._countValues(items));
+        this._walkMusic(items, st, out, total, 0);
+        const sounding = new Set();
+        for (const nt of out.notes) {
+            out.grains = Math.max(out.grains, nt.start + nt.dur);
+            sounding.add(nt.voice);
+        }
+        // Voices that actually sound — a branch site that produced only rests is
+        // not a part, however many times the code attached it.
+        out.voices = sounding.size;
+        return out;
+    },
+
+    _walkMusic(items, st, out, total, depth) {
+        for (const it of items) {
+            if (out.notes.length > LEE_MAX_NOTES || st.t > LEE_MAX_GRAINS) return;
+            if (it.chunk) { this._walkMusic(it.chunk, st, out, total, depth); continue; }
+            // ⊛ — sound the base figure, then sing the superimposed one against
+            // it: same construction as the visual case, with the base's pitch at
+            // this instant standing in for its direction at this point.
+            if (it.field) {
+                if (depth < LEE_MAX_BRANCH_DEPTH) {
+                    const saved = { t: st.t, p: st.p, dur: st.dur, voice: st.voice };
+                    const samples = [];
+                    st.collect = samples;
+                    st.voice = ++st.nextVoice;
+                    this._walkMusic(it.field.base, st, out, total, depth + 1);
+                    st.collect = null;
+                    // The superimposed voice starts where the base started, so
+                    // the two sound together rather than in succession.
+                    st.t = saved.t; st.p = saved.p; st.dur = saved.dur;
+                    const outerField = st.field;
+                    st.field = this._pitchField(samples) || outerField;
+                    st.voice = ++st.nextVoice;
+                    this._walkMusic(it.field.sub, st, out, total, depth + 1);
+                    st.field = outerField;
+                    st.t = saved.t; st.p = saved.p; st.dur = saved.dur; st.voice = saved.voice;
+                }
+                continue;
+            }
+            // Parallel continuation: a chord. Every copy leaves the same onset,
+            // each one `step` scale degrees above the last, as many as close the
+            // octave — a stack of thirds, of fourths, whatever the step is.
+            if (it.fan) {
+                if (depth < LEE_MAX_BRANCH_DEPTH) {
+                    const saved = { t: st.t, p: st.p, dur: st.dur, voice: st.voice };
+                    for (let i = 0; i < it.fan.count; i++) {
+                        st.t = saved.t; st.dur = saved.dur;
+                        st.p = saved.p + i * it.fan.step;
+                        st.voice = ++st.nextVoice;
+                        this._walkMusic(it.fan.sub, st, out, total, depth + 1);
+                    }
+                    st.t = saved.t; st.p = saved.p; st.dur = saved.dur; st.voice = saved.voice;
+                }
+                continue;
+            }
+            if (it.out) {
+                // ⟨v⟩ — leave the pitch plane for the time dimension: the grain
+                // is augmented or diminished from here on. Clamped so a run of
+                // them cannot shrink the beat away or stretch it out of the bar.
+                const k = Math.max(-2, Math.min(2, Math.round(it.v)));
+                st.dur = Math.max(1 / 4, Math.min(4, st.dur * LEE_DUR_RATIOS[k + 2]));
+            } else if (it.abs) {
+                // | | — from the tonic, or from the ⊛ reference line if one is up.
+                st.p = (st.field ? st.field.at(st.t) : 0) + it.v;
+            } else {
+                st.p += it.v;
+            }
+            if (typeof it.ov === 'number' && it.ov !== 0) {
+                // `*` composed an out-of-plane component onto this value: the
+                // pitch step and the duration step arrive together.
+                const k = Math.max(-2, Math.min(2, Math.round(it.ov)));
+                st.dur = Math.max(1 / 4, Math.min(4, st.dur * LEE_DUR_RATIOS[k + 2]));
+            }
+            // A branch is heard, not traversed: it sounds as its own voice from
+            // this note's onset, and the trunk carries on from where it was.
+            if (it.sub && depth < LEE_MAX_BRANCH_DEPTH) {
+                const saved = { t: st.t, p: st.p, dur: st.dur, voice: st.voice };
+                if (it.indep) st.p = 0;              // ‖ — answer from the tonic
+                st.voice = ++st.nextVoice;
+                this._walkMusic(it.sub, st, out, total, depth + 1);
+                st.t = saved.t; st.p = saved.p; st.dur = saved.dur; st.voice = saved.voice;
+            }
+            if (it.nostep) continue;
+            // Sound the grain. Successive grains at one pitch are ONE note (the
+            // exact counterpart of collinear grains drawing one line), so a note
+            // ends when the pitch moves, a rest intervenes, or the code does.
+            if (st.collect) st.collect.push([st.t, st.p]);
+            if (it.hide) {
+                st.open.delete(st.voice);            // a rest breaks the tie
+            } else {
+                const open = st.open.get(st.voice);
+                if (open && open.degree === st.p && Math.abs(open.start + open.dur - st.t) < 1e-9) {
+                    open.dur += st.dur;
+                } else {
+                    const note = {
+                        degree: st.p, start: st.t, dur: st.dur,
+                        voice: st.voice, depth,
+                        t: 0.15 + 0.85 * (st.n / total),
+                    };
+                    out.notes.push(note);
+                    st.open.set(st.voice, note);
+                }
+            }
+            st.t += st.dur;
+            st.n++;
+        }
+    },
+
+    /**
+     * A pitch field over a figure's grains: at any instant, the pitch the
+     * reference voice holds. This is what `⊛` substitutes for the tonic as the
+     * base of `| |` — the counterpart of `_directionField`, and vanished grains
+     * count here too, so a silent cantus firmus still governs the melody over it.
+     */
+    _pitchField(samples) {
+        if (!samples || !samples.length) return null;
+        const stride = Math.max(1, Math.ceil(samples.length / LEE_FIELD_SAMPLES));
+        const s = [];
+        for (let i = 0; i < samples.length; i += stride) s.push(samples[i]);
+        return {
+            /** Pitch (scale degrees) held at time `t`. */
+            at(t) {
+                let p = s[0][1];
+                for (const q of s) { if (q[0] <= t + 1e-9) p = q[1]; else break; }
+                return p;
+            },
+        };
+    },
+
     /**
      * A direction field over a figure's drawn segments: at any point, the
      * direction of the nearest one. This is the reference frame `⊛` substitutes
@@ -923,12 +1157,28 @@ const SITLanguage = {
         };
     },
 
-    _countValues(items) {
+    /**
+     * How many values a stream contains, counting each branch at every node it
+     * hangs from. Used only to scale the palette across the figure/piece.
+     *
+     * Memoised BY ARRAY IDENTITY, which is not an optimisation but a
+     * requirement: a parallel structure evaluates its branch once and attaches
+     * the same array at every node, so the item stream is a DAG. Walking it as a
+     * tree costs the product of the row lengths — a few nested rows are enough
+     * to take seconds before a single mark is drawn, since this runs *before*
+     * the walk that the LEE_MAX_MARKS cap protects.
+     */
+    _countValues(items, seen) {
+        seen = seen || new Map();
+        const hit = seen.get(items);
+        if (hit !== undefined) return hit;
+        seen.set(items, 0);
         let n = 0;
         for (const it of items) {
-            if (it.chunk) n += this._countValues(it.chunk);
-            else { n++; if (it.sub) n += this._countValues(it.sub); }
+            if (it.chunk) n += this._countValues(it.chunk, seen);
+            else { n++; if (it.sub) n += this._countValues(it.sub, seen); }
         }
+        seen.set(items, n);
         return n;
     },
 
