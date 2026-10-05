@@ -4,8 +4,8 @@
 // cannot drift from the dispatcher: adding a binding to that table is all it
 // takes to document it. Bindings are grouped by their `group`, and only the
 // groups that can apply to the *current* type are shown — [ and ] mean the loop
-// length on a step sequencer, the animation speed on an animated pattern, and
-// the camera zoom otherwise, so showing all three at once would be a lie.
+// length on a step sequencer, the animation speed on a continuously animating
+// type, and the camera zoom otherwise, so showing all three at once would be a lie.
 // General (always-on) rows come first.
 //
 // It also lists the pointer gestures, which have no hotkey binding to generate
@@ -17,8 +17,9 @@
 const HELP_GESTURES = [
     ['Click a tile', 'Like / unlike it — liked tiles are the parents of the next generation'],
     ['Double-click / ⛶', 'Open the zoom view (long-press on touch)'],
-    ['Drag in the zoom', 'Edit the phenotype directly, where a type allows it (the step sequencers)'],
+    ['Drag in the zoom', 'Edit the phenotype directly, where a type allows it (the step sequencers, Cat)'],
     ['Drag up / down', 'On a step sequencer cell: its velocity'],
+    ['Click the legs', 'On a Cat, in the zoom: cycle its gait — walk, trot, pace, bound'],
     ['Shift+click a tile', 'Lock it — kept unchanged next generation, and not bred from'],
     ['Padlock button', 'The same lock, for touch (no Shift key)'],
 ];

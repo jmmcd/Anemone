@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Parametric cat — minimal p5.js sprite animation</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: #15121a; }
+  body { display: grid; place-items: center; }
+  canvas { border-radius: 8px; }
+</style>
+</head>
+<body>
+<script>
+/* ==================================================================
+   Parametric sprite animation — a walking cat, in ~150 lines of p5.
+
+   There is no sprite sheet and there are no keyframes. The whole
+   animation is one pure function  pose(t) -> picture, so every frame
+   is computed from the clock. The techniques, in the order they show
+   up below:
+
+     1. parameter split   — shape params (S) vs motion params (M)
+     2. phase-offset oscillators — one clock, four legs, four phases
+     3. procedural foot path + 2-bone IK — feet stay on the ground
+     4. hierarchical transforms — push/translate/rotate chains
+     5. rectified / harmonic sines — bounce at 2x the stride rate
+     6. squash & stretch — non-uniform scale, volume roughly preserved
+     7. time-delay chains — the tail lags behind, giving follow-through
+     8. Perlin noise — small aperiodic drift so it isn't clockwork
+     9. exponentiated sine — sparse impulses (blinks, ear twitches)
+
+   Every number in S and M is a knob. That's the point: a parametric
+   sprite is a *vector*, so it can be tweened, randomised, or evolved.
+================================================================== */
+
+// ---- 1. Parameters ------------------------------------------------
+// Shape genes: who the cat is. Constant over time.
+const S = {
+  bodyLen: 152, bodyH: 58, bodyY: -104,
+  hipF: 50, hipB: -50, hipY: -84,     // shoulder / hip sockets
+  upper: 44, lower: 46,               // bone lengths (sum 90 > 84, so knees stay bent)
+  headX: 94, headY: -138, headR: 27,
+  tailX: -74, tailY: -118, tailSegs: 10, tailSeg: 13,
+};
+
+// Motion genes: how it moves.
+const M = {
+  stride: 0.85,        // gait cycles per second
+  step: 52, lift: 24,  // foot path: stride length, swing height
+  duty: 0.62,          // fraction of the cycle the foot is on the ground
+  bob: 7, squash: 0.05,
+  tailAmp: 0.14, tailFreq: 0.45, tailLag: 0.075,  // seconds of lag per segment
+  headLag: 0.10, breathe: 0.35,
+};
+
+// Gait = four phase offsets into the same cycle. This is the whole
+// difference between a walk and a trot:
+const WALK  = { fNear: 0.00, fFar: 0.50, bNear: 0.25, bFar: 0.75 };
+const TROT  = { fNear: 0.00, fFar: 0.50, bNear: 0.50, bFar: 0.00 };
+let gait = WALK;
+
+const FUR = '#d8c3a5', FUR_DARK = '#8d7a67', INK = '#2a222c';
+
+function setup() { createCanvas(680, 380); }
+function mousePressed() { gait = (gait === WALK) ? TROT : WALK; }  // click to compare
+
+function draw() {
+  const t = millis() / 1000;
+  background('#15121a');
+  push();
+  translate(width * 0.5, height * 0.78);
+  drawGround(t);
+  drawCat(t);
+  pop();
+  noStroke(); fill(255, 90); textSize(12);
+  text('click to switch gait  ·  ' + (gait === WALK ? 'walk' : 'trot'), 14, 24);
+}
+
+// The world scrolls instead of the cat, at exactly stride x step px/s,
+// so the feet don't skate. Same clock, different consumer.
+function drawGround(t) {
+  stroke(255, 26); strokeWeight(2);
+  line(-width / 2, 0, width / 2, 0);
+  const scroll = (t * M.stride * M.step) % 48;
+  stroke(255, 14);
+  for (let x = -width / 2 - 48; x < width / 2 + 48; x += 48) line(x - scroll, 4, x - scroll, 14);
+}
+
+// ---- 2 & 5 & 6. Body: phase-offset harmonics -----------------------
+function drawCat(t) {
+  const a = TWO_PI * M.stride * t;          // stride angle
+
+  // abs(sin) is a *rectified* sine: it never goes below zero, so the
+  // body dips and rebounds twice per stride, once per footfall pair.
+  const bob = -M.bob * abs(sin(a));
+  const sq = 1 + M.squash * sin(2 * a);     // 2nd harmonic -> squash & stretch
+  const breath = 1 + 0.018 * sin(TWO_PI * M.breathe * t);
+
+  // Shadow tied to the same bob: cheap grounding, one parameter.
+  noStroke(); fill(0, 60);
+  ellipse(0, 2, 200 + bob * 3, 16 + bob * 0.6);
+
+  push();
+  translate(0, bob);
+
+  // Far legs first — draw order is depth.
+  drawLeg(S.hipF, t, gait.fFar, +1, false);
+  drawLeg(S.hipB, t, gait.bFar, -1, false);
+  drawTail(t);
+
+  // 6. squash/stretch about the body centre; x scales by 1/s so the
+  // silhouette keeps roughly constant area.
+  push();
+  translate(0, S.bodyY);
+  scale(1 / sq, sq * breath);
+  noStroke(); fill(FUR);
+  ellipse(0, 0, S.bodyLen, S.bodyH);
+  ellipse(S.bodyLen * 0.36, -6, 74, 60);     // shoulders
+  pop();
+
+  drawHead(t, a);
+  drawLeg(S.hipF, t, gait.fNear, +1, true);
+  drawLeg(S.hipB, t, gait.bNear, -1, true);
+  pop();
+}
+
+// ---- 3. Foot path + inverse kinematics -----------------------------
+// Rather than oscillating the joint angles directly (which makes feet
+// skate and sink), drive the *foot* along a closed path in world space
+// and solve the two bones backwards from it.
+function footTarget(phase, t) {
+  const u = (M.stride * t + phase) % 1;      // 0..1 through the cycle
+  if (u < M.duty) {                          // stance: slide back along the ground
+    const k = u / M.duty;
+    return { x: lerp(M.step / 2, -M.step / 2, k), y: 0 };
+  }
+  const k = (u - M.duty) / (1 - M.duty);     // swing: arc forward and up
+  return { x: lerp(-M.step / 2, M.step / 2, k), y: -M.lift * sin(PI * k) };
+}
+
+// Closed-form 2-bone IK (law of cosines). `bend` picks which side the
+// knee buckles to — +1 for the forelimb, -1 for the hind limb, which
+// is the whole reason a cat's back legs read as back legs.
+function solveIK(hx, hy, tx, ty, l1, l2, bend) {
+  const dx = tx - hx, dy = ty - hy;
+  const d = constrain(mag(dx, dy), abs(l1 - l2) + 0.01, l1 + l2 - 0.01);
+  const base = atan2(dy, dx);
+  const inner = acos(constrain((d * d + l1 * l1 - l2 * l2) / (2 * d * l1), -1, 1));
+  const a1 = base + bend * inner;
+  return { kx: hx + l1 * cos(a1), ky: hy + l1 * sin(a1) };
+}
+
+function drawLeg(hipX, t, phase, bend, near) {
+  const f = footTarget(phase, t);
+  const tx = hipX + f.x, ty = f.y;
+  const k = solveIK(hipX, S.hipY, tx, ty, S.upper, S.lower, bend);
+
+  stroke(near ? FUR : FUR_DARK);
+  strokeWeight(near ? 13 : 11); strokeCap(ROUND);
+  line(hipX, S.hipY, k.kx, k.ky);
+  line(k.kx, k.ky, tx, ty);
+  noStroke(); fill(near ? FUR : FUR_DARK);
+  ellipse(tx + 3, ty - 3, 16, 10);           // paw
+}
+
+// ---- 7 & 8. Tail: a delay chain + noise ----------------------------
+// Each segment reads the same oscillator but at t - i*lag, so the wave
+// travels outward. That is follow-through for free, no physics.
+function drawTail(t) {
+  push();
+  translate(S.tailX, S.tailY);
+  rotate(-PI + 0.55);
+  strokeCap(ROUND); stroke(FUR_DARK);
+  for (let i = 0; i < S.tailSegs; i++) {
+    const td = t - i * M.tailLag;
+    const swing = M.tailAmp * sin(TWO_PI * M.tailFreq * td)
+                + 0.22 * (noise(i * 0.35, td * 0.6) - 0.5);   // 8. aperiodic drift
+    rotate(swing);
+    strokeWeight(map(i, 0, S.tailSegs, 11, 3));
+    line(0, 0, S.tailSeg, 0);
+    translate(S.tailSeg, 0);
+  }
+  pop();
+}
+
+// ---- 9. Head: impulses out of a smooth signal ----------------------
+// pow(max(0,sin),n) with large n is a sine squeezed into a narrow
+// spike: a sparse, periodic-but-not-metronomic event from one line.
+function pulse(t, hz, phase, sharp) {
+  return pow(max(0, sin(TWO_PI * hz * t + phase)), sharp);
+}
+
+function drawHead(t, a) {
+  const nod = 0.05 * sin(2 * (a - TWO_PI * M.stride * M.headLag));  // lags the body
+  const twitch = 0.45 * pulse(t, 0.31, 0, 60) + 0.06 * (noise(t * 1.1) - 0.5);
+  const open = 1 - 0.95 * pulse(t, 0.23, 1.2, 90);                  // blink
+
+  push();
+  translate(S.headX, S.headY);
+  rotate(nod);
+
+  noStroke(); fill(FUR);
+  triangle(-16, -18, -4, -S.headR - 20, 4, -16);                    // far ear
+  push(); rotate(twitch);
+  triangle(10, -16, 26, -S.headR - 18, 30, -10); pop();             // twitching ear
+  ellipse(0, 0, S.headR * 2.1, S.headR * 1.9);
+  ellipse(16, 9, 30, 24);                                           // muzzle
+
+  fill(INK);
+  ellipse(20, 11, 5, 4);                                            // nose
+  push(); translate(12, -4); scale(1, open);
+  ellipse(0, 0, 9, 11); pop();                                      // eye
+  pop();
+}
+</script>
+</body>
+</html>

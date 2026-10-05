@@ -9,8 +9,8 @@
 //   { keys, group, desc, when?(ctx), global?, displayKeys?, run(fw, e) }
 // The dispatcher walks the table in order and fires the first binding whose key
 // matches and whose `when(ctx)` holds. Order matters: context-branched keys
-// ([ ] .) list their sequencer / animated-pattern / default variants in that
-// order, so the right one wins — reproducing the old if/else chain exactly.
+// ([ ] .) list their sequencer / animated / default variants in that order, so
+// the right one wins — reproducing the old if/else chain exactly.
 (function () {
     const ext = class {
         // The one evolve entry point (FAB, app-bar button, Space hotkey).
@@ -50,12 +50,15 @@
         closeHelp() { if (this.helpOverlay) this.helpOverlay.close(); }
 
         // The current type's context, computed once per keydown. `[ ] .` mean
-        // different things for a step sequencer, an animated pattern, or otherwise.
+        // different things for a step sequencer, a continuously animating type,
+        // or otherwise. Both branches are *capability* checks, not class checks,
+        // so a new animated type (or a new sequencer) picks up the right
+        // bindings — and the right ? overlay rows — by declaring the flag.
         _hotkeyContext() {
             const s = this._sampleIndividual();
             return {
                 sequencer: !!(s && typeof s.performanceDials === 'function' && s.performanceDials().includes('length')),
-                animatedPattern: !!(typeof AnimatedPatternIndividual !== 'undefined' && s instanceof AnimatedPatternIndividual),
+                animated: !!(s && typeof s.animatesContinuously === 'function' && s.animatesContinuously()),
             };
         }
 
@@ -92,13 +95,13 @@
           run: (fw) => fw.adjustSequencerLength(-1) },
         { keys: [']'], group: 'Step sequencer', when: (c) => c.sequencer, desc: 'Lengthen loop (+1 step)',
           run: (fw) => fw.adjustSequencerLength(1) },
-        { keys: ['['], group: 'Animated pattern', when: (c) => c.animatedPattern, desc: 'Slow the animation',
-          run: () => AnimatedPatternIndividual.adjustPeriodScale(1.3) },
-        { keys: [']'], group: 'Animated pattern', when: (c) => c.animatedPattern, desc: 'Speed the animation',
-          run: () => AnimatedPatternIndividual.adjustPeriodScale(1 / 1.3) },
-        { keys: ['['], group: '3D camera', when: (c) => !c.sequencer && !c.animatedPattern, desc: 'Zoom camera in',
+        { keys: ['['], group: 'Animation', when: (c) => c.animated, desc: 'Slow the animation',
+          run: () => Individual.AnimationClock.adjustScale(1.3) },
+        { keys: [']'], group: 'Animation', when: (c) => c.animated, desc: 'Speed the animation',
+          run: () => Individual.AnimationClock.adjustScale(1 / 1.3) },
+        { keys: ['['], group: '3D camera', when: (c) => !c.sequencer && !c.animated, desc: 'Zoom camera in',
           run: (fw) => { fw.cameraDistanceFactor = Math.max(0.3, fw.cameraDistanceFactor / 1.15); } },
-        { keys: [']'], group: '3D camera', when: (c) => !c.sequencer && !c.animatedPattern, desc: 'Zoom camera out',
+        { keys: [']'], group: '3D camera', when: (c) => !c.sequencer && !c.animated, desc: 'Zoom camera out',
           run: (fw) => { fw.cameraDistanceFactor = Math.min(4, fw.cameraDistanceFactor * 1.15); } },
 
         // Camera focal length / reset — harmless for 2D types (no visible effect).
@@ -110,9 +113,9 @@
           run: (fw) => { fw.cameraDistanceFactor = 1 / (1.15 * 1.15); fw.cameraFOV = 30; } },
 
         // . / > — play/pause (animation, or sound / 3D rotation).
-        { keys: ['.', '>'], group: 'Animated pattern', when: (c) => c.animatedPattern, desc: 'Play / pause animation',
-          run: (fw, e) => { e.preventDefault(); AnimatedPatternIndividual.togglePause(); } },
-        { keys: ['.', '>'], group: 'Playback', when: (c) => !c.animatedPattern, desc: 'Play / pause sound (or 3D rotation)',
+        { keys: ['.', '>'], group: 'Animation', when: (c) => c.animated, desc: 'Play / pause animation',
+          run: (fw, e) => { e.preventDefault(); Individual.AnimationClock.togglePause(); } },
+        { keys: ['.', '>'], group: 'Playback', when: (c) => !c.animated, desc: 'Play / pause sound (or 3D rotation)',
           run: (fw, e) => { e.preventDefault(); fw.togglePlayPauseOrRotation(); } },
 
         { keys: ['z', 'u'], group: 'General', desc: 'Undo evolve (back one generation)',

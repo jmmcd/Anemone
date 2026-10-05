@@ -59,13 +59,11 @@ const animatedPatternRepresentation = new PTORepresentation(animatedPatternGener
 // Canvas2DModality.renderCached clears _animOwner to null when any static individual
 // draws to the canvas, causing the step() closure to bail on the next frame.
 
-// Global period multiplier, adjusted by the [ / ] hotkeys (like sequencer Length).
-// Clamped to [0.25, 8.0]; 1.0 = use each individual's evolved period.
-let _periodScale = 1.0;
-
-// Global pause flag, toggled by the '.' hotkey.
-let _paused = false;
-
+// Speed and pause live on the app-wide transport (Individual.AnimationClock),
+// shared with every other continuously-animating type, so `[ ] .` control one
+// clock rather than one per class. These statics stay as the type's public face
+// of it. Because the clock *accumulates* animation-seconds, pausing and speed
+// changes no longer make the tiles jump when they resume.
 class AnimatedPatternIndividual extends Individual {
     constructor(genome = null) {
         super();
@@ -73,15 +71,15 @@ class AnimatedPatternIndividual extends Individual {
         this.genome = genome || this.representation.generateRandom();
     }
 
-    static adjustPeriodScale(factor) {
-        _periodScale = Math.max(0.25, Math.min(8, _periodScale * factor));
-    }
-    static get periodScale() { return _periodScale; }
+    static adjustPeriodScale(factor) { Individual.AnimationClock.adjustScale(factor); }
+    static get periodScale() { return Individual.AnimationClock.scale; }
 
-    static togglePause() { _paused = !_paused; }
-    static get paused() { return _paused; }
+    static togglePause() { Individual.AnimationClock.togglePause(); }
+    static get paused() { return Individual.AnimationClock.paused; }
 
     usesColorPalette() { return true; }
+
+    animatesContinuously() { return true; }
 
     editableSections() {
         return [
@@ -147,8 +145,12 @@ class AnimatedPatternIndividual extends Individual {
             return;
         }
 
-        const basePeriodMs = this.phenotype.periodSeconds * 1000;
-        const startTime = performance.now();
+        const clock = Individual.AnimationClock;
+        const periodSeconds = this.phenotype.periodSeconds;
+        // Each individual keeps its own phase origin, captured when it first
+        // draws, so a freshly-evolved grid animates out of step rather than
+        // pulsing in unison.
+        const startSeconds = clock.seconds();
         const self = this;
         const myId = this.id;
         canvas._animOwner = myId;
@@ -162,11 +164,11 @@ class AnimatedPatternIndividual extends Individual {
             // sets _animOwner = null) or by another animated individual (new myId).
             if (canvas._animOwner !== myId) return;
             const now = performance.now();
-            if (!_paused && now - lastRender >= FRAME_MS) {
+            if (now - lastRender >= FRAME_MS) {
                 lastRender = now;
-                // Read _periodScale every frame so [ / ] hotkeys take effect immediately.
-                const effectivePeriodMs = basePeriodMs * _periodScale;
-                self._renderFrame(canvas, ((now - startTime) / effectivePeriodMs) % 1);
+                // The clock applies pause and the [ / ] speed scale; the
+                // individual only divides by its own evolved period.
+                self._renderFrame(canvas, ((clock.seconds() - startSeconds) / periodSeconds) % 1);
             }
             requestAnimationFrame(step);
         };
@@ -175,10 +177,11 @@ class AnimatedPatternIndividual extends Individual {
 
     describeExtra() {
         const p = this.phenotype;
+        const scale = Individual.AnimationClock.scale;
         const expr = p.expression.length > 150 ? p.expression.slice(0, 150) + '…' : p.expression;
-        const effective = (p.periodSeconds * _periodScale).toFixed(1);
-        const scaleNote = _periodScale !== 1.0
-            ? ` × ${_periodScale.toFixed(2)} = <b>${effective} s</b> (adjusted with [ / ])`
+        const effective = (p.periodSeconds * scale).toFixed(1);
+        const scaleNote = scale !== 1.0
+            ? ` × ${scale.toFixed(2)} = <b>${effective} s</b> (adjusted with [ / ])`
             : '';
         return `<div><b>Expression:</b> <code>${expr}</code></div>` +
                `<div><b>Period:</b> ${p.periodSeconds.toFixed(2)} s${scaleNote}</div>`;
