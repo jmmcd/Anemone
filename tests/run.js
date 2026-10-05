@@ -1227,6 +1227,110 @@ console.log('\nLeeuwenberg analysis (music → code → genome):');
     });
 }
 
+// --- Reflective sketch ---
+// Construction is a pure function of the generator's choices (rsConstruct), so
+// these drive it with hand-written specs and check each reference rule.
+console.log('\nReflective sketch (references resolve against the drawing so far):');
+{
+    const rsConstruct = sandbox.rsConstruct;
+    // A stroke spec with neutral defaults: polar end straight ahead, chord handles.
+    const st = (from, extra = {}) => ({
+        from, to: null, turn: 0, len: 1, h0: 'chord', a0: 0, k0: 0.3,
+        h1: 'chord', a1: 0, k1: 0.3, side: 1, w: 1, ...extra,
+    });
+    const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+
+    check('an unresolvable reference falls back (first stroke → origin, later → continue)', () => {
+        const d = rsConstruct({ strokes: [st({ kind: 'crossRanked', r: 0 }), st({ kind: 'freeEnd', r: 2 })] });
+        assert(d.strokes[0].fromFell && near(d.strokes[0].c[0], [0, 0]), 'first stroke must fall back to the origin');
+        // stroke 0 has two free ends, so free end #3 does not exist → continue.
+        assert(d.strokes[1].fromFell && near(d.strokes[1].c[0], d.strokes[0].c[3]),
+            'a missing free end must fall back to the last end');
+    });
+
+    check("'continue' starts at the last end and leaves along its tangent (a smooth join)", () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { turn: 60, a0: 40, a1: -30 }),
+            st({ kind: 'continue' }, { turn: 90 }),
+        ] });
+        const [a, b] = d.strokes;
+        assert(near(b.c[0], a.c[3]), 'must start where the last stroke ended');
+        const t1 = [a.c[3][0] - a.c[2][0], a.c[3][1] - a.c[2][1]];
+        const t2 = [b.c[1][0] - b.c[0][0], b.c[1][1] - b.c[0][1]];
+        const cross = t1[0] * t2[1] - t1[1] * t2[0], dot = t1[0] * t2[0] + t1[1] * t2[1];
+        assert(Math.abs(cross) < 1e-9 && dot > 0, 'start handle must continue the previous end tangent (G1)');
+    });
+
+    check('attaching to a stroke credits it, and anchorUsed follows the credit', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),           // 0: longest
+            st({ kind: 'point', x: 0, y: 1, h: 0 }, { len: 0.5 }),         // 1
+            st({ kind: 'recent', k: 0, end: 'end' }),                      // credits 1
+            st({ kind: 'recent', k: 1, end: 'start' }),                    // credits 1
+            st({ kind: 'anchorUsed', t: 0.5 }),                            // on 1, not 0
+            st({ kind: 'anchorLongest', t: 0.5 }),                         // on 0
+        ] });
+        assert(d.strokes[1].uses === 3, `stroke 1 should have 3 attachments, got ${d.strokes[1].uses}`);
+        assert(near(d.strokes[4].c[0], [0.25, 1]), `anchorUsed @½ should be the middle of stroke 1, got ${d.strokes[4].c[0]}`);
+        assert(Math.abs(d.strokes[5].c[0][0] - 1) < 1e-9 && Math.abs(d.strokes[5].c[0][1]) < 1e-9,
+            `anchorLongest @½ should be the middle of stroke 0, got ${d.strokes[5].c[0]}`);
+    });
+
+    check('crossings are registered and ranked (a perpendicular crossing outranks a shallow one)', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),
+            st({ kind: 'point', x: 0.5, y: -0.5, h: 90 }),                  // perpendicular at (0.5, 0)
+            st({ kind: 'point', x: 1.0, y: -0.2, h: 20 }, { len: 1.2 }),    // shallow, crosses later
+            st({ kind: 'crossRanked', r: 0 }),
+            st({ kind: 'crossLast' }),
+        ] });
+        assert(d.crosses.length >= 2, `expected at least two crossings, got ${d.crosses.length}`);
+        const p = d.strokes[3].c[0];
+        assert(Math.abs(p[0] - 0.5) < 1e-6 && Math.abs(p[1]) < 1e-6, `crossRanked #1 should be the perpendicular one, got ${p}`);
+        assert(!near(d.strokes[4].c[0], p), 'crossLast should be the newer (shallow) crossing');
+    });
+
+    check('free ends exclude endpoints that touch another stroke', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { len: 2 }),
+            st({ kind: 'anchorLongest', t: 0.5 }, { turn: -90 }),           // T-junction off stroke 0
+        ] });
+        const ends = sandbox.rsFreeEnds(d.strokes);
+        assert(ends.length === 3, `the junction end is attached, so 3 free ends remain, got ${ends.length}`);
+    });
+
+    check('an end that lands on the start makes a loop (closed, non-degenerate, smooth after continue)', () => {
+        const d = rsConstruct({ strokes: [
+            st({ kind: 'point', x: 0, y: 0, h: 0 }, { turn: 30, a1: 20 }),
+            st({ kind: 'continue' }, { to: { kind: 'recent', k: 0, end: 'end' }, a0: 40, a1: 60 }),
+        ] });
+        const [a, b] = d.strokes;
+        assert(b.loop && !b.toFell, 'the coincident end should make a loop, not fall back');
+        assert(near(b.c[0], b.c[3]) && near(b.c[0], a.c[3]), 'a loop must start and end at the same point');
+        assert(b.len > 0.3, `a loop must have real extent, got length ${b.len}`);
+        const t1 = [a.c[3][0] - a.c[2][0], a.c[3][1] - a.c[2][1]];
+        const t2 = [b.c[1][0] - b.c[0][0], b.c[1][1] - b.c[0][1]];
+        assert(Math.abs(t1[0] * t2[1] - t1[1] * t2[0]) < 1e-9 && t1[0] * t2[0] + t1[1] * t2[1] > 0,
+            'a loop after continue must leave along the previous tangent');
+        const ends = sandbox.rsFreeEnds(d.strokes);
+        assert(ends.length === 1, `only stroke 0's start should be free (a loop has no free ends), got ${ends.length}`);
+    });
+
+    check('the same genome constructs the same drawing, and paint() lays down ink', () => {
+        const T = classes.ReflectiveSketchIndividual;
+        let ind; do { ind = new T(); } while (!ind.validate());
+        const twin = new T(ind.genome);
+        assert(JSON.stringify(twin.drawing().strokes.map(s => s.c)) === JSON.stringify(ind.drawing().strokes.map(s => s.c)),
+            'construction must be deterministic in the genome');
+        const img = { data: new Uint8ClampedArray(128 * 128 * 4), width: 128, height: 128 };
+        T.paint(img, ind.drawing(), ind.phenotype);
+        let dark = 0;
+        for (let i = 0; i < img.data.length; i += 4) if (img.data[i] < 128) dark++;
+        assert(dark > 20, `expected inked pixels, got ${dark}`);
+        assert(ind.describe().includes('Construction:'), 'describe() should list the construction');
+    });
+}
+
 // --- Self-description ---
 // Each individual owns its display: toString() (concise summary) and describe()
 // (rich HTML panel) live on the individual, not the framework.

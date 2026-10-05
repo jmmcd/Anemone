@@ -56,6 +56,7 @@ const SOURCES = [
     'individuals/AnemoneIndividual.js',
     'individuals/BranchIndividual.js',
     'individuals/LSystemIndividual.js',
+    'individuals/ReflectiveSketchIndividual.js',
     'individuals/StructuralInformationIndividual.js',
     'individuals/StructuralInformationContinuousIndividual.js',
     'services/SITLanguage.js',                 // window.SITLanguage (Leeuwenberg 1971 coding language engine)

@@ -41,6 +41,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'AnemoneIndividual',                        label: 'Anemone' },
     { name: 'BranchIndividual',                         label: 'Branch' },
     { name: 'LSystemIndividual',                        label: 'L-System' },
+    { name: 'ReflectiveSketchIndividual',               label: 'Reflective Sketch' },
     { name: 'StructuralInformationIndividual',          label: 'Structural Information' },
     { name: 'StructuralInformationContinuousIndividual', label: 'Structural Information (continuous)' },
     { name: 'SITCodeIndividual',                        label: 'Leeuwenberg Code 2D' },
