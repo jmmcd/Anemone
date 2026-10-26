@@ -1839,6 +1839,44 @@ console.log('\nEvolution controls:');
     });
 }
 
+// --- Landing page (framework/Landing.js) ---
+// The start page shows one random individual per type and seeds the clicked one
+// into a fresh run. The DOM side needs a browser; the two things it relies on —
+// enough eligible types, and EA.seed — are checked here.
+console.log('\nLanding page:');
+{
+    const { EvolutionaryAlgorithm } = load();
+
+    check('the registry offers at least 16 types for the landing page', () => {
+        const pool = INDIVIDUAL_TYPES.filter(t => !t.hidden && t.landing !== false);
+        assert(pool.length >= 16, `only ${pool.length} eligible types — the page would show fewer than 16 tiles`);
+    });
+
+    check('index.html loads Landing.js between the framework and main.js', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const at = (f) => html.indexOf(`<script src="framework/${f}"></script>`);
+        assert(at('Landing.js') > at('Anemone.js') && at('Anemone.js') !== -1, 'Landing.js must load after Anemone.js');
+        assert(at('Landing.js') < at('main.js'), 'Landing.js must load before main.js');
+    });
+
+    check('createValid draws a valid individual without an EA', () => {
+        const ind = EvolutionaryAlgorithm.createValid(classes.GridIndividual);
+        assert(ind instanceof classes.GridIndividual && ind.validate(), 'expected a valid GridIndividual');
+    });
+
+    check('seed puts the pick in slot 0, unliked, and in generation 0\'s history', () => {
+        const ea = new EvolutionaryAlgorithm(classes.GridIndividual, 16);
+        const pick = new classes.GridIndividual();
+        ea.seed(pick);
+        assert(ea.population[0] === pick && ea.population.length === 16, 'the pick must replace slot 0');
+        assert(!pick.selected && ea.selectedIndividuals.length === 0, 'choosing a type must not like the pick');
+        assert(ea.history.length === 1, `history should hold one generation, got ${ea.history.length}`);
+        ea.loadGeneration(0);
+        assert(String(ea.population[0].phenotype) === String(pick.phenotype),
+            'time travel back to generation 0 must show the pick');
+    });
+}
+
 // --- Locked (protected) tiles ---
 // A lock says "keep exactly this" where a like says "make more like this": the
 // individual is carried into the next generation unchanged and is never bred

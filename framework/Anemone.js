@@ -1,5 +1,7 @@
 class InteractiveEAFramework {
-    constructor(individualClass = GridIndividual) {
+    // `landing: true` opens on the start page (framework/Landing.js) instead of
+    // drawing the population: main.js passes it when the URL names no type.
+    constructor(individualClass = GridIndividual, { landing = false } = {}) {
         // Publish the instance immediately, before anything the constructor kicks
         // off can look for it. main.js also assigns window.framework, but only
         // AFTER `new` returns — too late for the constructor's own initializeShared3D
@@ -72,7 +74,8 @@ class InteractiveEAFramework {
         this.initializeShared3D();
         this.loadExtensions();
         this.setupUI();
-        this.render();
+        if (landing) this.showLanding();
+        else this.render();
 
         // Connect MIDI in the background: initializeMIDI() wires framework.sharedMIDI
         // (every sound individual references it) when it resolves, and falls back to
@@ -406,6 +409,9 @@ class InteractiveEAFramework {
         // individual from the run as a ZIP of reproducible PNGs.
         if (this.savePopulationBtn) this.savePopulationBtn.addEventListener('click', () => this.savePopulationImage());
         if (this.saveLikedBtn) this.saveLikedBtn.addEventListener('click', () => this.saveLikedRunZip());
+
+        // Start page + following the URL hash (framework/Landing.js).
+        this.setupLanding();
 
         // Mount UI extensions
         this.mountUIExtensions();
@@ -789,12 +795,23 @@ class InteractiveEAFramework {
         return null;
     }
 
+    // The drawer's type <select> changed.
     switchIndividualType() {
         const selectedType = this.individualTypeSelect.value;
-
         const NewIndividualClass = this.individualTypeMap()[selectedType];
+        if (!NewIndividualClass) console.error(`Individual type not found: ${selectedType}`);
+        else this.setIndividualType(NewIndividualClass);
+    }
 
-        if (NewIndividualClass && NewIndividualClass !== this.individualClass) {
+    // Start a fresh run of another type: new population, the panels that type
+    // asks for, and the URL hash kept in sync. `seed` (the landing page's pick)
+    // goes into the new population (not liked), which is also why a seeded
+    // switch goes ahead even to the current type. `pushHistory` makes the switch
+    // a browser-history step, so Back returns to the landing page.
+    setIndividualType(NewIndividualClass, { seed = null, pushHistory = false } = {}) {
+        const selectedType = NewIndividualClass.name;
+
+        if (NewIndividualClass !== this.individualClass || seed) {
             console.log(`Switching to individual type: ${selectedType}`);
 
             // Clean up current individuals
@@ -812,6 +829,12 @@ class InteractiveEAFramework {
             
             // Create new evolutionary algorithm with new individual type
             this.ea = new EvolutionaryAlgorithm(NewIndividualClass, this.ea.populationSize, this.midiOutput);
+            if (seed) {
+                if (seed.setMidiOutput && this.midiOutput) seed.setMidiOutput(this.midiOutput);
+                this.ea.seed(seed);
+                this.currentIndividual = seed;
+            }
+            this.updateIndividualTypeSelector();
 
             // Clear extensions and reload them for new individual type
             this.extensions = {};
@@ -830,16 +853,17 @@ class InteractiveEAFramework {
 
             // Keep the URL hash in sync so the current app is shareable/bookmarkable
             // (the "Individual" suffix is dropped for a friendlier link). replaceState
-            // avoids spamming browser history on every switch.
+            // avoids spamming browser history on every menu switch. Neither call
+            // fires hashchange/popstate, so this doesn't re-enter _syncToHash.
             if (typeof history !== 'undefined' && history.replaceState) {
-                history.replaceState(null, '', '#' + selectedType.replace(/Individual$/, ''));
+                const url = '#' + selectedType.replace(/Individual$/, '');
+                if (pushHistory) history.pushState(null, '', url);
+                else history.replaceState(null, '', url);
             }
 
             console.log(`Successfully switched to ${selectedType}`);
-        } else if (NewIndividualClass === this.individualClass) {
-            console.log('Already using the selected individual type');
         } else {
-            console.error(`Individual type not found: ${selectedType}`);
+            console.log('Already using the selected individual type');
         }
     }
     

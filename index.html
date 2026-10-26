@@ -11,7 +11,7 @@
          an inline Evolve button; on touch/narrow that role moves to the FAB. -->
     <header class="app-bar">
         <button id="menu-btn" class="icon-btn" aria-label="Open controls">☰</button>
-        <h1 class="app-title">Anemone</h1>
+        <h1 class="app-title"><a href="#" id="home-link" title="Start page">Anemone</a></h1>
         <span class="gen-indicator">Gen <span id="generation">0</span></span>
         <!-- Same overlay as the "?" hotkey, for touch users with no keyboard. -->
         <button id="help-btn" class="icon-btn" aria-label="Keyboard and pointer shortcuts" title="Shortcuts (?)">?</button>
@@ -24,6 +24,17 @@
         <a href="#" id="about-link" class="about-link">About</a>
         <div class="grid" id="grid"></div>
     </main>
+
+    <!-- Start page (framework/Landing.js): shown when the URL names no type.
+         One random individual from each of sixteen types; a click starts a run
+         of that type with the clicked individual in it. -->
+    <section id="landing" class="landing" aria-label="Choose where to start">
+        <div class="landing-head">
+            <p class="landing-intro">Pick one to start from. You'll get a whole population of that kind, with your pick among them.</p>
+            <button id="landing-shuffle" class="secondary-btn">Shuffle</button>
+        </div>
+        <div id="landing-grid" class="landing-grid"></div>
+    </section>
 
     <!-- Floating Evolve button (touch / narrow): thumb-reachable. -->
     <button id="evolve-fab" class="fab" aria-label="Evolve next generation">
@@ -213,6 +224,7 @@
     <script src="framework/Lightbox.js"></script>
     <script src="framework/ExportManager.js"></script>
     <script src="framework/Hotkeys.js"></script>
+    <script src="framework/Landing.js"></script>
     <script src="framework/main.js"></script>
 </body>
 </html>

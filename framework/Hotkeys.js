@@ -63,6 +63,8 @@
         }
 
         _handleKeydown(e) {
+            // The landing page has no run on show for a shortcut to act on.
+            if (this.landingOpen) return;
             // Escape (a `global` binding) works even while typing or with the About
             // overlay open; every other shortcut is suppressed in those states, so
             // typing in the code editor never triggers a hotkey.

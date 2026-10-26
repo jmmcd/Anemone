@@ -53,23 +53,42 @@ class EvolutionaryAlgorithm {
     }
 
     createValidIndividual() {
+        return EvolutionaryAlgorithm.createValid(this.individualClass, this.midiOutput);
+    }
+
+    // A fresh random individual of `individualClass` that passes validate(). Static
+    // so a caller with no EA of that type (the landing page, which shows one tile
+    // per type) draws its individuals exactly as a population would.
+    static createValid(individualClass, midiOutput = null) {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const individual = new this.individualClass();
-            if (individual.setMidiOutput && this.midiOutput) {
-                individual.setMidiOutput(this.midiOutput);
+            const individual = new individualClass();
+            if (individual.setMidiOutput && midiOutput) {
+                individual.setMidiOutput(midiOutput);
             }
             if (individual.validate()) {
                 return individual;
             }
         }
 
-        console.warn(`Unable to generate a valid ${this.individualClass.name} after ${maxAttempts} attempts; using a fallback instance.`);
-        const fallback = new this.individualClass();
-        if (fallback.setMidiOutput && this.midiOutput) {
-            fallback.setMidiOutput(this.midiOutput);
+        console.warn(`Unable to generate a valid ${individualClass.name} after ${maxAttempts} attempts; using a fallback instance.`);
+        const fallback = new individualClass();
+        if (fallback.setMidiOutput && midiOutput) {
+            fallback.setMidiOutput(midiOutput);
         }
         return fallback;
+    }
+
+    // Put an individual chosen elsewhere (the landing page's pick) into slot 0 of
+    // a fresh generation 0, as if it had been drawn there. It is NOT liked: picking
+    // a type is not a vote for that individual, so liking it stays the user's call.
+    // The history entry is rewritten so time travel back to generation 0 sees it too.
+    seed(individual) {
+        const old = this.population[0];
+        if (old && old.stopMIDI) old.stopMIDI();
+        this.population[0] = individual;
+        this.history.pop();
+        this.saveGeneration();
     }
 
     createValidChildren(parent1, parent2) {

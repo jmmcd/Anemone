@@ -15,7 +15,9 @@
  * Entries carry the class *name* as a string (not the class object) so this file
  * loads before/without the class definitions and stays JSON-simple. Order = menu
  * order. `hidden: true` = registered and deep-linkable (#Name) but not shown in
- * the menu.
+ * the menu (and so not on the landing page). `landing: false` = in the menu but
+ * never one of the start page's tiles (see framework/Landing.js): types whose tile
+ * says little on its own or that need live input to do anything.
  *
  * To add a type: add an entry here, add its <script> tag in index.html, and run
  * `npm test` — it will tell you if you missed a step.
@@ -28,7 +30,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'ShapesIndividual',                         label: 'Shapes' },
     { name: 'PhotoFilterIndividual',                    label: 'Photo Filter' },
     { name: 'AntRenderingIndividual',                   label: 'Ant Rendering' },
-    { name: 'AudioFilterIndividual',                    label: 'Audio Filter' },
+    { name: 'AudioFilterIndividual',                    label: 'Audio Filter', landing: false }, // tile is the shared clip's waveform
     { name: 'DrumMachineIndividual',                    label: 'Drum Machine' },
     { name: 'GridIndividual',                           label: 'Grid' },
     { name: 'SuperShapeIndividual',                     label: 'Supershape' },
@@ -44,7 +46,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'LSystemIndividual',                        label: 'L-System' },
     { name: 'ReflectiveSketchIndividual',               label: 'Reflective Sketch' },
     { name: 'StructuralInformationIndividual',          label: 'Structural Information' },
-    { name: 'StructuralInformationContinuousIndividual', label: 'Structural Information (continuous)' },
+    { name: 'StructuralInformationContinuousIndividual', label: 'Structural Information (continuous)', landing: false }, // near-twin of the discrete one
     { name: 'SITCodeIndividual',                        label: 'Leeuwenberg Code 2D' },
     { name: 'SITCode3DIndividual',                      label: 'Leeuwenberg Code 3D' },
     { name: 'SITMusicIndividual',                       label: 'Leeuwenberg Code Music' },
@@ -59,8 +61,8 @@ const INDIVIDUAL_TYPES = [
     { name: 'PenroseIndividual',                        label: 'Penrose' },
     { name: 'PSystemIndividual',                        label: 'P-System' },
     { name: 'MelodyIndividual',                         label: 'Melody Grid' },
-    { name: 'MouseMusicIndividual',                     label: 'Mouse Music' },
-    { name: 'EEGSonificationIndividual',                label: 'EEG Sonification' },
+    { name: 'MouseMusicIndividual',                     label: 'Mouse Music', landing: false }, // needs live mouse input
+    { name: 'EEGSonificationIndividual',                label: 'EEG Sonification', landing: false }, // needs a live OSC feed
 ];
 
 if (typeof window !== 'undefined') window.INDIVIDUAL_TYPES = INDIVIDUAL_TYPES;

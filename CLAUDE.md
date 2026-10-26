@@ -54,7 +54,7 @@ Source is grouped by role (all plain `<script>` globals — no build step, no mo
 
 | Directory | Contents |
 |---|---|
-| `framework/` | `Anemone.js` (`InteractiveEAFramework` — orchestration, EA/MIDI/settings/extensions, grid render + selection, type switching), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link), plus four **partial-class files** merged onto `InteractiveEAFramework.prototype`: `Shared3D.js` (shared THREE scene/renderer + mesh/camera/animate), `Lightbox.js` (zoom overlay, grid-edit wiring, 3D rotation, transport helpers), `ExportManager.js` (PNG/STL/WAV/MIDI + bulk export + PNG-load/placement + toast), `Hotkeys.js` (the declarative `HOTKEYS` table + dispatcher, which the `?` help overlay also reads) |
+| `framework/` | `Anemone.js` (`InteractiveEAFramework` — orchestration, EA/MIDI/settings/extensions, grid render + selection, type switching), `EvolutionaryAlgorithm.js`, `Individual.js` (base class), `IndividualRegistry.js` (the type list — single source of truth), `main.js` (entry point / deep-link), plus five **partial-class files** merged onto `InteractiveEAFramework.prototype`: `Shared3D.js` (shared THREE scene/renderer + mesh/camera/animate), `Lightbox.js` (zoom overlay, grid-edit wiring, 3D rotation, transport helpers), `ExportManager.js` (PNG/STL/WAV/MIDI + bulk export + PNG-load/placement + toast), `Hotkeys.js` (the declarative `HOTKEYS` table + dispatcher, which the `?` help overlay also reads), `Landing.js` (the start page + URL-hash following — see "Start page" below) |
 | `individuals/` | every concrete `*Individual.js` plus the `RadialSurface3DIndividual.js` base |
 | `services/` | app-level `window.*` singletons: `Palette`, `Photo`, `AudioClip`, `ExpressionCompiler`, `MIDISync`, `OSCInput`, `SITLanguage`, `SITAnalysis`, `RoboParts` |
 | `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `SITAnalysisUI`, `CodeEditorUI`), `PerformanceControls.js`, and the two **app-wide** panels the framework mounts itself rather than attaching per type: `HelpOverlayUI` (the `?` overlay) and `EvolutionControlsUI` (the Evolution panel) |
@@ -73,7 +73,7 @@ The codebase separates three concerns:
 3. **Individuals** (`individuals/`) — application code that composes representations and modalities
 
 ### Framework Layer (`Anemone.js` + partial-class files)
-`InteractiveEAFramework` is one class split across five files for readability: `Anemone.js` holds the constructor and core orchestration; `Shared3D.js`, `Lightbox.js`, `ExportManager.js`, and `Hotkeys.js` each contribute a cohesive method cluster by merging onto `InteractiveEAFramework.prototype` (via `Object.defineProperties` over a dummy class's descriptors). Because the methods land on the prototype, `this` is the framework instance and every call site (`this.foo()`, `framework.foo()` from an individual) is unchanged — the files are just where the source lives. They load after `Anemone.js` (the class must exist) and before `main.js` (the methods must exist before `new`). When adding a framework method, put it in whichever file matches its concern; there are no delegators to keep in sync.
+`InteractiveEAFramework` is one class split across six files for readability: `Anemone.js` holds the constructor and core orchestration; `Shared3D.js`, `Lightbox.js`, `ExportManager.js`, `Hotkeys.js` and `Landing.js` each contribute a cohesive method cluster by merging onto `InteractiveEAFramework.prototype` (via `Object.defineProperties` over a dummy class's descriptors). Because the methods land on the prototype, `this` is the framework instance and every call site (`this.foo()`, `framework.foo()` from an individual) is unchanged — the files are just where the source lives. They load after `Anemone.js` (the class must exist) and before `main.js` (the methods must exist before `new`). When adding a framework method, put it in whichever file matches its concern; there are no delegators to keep in sync.
 
 `InteractiveEAFramework` orchestrates the system:
 - Initialises MIDI access, the shared output modalities (`framework.sharedMIDI` for notes, `framework.sharedAudio` for sample buffers/graphs), and shared 3D resources (Three.js scene/renderer)
@@ -408,9 +408,11 @@ than `performance.now()` so `.` and `[` / `]` reach you. `CatIndividual` is the 
 example; per-pixel-per-frame work (as in `AnimatedPatternIndividual`) is what makes an
 animated type too heavy for a whole grid, so prefer vector drawing.
 
-## Default Individual Type
+## Start page (landing) and the default type
 
-Set in `main.js:1` as `AnemoneIndividual`. Change this line to switch the startup default.
+With no `#Type` in the URL (or an unknown one), the app opens on the **landing page** (`framework/Landing.js`): one live random individual from each of 16 randomly-chosen types, drawn with `EvolutionaryAlgorithm.createValid` exactly as a population's would be. Clicking a tile calls `setIndividualType(cls, { seed, pushHistory: true })`: a fresh run of that type with **that very individual** in slot 0 — deliberately **not** liked, since choosing a type is not a vote for that individual (`EvolutionaryAlgorithm.seed`, which also rewrites generation 0's history entry), and a pushed history entry so Back returns to the landing page. The landing page is an **overlay over the run**, not a replacement — the app title links to `#`, and Back/Forward/hand-edited hashes all go through the idempotent `_syncToHash()` (hashchange + popstate), which returns to the *same* population when the hash names the type already underneath. The tiles are not an EA population (mixed types' traces can't be crossed), so they live in their own list; hotkeys are off while it is up, and the hidden grid's 3D tiles idle (`canvas._landing` tells the two apart in `animate3DWithSharedScene`). Eligibility is the registry's: `hidden` types and those marked `landing: false` (need live input, or say little as a still) are never shown; a test asserts at least 16 remain.
+
+`AnemoneIndividual` (in `main.js`) is the class of the undrawn run that sits under the landing page at startup; it is only ever seen if the user lands on `#Anemone`.
 
 ## Project Context
 

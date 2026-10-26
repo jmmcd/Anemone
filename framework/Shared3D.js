@@ -255,7 +255,9 @@
             // Idle (but stay scheduled) while the zoom lightbox is open, so the
             // shared renderer isn't thrashed between the 128px tiles and the
             // 768px zoom canvas every frame; resumes automatically on close.
-            if (!this.lightbox || !this.lightbox.classList.contains('open')) {
+            // Likewise the hidden grid's tiles while the landing page is up.
+            const zoomOpen = this.lightbox && this.lightbox.classList.contains('open');
+            if (!zoomOpen && (!this.landingOpen || canvas._landing)) {
                 const mesh = this.shared3D.meshes.get(individual.id);
                 if (mesh) this.renderMeshToCanvas(canvas, individual.id, mesh);
             }
