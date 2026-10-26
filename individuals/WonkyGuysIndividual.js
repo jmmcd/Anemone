@@ -166,15 +166,18 @@ const wonkyDraw = new Editable(function (self, ctx, width, height) {
     const eyeColor = { r: 0, g: 0, b: 0 }; // Black eyes
     const eyeSize = params.eyeSize;
 
+    // White sockets under every eye type: the eyes are free to drift onto
+    // anything (dark head, hair, hat, background), and black on dark vanishes.
+    drawCircle(params.leftEyeX, params.leftEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
+    drawCircle(params.rightEyeX, params.rightEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
+
     switch (params.eyeType) {
         case 0: // Dots
             drawCircle(params.leftEyeX, params.leftEyeY, eyeSize, eyeColor);
             drawCircle(params.rightEyeX, params.rightEyeY, eyeSize, eyeColor);
             break;
         case 1: // Larger circles
-            drawCircle(params.leftEyeX, params.leftEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
             drawCircle(params.leftEyeX, params.leftEyeY, eyeSize * 0.8, eyeColor);
-            drawCircle(params.rightEyeX, params.rightEyeY, eyeSize * 1.5, { r: 255, g: 255, b: 255 });
             drawCircle(params.rightEyeX, params.rightEyeY, eyeSize * 0.8, eyeColor);
             break;
         case 2: // Winking
