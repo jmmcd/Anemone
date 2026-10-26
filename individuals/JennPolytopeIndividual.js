@@ -422,33 +422,9 @@ function jennGeometry(shape, p, q) {
     return JENN_GEOMETRY_CACHE[cacheKey];
 }
 
-// Unit icosahedron (12 verts, 20 faces) for smooth-ish ball nodes — rounder than
-// an octahedron at low cost, and Phong shading + normals hides the facets.
-const JENN_ICO = (() => {
-    const t = (1 + Math.sqrt(5)) / 2;
-    const raw = [
-        [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
-        [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
-        [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
-    ];
-    const verts = raw.map(v => { const n = Math.hypot(v[0], v[1], v[2]); return [v[0] / n, v[1] / n, v[2] / n]; });
-    const faces = [
-        [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-        [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-        [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-        [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
-    ];
-    return { verts, faces };
-})();
-
-// --- small vector helpers (R³) -----------------------------------------------
-function jennSub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+// Rods and ball nodes are meshed by ThreeDModality.emitTube / emitBall (shared
+// with the other rod-and-ball types).
 function jennDist3(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
-function jennCross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
-function jennNorm3(a) {
-    const n = Math.hypot(a[0], a[1], a[2]) || 1;
-    return [a[0] / n, a[1] / n, a[2] / n];
-}
 
 // --- the PTO generator (the search space; small parameter vector) ------------
 // Self-contained per PTO's structural naming: no closure vars, no `new`, plain
@@ -620,67 +596,6 @@ class JennPolytopeIndividual extends Individual {
             prev = cur;
         }
         return len;
-    }
-
-    // Append a thin tube of triangles following the R³ polyline `points`.
-    // colorTs[i] ∈ [0,1] gives each ring's palette colour. Uses a rotation-
-    // minimizing (parallel-transport) frame: one normal is carried along the curve,
-    // re-orthogonalised against each successive tangent, instead of being recomputed
-    // independently per ring from a fixed up-vector. An independent per-ring frame
-    // flips orientation where the tangent crosses the up-vector switch threshold,
-    // abruptly twisting the low-poly cross-section and pinching the tube — the
-    // "strange thinning" on the long sweeping loops. Transport keeps it continuous.
-    _emitTube(points, colorTs, radius, out, sides) {
-        const S = sides || this.tubeSides;
-        const baseIndex = out.vertices.length / 3;
-        const n = points.length;
-        if (n < 2) return;
-        const tangentAt = (i) => jennNorm3(
-            i === 0 ? jennSub(points[1], points[0])
-                : i === n - 1 ? jennSub(points[n - 1], points[n - 2])
-                    : jennSub(points[i + 1], points[i - 1]));
-        // Seed the carried normal from an arbitrary up-vector (only sets the tube's
-        // starting roll, which is invisible for a round section).
-        let t0 = tangentAt(0);
-        const seed = Math.abs(t0[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-        let n1 = jennNorm3(jennCross(t0, seed));
-        for (let i = 0; i < n; i++) {
-            const tangent = tangentAt(i);
-            // Re-orthogonalise the carried normal against the current tangent
-            // (project out the tangent component) — the transport step.
-            const d = n1[0] * tangent[0] + n1[1] * tangent[1] + n1[2] * tangent[2];
-            n1 = jennNorm3([n1[0] - tangent[0] * d, n1[1] - tangent[1] * d, n1[2] - tangent[2] * d]);
-            const n2 = jennCross(tangent, n1);
-            const col = window.Palette.color(colorTs[i]);
-            for (let k = 0; k < S; k++) {
-                const ang = (k / S) * 2 * Math.PI;
-                const ca = Math.cos(ang) * radius, sa = Math.sin(ang) * radius;
-                out.vertices.push(
-                    points[i][0] + ca * n1[0] + sa * n2[0],
-                    points[i][1] + ca * n1[1] + sa * n2[1],
-                    points[i][2] + ca * n1[2] + sa * n2[2]);
-                out.colors.push(col.r / 255, col.g / 255, col.b / 255);
-            }
-        }
-        for (let i = 0; i < n - 1; i++)
-            for (let k = 0; k < S; k++) {
-                const kn = (k + 1) % S;
-                const a = baseIndex + i * S + k, b = baseIndex + i * S + kn;
-                const c = baseIndex + (i + 1) * S + k, d = baseIndex + (i + 1) * S + kn;
-                out.indices.push(a, c, b, b, c, d);
-            }
-    }
-
-    // A small icosahedral ball at an R³ point (drawn at every vertex). Jenn
-    // draws nodes as balls a bit wider than the rods; radius is set accordingly.
-    _emitVertexMarker(p, radius, colorT, out) {
-        const base = out.vertices.length / 3;
-        const col = window.Palette.color(colorT);
-        for (const v of JENN_ICO.verts) {
-            out.vertices.push(p[0] + v[0] * radius, p[1] + v[1] * radius, p[2] + v[2] * radius);
-            out.colors.push(col.r / 255, col.g / 255, col.b / 255);
-        }
-        for (const f of JENN_ICO.faces) out.indices.push(base + f[0], base + f[1], base + f[2]);
     }
 
     // Project a 4D point, push it as a coloured vertex (w-depth → palette),
@@ -868,7 +783,7 @@ class JennPolytopeIndividual extends Individual {
                 let t = (v4[3] + 1) / 2;              // colour by w-depth
                 colorTs.push(p.colorReverse ? 1 - t : t);
             }
-            this._emitTube(points, colorTs, rodRadius, struts, sides);
+            ThreeDModality.emitTube(points, colorTs, rodRadius, sides, struts);
         }
 
         // Ball node at every vertex, always (see generator note). Clearly wider than
@@ -877,7 +792,7 @@ class JennPolytopeIndividual extends Individual {
         // ~4.5× the rod there — even more distinct.)
         for (const v of rverts) {
             let t = (v[3] + 1) / 2;
-            this._emitVertexMarker(this._project(v, p.projScale), p.tubeRadius * 3.4,
+            ThreeDModality.emitBall(this._project(v, p.projScale), p.tubeRadius * 3.4,
                 p.colorReverse ? 1 - t : t, struts);
         }
         return { struts, glass };

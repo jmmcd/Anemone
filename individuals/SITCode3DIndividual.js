@@ -360,8 +360,9 @@ class SITCode3DIndividual extends SITCodeIndividual {
             // Size a dot against a GRAIN (k units after fitting), not against
             // the rod radius — otherwise a dot pattern spanning many grains
             // renders as invisible specks.
-            if (pts.length === 2 && maxR > 4) this._emitBall(pts, l.ts[0], Math.max(radius * 2.2, k * 0.22), out);
-            else this._emitTube(pts, l.ts, radius, sides, out);
+            // The dot sits at the grain's start, matching the 2D dot rule.
+            if (pts.length === 2 && maxR > 4) ThreeDModality.emitBall(pts[0], Math.max(radius * 2.2, k * 0.22), l.ts[0], out);
+            else ThreeDModality.emitTube(pts, l.ts, radius, sides, out);
         }
 
         // Final safety net. The band and segment keys above catch whole repeats
@@ -484,62 +485,6 @@ class SITCode3DIndividual extends SITCodeIndividual {
         const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         const n = SITLanguage._cross(u, v);
         return Math.hypot(n[0], n[1], n[2]) < 1e-9;
-    }
-
-    /** A small octahedral ball at the midpoint of a lone grain — a 3D dot. */
-    _emitBall(pts, t, radius, out) {
-        // At the grain's start, matching the 2D dot rule (SITLanguage._markDots).
-        const c = pts[0];
-        const base = out.vertices.length / 3;
-        const col = window.Palette.color(t);
-        const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-        for (const d of dirs) {
-            out.vertices.push(c[0] + d[0] * radius, c[1] + d[1] * radius, c[2] + d[2] * radius);
-            out.colors.push(col.r / 255, col.g / 255, col.b / 255);
-        }
-        // The eight faces of an octahedron over ±x, ±y, ±z (indices 0..5).
-        const faces = [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
-        [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]];
-        for (const f of faces) out.indices.push(base + f[0], base + f[1], base + f[2]);
-    }
-
-    _emitTube(points, ts, radius, sides, out) {
-        const n = points.length;
-        if (n < 2) return;
-        const base = out.vertices.length / 3;
-        const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-        const tangentAt = (i) => SITLanguage._norm3(
-            i === 0 ? sub(points[1], points[0])
-                : i === n - 1 ? sub(points[n - 1], points[n - 2])
-                    : sub(points[i + 1], points[i - 1]));
-        let t0 = tangentAt(0);
-        const seed = Math.abs(t0[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-        let n1 = SITLanguage._norm3(SITLanguage._cross(t0, seed));
-        for (let i = 0; i < n; i++) {
-            const tan = tangentAt(i);
-            // Re-orthogonalise the carried normal against the tangent (transport).
-            const d = n1[0] * tan[0] + n1[1] * tan[1] + n1[2] * tan[2];
-            n1 = SITLanguage._norm3([n1[0] - tan[0] * d, n1[1] - tan[1] * d, n1[2] - tan[2] * d]);
-            const n2 = SITLanguage._cross(tan, n1);
-            const col = window.Palette.color(ts[Math.min(i, ts.length - 1)]);
-            for (let s = 0; s < sides; s++) {
-                const ang = (s / sides) * 2 * Math.PI;
-                const ca = Math.cos(ang) * radius, sa = Math.sin(ang) * radius;
-                out.vertices.push(
-                    points[i][0] + ca * n1[0] + sa * n2[0],
-                    points[i][1] + ca * n1[1] + sa * n2[1],
-                    points[i][2] + ca * n1[2] + sa * n2[2]);
-                out.colors.push(col.r / 255, col.g / 255, col.b / 255);
-            }
-        }
-        for (let i = 0; i < n - 1; i++) {
-            for (let s = 0; s < sides; s++) {
-                const sn = (s + 1) % sides;
-                const a = base + i * sides + s, b = base + i * sides + sn;
-                const c = base + (i + 1) * sides + s, d = base + (i + 1) * sides + sn;
-                out.indices.push(a, c, b, b, c, d);
-            }
-        }
     }
 
     visualize(canvas) {

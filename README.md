@@ -22,11 +22,13 @@ You can also change the palette (drop-down menu), or try a different "domain" fo
 
 # Evolving a movement
 
-Most of the apps evolve a picture. "Cat (animated)" evolves a *movement*: the genome describes a little animal **and** the way it walks, and every tile is a live walk cycle rather than a still. There are no keyframes and no sprite sheets — the pose is worked out from a handful of oscillators every frame, which is precisely what lets it be bred like anything else here. Click the ones that move the way you like. `.` pauses them all, and `[` / `]` slow them down and speed them up. Double-click a cat to zoom in, then **click its legs** to cycle the gait — walk, trot, pace, or a bounding run that actually leaves the ground. That edit goes into the genome, so the cat passes its new walk on to its kittens. `examples/parametric-cat.html` is the same idea as a single self-contained p5.js sketch, with no evolution around it, if you want to see how it works.
+Most of the apps evolve a picture. "Cat (animated)" evolves a *movement*: the genome describes a little animal **and** the way it walks, and every tile is a live walk cycle rather than a still. There are no keyframes and no sprite sheets â the pose is worked out from a handful of oscillators every frame, which is precisely what lets it be bred like anything else here. Click the ones that move the way you like. `.` pauses them all, and `[` / `]` slow them down and speed them up. Double-click a cat to zoom in, then **click its legs** to cycle the gait â walk, trot, pace, or a bounding run that actually leaves the ground. That edit goes into the genome, so the cat passes its new walk on to its kittens. `examples/parametric-cat.html` is the same idea as a single self-contained p5.js sketch, with no evolution around it, if you want to see how it works.
 
 # Program Trace Optimisation
 
 The evolutionary algorithm in the background is [Program Trace Optimisation](https://github.com/Program-Trace-Optimisation/PTO). PTO is a highly general and easy-to-use evolutionary algorithm that -- uniquely -- defines a univeral representation, the **program trace**, suitable for all evolutionary algorithm problems. Instead of providing and encoding and search operators (initialisation, mutation, crossover), they just define a **generator function** which samples from the desired search space. In an interactive setting we don't need any fitness. 
+
+PTO grew out of an earlier approach, PODI, which ran an ordinary non-deterministic program with its random-number source injected, and evolved the numbers it consumed: McDermott and Carroll, Program Optimisation with Dependency Injection, in Proceedings of EuroGP 2013, Vienna, Austria, Springer. The "Water Tower" app is the example program from that paper, ported more or less line for line -- its generator is the original program, so it shows how little separates "a program that makes random things" from "a search space".
 
 # Adding new apps
 

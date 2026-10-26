@@ -73,6 +73,7 @@ const SOURCES = [
     'individuals/WarpedSurface3DIndividual.js',
     'individuals/JennPolytopeIndividual.js',
     'individuals/EndlessFormsIndividual.js',
+    'individuals/WaterTowerIndividual.js',
     'individuals/CatIndividual.js',
     'individuals/RoboHashCatIndividual.js',
     'individuals/RobotIndividual.js',

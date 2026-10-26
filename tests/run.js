@@ -294,7 +294,7 @@ check('only the 3D types report is3D()', () => {
         'SuperShape3DIndividual', 'PetalSphere3DIndividual',
         'FreeSurface3DIndividual', 'WarpedSurface3DIndividual',
         'JennPolytopeIndividual', 'SITCode3DIndividual',
-        'EndlessFormsIndividual',
+        'EndlessFormsIndividual', 'WaterTowerIndividual',
     ]);
     for (const name of INDIVIDUAL_CLASSES) {
         const ind = new classes[name]();
@@ -799,6 +799,47 @@ check('3D codes build a mesh that STL export can consume', () => {
     }
     assert(built > 0, 'no 3D code produced geometry');
 });
+
+// --- Water Tower (the PODI example, McDermott & Carroll, EuroGP 2013) ---
+console.log('\nWater Tower:');
+check('water tower graphs have the ring structure water_tower.py builds', () => {
+    for (let s = 0; s < 40; s++) {
+        const ind = new classes.WaterTowerIndividual();
+        const p = ind.phenotype, n = p.nnodes, L = p.nlayers;
+        const { nodes, edges, layers } = ind.graph();
+        const sizes = layers.map((_, j) => p.doublep === 2 && j % 2 === 1 ? 2 * n : n);
+        assert(layers.every((l, j) => l.length === sizes[j]), 'ring sizes should be n, or alternate n/2n');
+        assert(nodes.length === sizes.reduce((a, b) => a + b, 0), 'node count');
+        assert(p.offsets.length >= 1 && p.offsets.every(o => o === 0 || o === 0.5), 'offsets are 0 or ½');
+        // Every ring is a closed loop; with n ≥ 3 no ring edge or (doublep 1)
+        // inter-ring edge repeats, so the counts are exact.
+        if (p.doublep === 1) {
+            const k = p.connections.split('+').length;
+            assert(edges.length === L * n + (L - 1) * n * k, `edge count ${edges.length} for ${L}×${n}, ${p.connections}`);
+        }
+        for (const [a, b] of edges) assert(a !== b && a < nodes.length && b < nodes.length, 'bad edge');
+        for (const nd of nodes) assert(nd.xyz.every(Number.isFinite), 'non-finite node position');
+    }
+});
+check('water tower meshes are STL-consumable and survive the operators', () => {
+    let a = new classes.WaterTowerIndividual(), b = new classes.WaterTowerIndividual();
+    for (let g = 0; g < 10; g++) {
+        const [child] = a.crossover(b);
+        child.mutate(0.3);
+        const { vertices, indices, colors } = child.generate3DPoints();
+        assert(indices.length > 0 && indices.length % 3 === 0, 'mesh should be triangles');
+        assert(colors.length === vertices.length, 'one colour per vertex');
+        for (const v of vertices) assert(Number.isFinite(v), 'non-finite vertex');
+        for (const ix of indices) assert(ix < vertices.length / 3, 'index out of range');
+        [a, b] = [b, child];
+    }
+});
+check('a water tower whose rings all collapse onto the axis is rejected', () => {
+    const ind = new classes.WaterTowerIndividual();
+    ind.radii = () => [0, 0, 0];
+    assert(!ind.validate(), 'r(t) ≡ 0 should not validate');
+});
+
 check('the rotational family gene spans discrete-to-continuous in one type', () => {
     // Angle literals are integer multiples of 360/family, and the multiple is
     // capped, so a small family is coarse and closing while a large one is fine

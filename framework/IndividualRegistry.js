@@ -38,6 +38,7 @@ const INDIVIDUAL_TYPES = [
     { name: 'WarpedSurface3DIndividual',                label: 'Warped Surface 3D' },
     { name: 'JennPolytopeIndividual',                   label: 'Jenn Polytope 4D' },
     { name: 'EndlessFormsIndividual',                   label: 'Endless Forms' },
+    { name: 'WaterTowerIndividual',                     label: 'Water Tower' },
     { name: 'AnemoneIndividual',                        label: 'Anemone' },
     { name: 'BranchIndividual',                         label: 'Branch' },
     { name: 'LSystemIndividual',                        label: 'L-System' },
