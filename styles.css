@@ -488,6 +488,8 @@ select:focus { outline: none; border-color: var(--accent); }
    for audio, WAV takes Save's slot at left:8px and MIDI sits here beside it. */
 .lightbox-export-stl,
 .lightbox-export-midi { left: 104px; }
+/* Share applies to every type, so it has its own slot: top right, beside ✕. */
+.lightbox-share { left: auto; right: 52px; }
 
 /* About page reuses the lightbox chrome (overlay + close button). */
 .about-inner { max-width: 640px; padding-top: 48px; }

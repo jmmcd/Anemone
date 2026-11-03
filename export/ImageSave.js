@@ -335,9 +335,30 @@
         return file.arrayBuffer().then((buf) => readMetadata(new Uint8Array(buf)));
     }
 
+    // ---- Rebuild an individual from provenance metadata ------------------
+    // The one reconstruct path behind every way an individual comes back in: a
+    // loaded PNG/WAV/MIDI file and an opened share link (ShareLink.js). The
+    // deserialised trace is "dead" (plain objects, no Dist operators), so revive
+    // it into a live trace — otherwise it renders but crashes on the next evolve.
+    // `faithful` compares the rebuilt phenotype's signature with the saved one;
+    // false means the generator (or a table it reads) has changed since the
+    // genome was saved, so this is not quite the individual that was saved. The
+    // caller decides what that means: file load refuses, a share link warns.
+    // Throws if the genome cannot be replayed at all.
+    function reconstruct(meta, cls, midiOutput) {
+        const individual = new cls(meta.genome);
+        if (individual.representation && individual.representation.revive) {
+            individual.genome = individual.representation.revive(individual.genome);
+            individual.invalidateImageCache();
+        }
+        if (individual.setMidiOutput && midiOutput) individual.setMidiOutput(midiOutput);
+        const faithful = meta.phenoSig == null || phenotypeSignature(individual) === meta.phenoSig;
+        return { individual, faithful };
+    }
+
     window.ImageSave = {
         saveCanvas, buildPngBytes, composeMontage, buildZip, download: triggerDownload,
-        readMetadata, readMetadataFromFile, phenotypeSignature, metaFor,
+        readMetadata, readMetadataFromFile, phenotypeSignature, metaFor, reconstruct,
         buildITxtChunk, insertChunk, crc32,
     };
 })();

@@ -70,10 +70,12 @@
         }
 
         // Follow the URL: no hash → the start page; a type → that run (the one
-        // underneath if it is already that type, so Back keeps the population).
+        // underneath if it is already that type, so Back keeps the population);
+        // a type plus a share payload → that shared individual (openSharedLink).
         // An unknown token also lands on the start page.
         _syncToHash() {
-            const token = (location.hash || '').replace(/^#/, '');
+            const { token, payload } = InteractiveEAFramework.parseHash(location.hash);
+            if (payload) { this.openSharedLink(payload); return; }
             const cls = InteractiveEAFramework.resolveIndividualType(token);
             if (!cls) { if (!this.landingOpen) this.showLanding(); return; }
             if (cls === this.individualClass) { this.hideLanding(); return; }
@@ -134,4 +136,14 @@
     const descriptors = Object.getOwnPropertyDescriptors(ext.prototype);
     delete descriptors.constructor;
     Object.defineProperties(InteractiveEAFramework.prototype, descriptors);
+
+    // "#DrumMachine/<payload>" → { token: 'DrumMachine', payload }. The token is
+    // the type deep link; a payload (export/ShareLink.js) carries one individual.
+    // Static, like resolveIndividualType, so main.js can read it before `new`.
+    InteractiveEAFramework.parseHash = function (hash) {
+        const text = (hash || '').replace(/^#/, '');
+        const slash = text.indexOf('/');
+        if (slash < 0) return { token: text, payload: null };
+        return { token: text.slice(0, slash), payload: text.slice(slash + 1) || null };
+    };
 })();

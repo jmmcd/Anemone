@@ -54,6 +54,7 @@ class AudioControlUI {
                 status.textContent = window.AudioClip.name();
                 this.drawPreview(preview);
                 this.framework.invalidateAndRender();
+                this.framework.checkSharedSource('clip');
             } catch (err) {
                 console.warn('Audio load failed:', err);
                 status.textContent = 'Could not load that clip';

@@ -26,6 +26,7 @@ class AudioClip {
         this._version = 0;
         this._userLoaded = false;
         this._name = 'breakbeat (synth)';
+        this._fingerprint = null;
         this._buffer = null;                 // decoded AudioBuffer (null until ready)
         this._ctx = null;                    // shared AudioContext (lazy)
         this._peakCache = new Map();         // buckets → {min,max} arrays
@@ -45,6 +46,9 @@ class AudioClip {
 
     /** True once the *user* has loaded their own clip (vs. the default). */
     hasClip() { return this._userLoaded; }
+
+    // SHA-256 prefix of the user's file bytes (ShareLink.fingerprint) — see Photo.
+    fingerprint() { return this._fingerprint; }
 
     /** The decoded source AudioBuffer (or null before anything is ready). */
     buffer() { return this._buffer; }
@@ -84,8 +88,13 @@ class AudioClip {
     /** Replace the source with a user-selected audio file. Resolves once decoded. */
     async setClipFromFile(file) {
         const arr = await file.arrayBuffer();
+        // Before decoding: decodeAudioData detaches the buffer.
+        let fp = null;
+        try { fp = window.ShareLink ? await window.ShareLink.fingerprint(arr) : null; }
+        catch (err) { console.warn('Fingerprint failed:', err); }
         const buffer = await this.context().decodeAudioData(arr);
         this._install(buffer, file.name || 'audio', true);
+        this._fingerprint = fp;
     }
 
     _install(buffer, name, userLoaded) {

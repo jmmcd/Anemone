@@ -293,6 +293,7 @@ class InteractiveEAFramework {
         this.lightboxExportStl = document.getElementById('lightbox-export-stl');
         this.lightboxExportWav = document.getElementById('lightbox-export-wav');
         this.lightboxExportMidi = document.getElementById('lightbox-export-midi');
+        this.lightboxShare = document.getElementById('lightbox-share');
         this.aboutLink = document.getElementById('about-link');
         this.aboutModal = document.getElementById('about-modal');
         this.aboutContent = document.getElementById('about-content');
@@ -360,6 +361,7 @@ class InteractiveEAFramework {
         if (this.lightboxExportStl) this.lightboxExportStl.addEventListener('click', () => this.exportCurrentSTL());
         if (this.lightboxExportWav) this.lightboxExportWav.addEventListener('click', () => this.exportCurrentWav());
         if (this.lightboxExportMidi) this.lightboxExportMidi.addEventListener('click', () => this.exportCurrentMidi());
+        if (this.lightboxShare) this.lightboxShare.addEventListener('click', () => this.shareCurrent());
         if (this.lightboxCanvas) {
             this.lightboxCanvas.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -808,7 +810,9 @@ class InteractiveEAFramework {
     // goes into the new population (not liked), which is also why a seeded
     // switch goes ahead even to the current type. `pushHistory` makes the switch
     // a browser-history step, so Back returns to the landing page.
-    setIndividualType(NewIndividualClass, { seed = null, pushHistory = false } = {}) {
+    // `family` (a share link's arrival) fills the rest of the generation with
+    // mutants of the seed instead of random individuals (EvolutionaryAlgorithm.seed).
+    setIndividualType(NewIndividualClass, { seed = null, family = false, pushHistory = false } = {}) {
         const selectedType = NewIndividualClass.name;
 
         if (NewIndividualClass !== this.individualClass || seed) {
@@ -817,6 +821,7 @@ class InteractiveEAFramework {
             // Clean up current individuals
             this.cleanupOldIndividuals();
             this.currentIndividual = null; // Clear current individual when switching types
+            this._sharedSources = null;    // a share link's photo/clip hint ends with its run
             
             // Cleanup shared 3D if switching away from 3D individuals
             if (this.shared3D) {
@@ -831,7 +836,7 @@ class InteractiveEAFramework {
             this.ea = new EvolutionaryAlgorithm(NewIndividualClass, this.ea.populationSize, this.midiOutput);
             if (seed) {
                 if (seed.setMidiOutput && this.midiOutput) seed.setMidiOutput(this.midiOutput);
-                this.ea.seed(seed);
+                this.ea.seed(seed, { family });
                 this.currentIndividual = seed;
             }
             this.updateIndividualTypeSelector();

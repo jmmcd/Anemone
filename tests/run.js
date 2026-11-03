@@ -29,6 +29,11 @@ function check(name, fn) {
     }
 }
 
+// Async checks (share links compress via CompressionStream) are queued and run,
+// in order, after all the synchronous ones, just before the summary.
+const asyncChecks = [];
+function checkAsync(name, fn) { asyncChecks.push({ name, fn }); }
+
 function assert(cond, msg) {
     if (!cond) throw new Error(msg || 'assertion failed');
 }
@@ -3052,6 +3057,116 @@ check('MelodyIndividual opts out of PNG save (MIDI-only)', () => {
 // evaluation cadence for the mouse/EEG DAG individuals. Each check uses a fresh
 // load() since MIDISync is stateful (enabled/running/bpm) singleton, like the
 // shared-modality checks above.
+// --- Share links ---
+// A share link is the type's deep link plus a payload carrying the genome and
+// the settings that change what the sender saw/heard. Every registered type must
+// survive the round trip (encode → decode → ImageSave.reconstruct) unchanged and
+// come back as a LIVE trace the operators accept — otherwise sharing that type
+// silently sends the recipient something else, or crashes their first evolve.
+console.log('\nShare links:');
+const ShareLink = (() => {
+    const prev = global.window;
+    global.window = Object.assign({}, { ImageSave, PerformanceControls: sandbox.window.PerformanceControls });
+    const f = '../export/ShareLink.js';
+    delete require.cache[require.resolve(f)];
+    require(f);
+    const w = global.window;
+    global.window = prev;
+    w.ShareLink._window = w; // the module reads window.* at call time; tests swap it in
+    return w.ShareLink;
+})();
+async function withShareWindow(fn) {
+    const prev = global.window;
+    global.window = ShareLink._window;
+    try { return await fn(); } finally { global.window = prev; }
+}
+for (const name of INDIVIDUAL_CLASSES) {
+    checkAsync(`${name} survives a share-link round trip and can still evolve`, () => withShareWindow(async () => {
+        const C = classes[name];
+        const orig = new C();
+        const payload = await ShareLink.encode(orig, sandbox.window.framework);
+        assert(/^1[A-Za-z0-9_-]+$/.test(payload), 'payload must be format 1 + base64url (URL-safe)');
+        const meta = await ShareLink.decode(payload);
+        assert(meta.type === name, `type ${meta.type} came back for ${name}`);
+        const { individual, faithful } = ImageSave.reconstruct(meta, C);
+        assert(faithful, 'reconstructed phenotype signature must match the shared one');
+        individual.mutate(0.3);
+        const [a] = individual.crossover(new C());
+        assert(a instanceof C, 'a shared individual must crossover into valid children');
+    }));
+}
+checkAsync('a step sequencer link stays a practical length (deflated)', () => withShareWindow(async () => {
+    const payload = await ShareLink.encode(new classes.DrumMachineIndividual(), sandbox.window.framework);
+    assert(payload.length < 8000, `drum link payload is ${payload.length} chars`);
+}));
+checkAsync('share links carry palette + declared dials, and applying them is validated', () => withShareWindow(async () => {
+    const pc = ShareLink._window.PerformanceControls;
+    const saved = JSON.parse(JSON.stringify(pc.dials));
+    try {
+        const fw = { settings: { colorPalette: 'magma' } };
+        pc.dials.bpm.on = true; pc.dials.bpm.value = 97;
+        const melody = new classes.MelodyIndividual();
+        const meta = await ShareLink.decode(await ShareLink.encode(melody, fw));
+        const declared = melody.performanceDials();
+        assert(JSON.stringify(Object.keys(meta.settings.dials)) === JSON.stringify(declared),
+            'only the dials the type declares travel');
+        assert(meta.settings.dials.bpm.on === true && meta.settings.dials.bpm.value === 97, 'locked tempo travels');
+        if (melody.usesColorPalette()) assert(meta.settings.palette === 'magma', 'palette travels');
+
+        pc.dials.bpm.on = false; pc.dials.bpm.value = 120;
+        const target = { settings: { colorPalette: 'viridis' } };
+        ShareLink.applySettings(meta.settings, target);
+        assert(pc.dials.bpm.on === true && pc.dials.bpm.value === 97, 'dials applied on arrival');
+        ShareLink.applySettings({ dials: { bpm: { on: true, value: 1e9 } }, palette: 42 }, target);
+        assert(pc.dials.bpm.value === pc.dials.bpm.max, 'an out-of-range dial is clamped');
+        assert(target.settings.colorPalette !== 42, 'a non-string palette is ignored');
+    } finally {
+        for (const k of Object.keys(saved)) Object.assign(pc.dials[k], { on: saved[k].on, value: saved[k].value });
+    }
+}));
+checkAsync('a file fingerprint is the SHA-256 prefix of its bytes', async () => {
+    // FIPS 180-2 test vector: SHA-256("abc") = ba7816bf…
+    assert(await ShareLink.fingerprint(new TextEncoder().encode('abc')) === 'ba7816bf', 'SHA-256 prefix mismatch');
+});
+checkAsync('a user photo travels as its name + fingerprint, never its pixels', () => withShareWindow(async () => {
+    const w = ShareLink._window;
+    const prevPhoto = w.Photo;
+    w.Photo = { hasImage: () => true, name: () => 'beach.jpg', fingerprint: () => 'ba7816bf' };
+    try {
+        const meta = await ShareLink.decode(await ShareLink.encode(new classes.PhotoFilterIndividual(), sandbox.window.framework));
+        assert(JSON.stringify(meta.settings.photo) === JSON.stringify({ name: 'beach.jpg', fp: 'ba7816bf' }),
+            `photo hint was ${JSON.stringify(meta.settings.photo)}`);
+        const grid = await ShareLink.decode(await ShareLink.encode(new classes.GridIndividual(), sandbox.window.framework));
+        assert(!grid.settings.photo, 'a type that does not use the photo must not name it');
+    } finally {
+        w.Photo = prevPhoto;
+    }
+}));
+checkAsync('a damaged or foreign payload is rejected, not half-loaded', () => withShareWindow(async () => {
+    for (const bad of ['', '9abc', '1!!!!', '1' + Buffer.from('not deflate').toString('base64url')]) {
+        let threw = false;
+        try { await ShareLink.decode(bad); } catch (e) { threw = true; }
+        assert(threw, `payload ${JSON.stringify(bad)} should be rejected`);
+    }
+}));
+check('a share link seeds a family: the shared individual plus mutants of it', () => {
+    const ea = new env0.EvolutionaryAlgorithm(classes.GridIndividual, 16);
+    const shared = new classes.GridIndividual();
+    const historyLength = ea.history.length;
+    ea.seed(shared, { family: true });
+    assert(ea.population[0] === shared, 'the shared individual is in slot 0');
+    assert(!shared.selected, 'it is not liked — that stays the recipient\'s call');
+    const sig = ImageSave.phenotypeSignature(shared);
+    const near = ea.population.slice(1).filter(ind => ind instanceof classes.GridIndividual);
+    assert(near.length === 15, 'every other slot is filled with the same type');
+    assert(near.some(ind => ImageSave.phenotypeSignature(ind) !== sig), 'the relatives are mutants, not copies');
+    // Mutants of a 64-bit grid differ from it in few cells; random grids in ~half.
+    const dist = (ind) => shared.phenotype.reduce((n, b, i) => n + (b !== ind.phenotype[i] ? 1 : 0), 0);
+    const meanDist = near.reduce((n, ind) => n + dist(ind), 0) / near.length;
+    assert(meanDist < 20, `relatives should resemble the shared grid (mean Hamming ${meanDist.toFixed(1)})`);
+    assert(ea.history.length === historyLength, 'generation 0 is rewritten, not appended');
+});
+
 console.log('\nMIDI Clock Sync:');
 check('usesMIDISync() only on step sequencers and mouse/EEG DAG individuals', () => {
     const env = load();
@@ -3137,10 +3252,25 @@ check('MIDIModality.start() paces the DAG-callback loop to the synced BPM (16th-
     midi.stop();
 });
 
-// --- Summary ---
-console.log(`\n${passed} passed, ${failed} failed`);
-if (failed > 0) {
-    console.log('\nFailures:');
-    failures.forEach(f => console.log('  - ' + f));
-    process.exit(1);
-}
+(async () => {
+    if (asyncChecks.length) console.log('\nAsync checks:');
+    for (const { name, fn } of asyncChecks) {
+        try {
+            await fn();
+            passed++;
+            console.log(`  ✓ ${name}`);
+        } catch (e) {
+            failed++;
+            failures.push(`${name}: ${e.message}`);
+            console.log(`  ✗ ${name} — ${e.message}`);
+        }
+    }
+
+    // --- Summary ---
+    console.log(`\n${passed} passed, ${failed} failed`);
+    if (failed > 0) {
+        console.log('\nFailures:');
+        failures.forEach(f => console.log('  - ' + f));
+        process.exit(1);
+    }
+})();

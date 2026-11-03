@@ -1,12 +1,18 @@
 // ExportManager — save/export of the zoomed individual (PNG/STL/WAV/MIDI),
 // bulk population/liked-run exports, PNG-load reconstruction + the placement
-// flow, and the toast helper.
+// flow, share links (sending from the zoom, and arrival), and the toast helper.
 //
 // Partial class: these methods are authored here but merged onto
 // InteractiveEAFramework.prototype (below), so `this` is the framework instance
 // and every call site (this.foo(), framework.foo()) is unchanged. Loaded after
 // framework/Anemone.js. See CLAUDE.md > Project Layout.
 (function () {
+    // The user-loaded sources a share link can name but not carry.
+    const SHARED_SOURCES = {
+        photo: { service: 'Photo', noun: 'photo' },
+        clip: { service: 'AudioClip', noun: 'sound clip' },
+    };
+
     const ext = class {
     // Save the currently-zoomed individual as a PNG with its genome embedded
     // as reproducible metadata (see ImageSave.js). One-tap, no dialog.
@@ -179,7 +185,7 @@
     }
 
     // Brief, self-dismissing confirmation message.
-    showToast(message) {
+    showToast(message, ms = 2200) {
         let toast = this._toastEl;
         if (!toast) {
             toast = document.createElement('div');
@@ -192,7 +198,7 @@
         void toast.offsetWidth;
         toast.classList.add('show');
         clearTimeout(this._toastTimer);
-        this._toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+        this._toastTimer = setTimeout(() => toast.classList.remove('show'), ms);
     }
 
     // ---- Load a saved PNG / WAV / MIDI back into an individual --------------
@@ -234,38 +240,150 @@
         const C = this.individualTypeMap()[meta.type];
         if (!C) { this.showToast(`Unknown individual type: ${meta.type}`); return; }
 
-        // Reconstruct from the saved genome (the PTO trace). The deserialised
-        // trace is "dead" (plain objects, no Dist operators), so revive it into
-        // a live trace — otherwise it renders but crashes on the next evolve.
-        let individual;
+        // Reconstruct from the saved genome (the PTO trace) — revive + signature
+        // self-check, shared with share links (ImageSave.reconstruct).
+        let result;
         try {
-            individual = new C(meta.genome);
-            if (individual.representation && individual.representation.revive) {
-                individual.genome = individual.representation.revive(individual.genome);
-                individual.invalidateImageCache();
-            }
-            if (individual.setMidiOutput && this.midiOutput) individual.setMidiOutput(this.midiOutput);
+            result = window.ImageSave.reconstruct(meta, C, this.midiOutput);
         } catch (err) {
             console.warn('Reconstruction failed:', err);
             this.showToast('Could not reconstruct that individual');
             return;
         }
 
-        // Self-check. A known upstream PTO limitation (see
-        // pto-trace-roundtrip-bug.js) stops some types — grammar individuals,
-        // and Sheep with its per-instance random network — from faithfully
-        // round-tripping through a serialised trace. Compare the reconstructed
-        // phenotype's signature with the one saved in the image; refuse rather
-        // than silently load a different-looking individual.
-        if (meta.phenoSig != null) {
-            const sig = window.ImageSave.phenotypeSignature(individual);
-            if (sig !== meta.phenoSig) {
-                this.showToast(`This ${meta.type} can't be faithfully reproduced yet (known limitation)`);
-                return;
-            }
+        // Refuse rather than silently load a different-looking individual into a
+        // run the user is curating (a share link, arriving fresh, warns instead).
+        if (!result.faithful) {
+            this.showToast(`This ${meta.type} can't be faithfully reproduced (saved by a different version?)`);
+            return;
         }
 
-        this.enterPlacementMode(individual);
+        this.enterPlacementMode(result.individual);
+    }
+
+    // ---- Share links (export/ShareLink.js) ----------------------------------
+    // The link is built when the zoom opens (and again after an edit), not on
+    // the click: encoding is async, and navigator.share / clipboard writes must
+    // happen inside the click's user activation, which an await can outlive.
+    _prepareShareLink(individual) {
+        this._shareLink = null;
+        if (!this.lightboxShare) return;
+        const ok = !!(window.ShareLink && window.ShareLink.supported());
+        this.lightboxShare.style.display = ok ? '' : 'none';
+        if (!ok) return;
+        const request = this._shareRequest = {};
+        window.ShareLink.linkFor(individual, this)
+            .then((url) => { if (this._shareRequest === request) this._shareLink = url; })
+            .catch((err) => console.warn('Share link failed:', err));
+    }
+
+    // Touch devices get the native share sheet (Messages, WhatsApp, …); with a
+    // mouse, copying the link is what's wanted.
+    shareCurrent() {
+        const url = this._shareLink;
+        if (!url) { this.showToast('Preparing the link — try again in a moment'); return; }
+        const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        if (touch && navigator.share) {
+            const entry = (window.INDIVIDUAL_TYPES || []).find(t => t.name === this.individualClass.name);
+            const text = `A ${entry ? entry.label : 'creature'} I evolved in Anemone`;
+            navigator.share({ title: 'Anemone', text, url }).catch((err) => {
+                if (err && err.name !== 'AbortError') this._copyShareLink(url);
+            });
+            return;
+        }
+        this._copyShareLink(url);
+    }
+
+    _copyShareLink(url) {
+        const fallback = () => window.prompt('Copy this link to share:', url);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url)
+                .then(() => this.showToast('Link copied — paste it to share'), fallback);
+        } else {
+            fallback();
+        }
+    }
+
+    // Arrival: decode the payload, apply its settings, start a run of its type
+    // with the shared individual in slot 0 and mutants of it around it, and
+    // open it in the zoom. The run switch replaceStates the URL down to #Type,
+    // so a refresh after evolving doesn't jump back to the shared individual.
+    async openSharedLink(payload) {
+        if (this._sharePending === payload) return; // hashchange + popstate both fire
+        this._sharePending = payload;
+        try {
+            let meta = null;
+            try { meta = await window.ShareLink.decode(payload); }
+            catch (err) { console.warn('Share link decode failed:', err); }
+            const C = meta && this.individualTypeMap()[meta.type];
+            let result = null;
+            if (C) {
+                window.ShareLink.applySettings(meta.settings, this);
+                try { result = window.ImageSave.reconstruct(meta, C, this.midiOutput); }
+                catch (err) { console.warn('Share link reconstruction failed:', err); }
+            }
+            if (!result) {
+                this.showToast('That share link could not be opened');
+                this._fallBackFromShareLink();
+                return;
+            }
+            this.hideLanding({ render: false });
+            this.setIndividualType(C, { seed: result.individual, family: true });
+            this.openZoom(result.individual);
+            const settings = meta.settings || {};
+            this._sharedSources = { photo: settings.photo || null, clip: settings.clip || null };
+            const notes = [];
+            if (!result.faithful) notes.push('this link was made with a different version of Anemone, so it may not be exactly as shared');
+            for (const kind of ['photo', 'clip']) {
+                const shared = this._sharedSources[kind];
+                if (!shared || this._sharedSourceMatches(kind)) continue;
+                const { noun } = SHARED_SOURCES[kind];
+                notes.push(`it was made with the sender's ${noun} “${shared.name}” — load it to see this exactly as shared`);
+            }
+            this.showToast(notes.length
+                ? 'Shared with you — but ' + notes.join('; ')
+                : 'Shared with you — close to see its relatives', notes.length ? 6000 : 3500);
+        } finally {
+            this._sharePending = null;
+        }
+    }
+
+    // Does the recipient's current photo/clip match the one a share link was
+    // made with? Only a fingerprint can say yes; a name match alone cannot.
+    _sharedSourceMatches(kind) {
+        const shared = this._sharedSources && this._sharedSources[kind];
+        const service = window[SHARED_SOURCES[kind].service];
+        if (!shared || !shared.fp || !service || !service.fingerprint) return false;
+        return service.fingerprint() === shared.fp;
+    }
+
+    // Called by the photo/clip panels after the user loads a file: if this run
+    // came from a share link made with a file of the user's own, say whether
+    // this is that file.
+    checkSharedSource(kind) {
+        const shared = this._sharedSources && this._sharedSources[kind];
+        if (!shared) return;
+        const { noun, service } = SHARED_SOURCES[kind];
+        const mine = window[service];
+        if (this._sharedSourceMatches(kind)) {
+            this.showToast(`That's the ${noun} this was shared with`, 3500);
+        } else if (shared.fp && mine && mine.fingerprint && mine.fingerprint()) {
+            const same = mine.name() === shared.name;
+            this.showToast(same
+                ? `Same name, but a different ${noun} from the one shared`
+                : `Not the ${noun} this was shared with (“${shared.name}”)`, 4500);
+        }
+    }
+
+    // A link that cannot be opened still names a type: go there (or to the
+    // start page), and drop the payload from the URL.
+    _fallBackFromShareLink() {
+        const { token } = InteractiveEAFramework.parseHash(location.hash);
+        const cls = InteractiveEAFramework.resolveIndividualType(token);
+        if (history.replaceState) history.replaceState(null, '', cls ? '#' + cls.name.replace(/Individual$/, '') : '#');
+        if (!cls) { if (!this.landingOpen) this.showLanding(); return; }
+        if (cls !== this.individualClass) { this.hideLanding({ render: false }); this.setIndividualType(cls); }
+        else this.hideLanding();
     }
 
     enterPlacementMode(individual) {

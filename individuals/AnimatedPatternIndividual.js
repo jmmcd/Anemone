@@ -45,7 +45,12 @@ const animatedPatternGenerator = (rnd) => {
         const choices = depth > 0
             ? animatedPatternGrammar.getProductions(symbol)
             : animatedPatternGrammar.shortestProductions(symbol);
-        const prod = rnd.choice(choices);
+        // rnd.randint for the production index, not rnd.choice over the production
+        // arrays: a choice gene stores those arrays as its args, and after a JSON
+        // round trip (save/load, share link) they no longer match by identity, so
+        // replay re-drew every production. Same fix as PatternGrammarIndividual.
+        const idx = Math.min(choices.length - 1, rnd.randint(0, choices.length - 1));
+        const prod = choices[idx];
         let out = '';
         for (let i = 0; i < prod.length; i++) out += expand(prod[i], depth - 1);
         return out;

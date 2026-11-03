@@ -38,6 +38,7 @@
         // (drum machine, melody); independent of the WAV/PNG gate above.
         const midiOut = window.MidiExport && window.MidiExport.canExport(individual);
         if (this.lightboxExportMidi) this.lightboxExportMidi.style.display = midiOut ? '' : 'none';
+        this._prepareShareLink(individual);
         this.lightbox.classList.add('open');
         // The one-shot visualize() above draws a static frame; keep the zoomed
         // 3D view rotating too.
@@ -72,6 +73,7 @@
         this._endEditSession = individual.beginEditSession(canvas, {
             onEdit: () => this._renderLightboxInfo(individual, true),
             onGestureEnd: () => {
+                this._prepareShareLink(individual); // the edit changed the genome
                 if (individual._tileCanvas) {
                     try { individual.visualize(individual._tileCanvas); } catch (_) { }
                 }

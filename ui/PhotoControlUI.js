@@ -50,6 +50,7 @@ class PhotoControlUI {
                 this.drawPreview(preview);
                 // Keep the population; just re-render every individual on the new photo.
                 this.framework.invalidateAndRender();
+                this.framework.checkSharedSource('photo');
             } catch (err) {
                 console.warn('Photo load failed:', err);
                 status.textContent = 'Could not load that image';

@@ -28,7 +28,9 @@ node tests/run.js   # exits non-zero on any failure
 sandbox with minimal browser stubs (`window`, a no-op canvas 2D context, and
 `Palette`/`Photo`/`AudioClip` stubs) and exposes the individual classes; `tests/run.js`
 exercises the genetic operators, the render path, capability flags, and the
-save/load/export services for every type.
+save/load/export services and share-link round trip for every type. Checks that
+need `await` (share links compress via `CompressionStream`) use `checkAsync`,
+which queues them to run after the synchronous ones, before the summary.
 
 **IMPORTANT — keep the harness in sync with the code.** The concrete-class list
 is no longer hand-maintained: `INDIVIDUAL_CLASSES` is derived from
@@ -58,7 +60,7 @@ Source is grouped by role (all plain `<script>` globals — no build step, no mo
 | `individuals/` | every concrete `*Individual.js` plus the `RadialSurface3DIndividual.js` base |
 | `services/` | app-level `window.*` singletons: `Palette`, `Photo`, `AudioClip`, `ExpressionCompiler`, `MIDISync`, `OSCInput`, `SITLanguage`, `SITAnalysis`, `RoboParts` |
 | `ui/` | drawer panels (`*ControlUI.js`, `MIDISyncUI`, `OSCInputUI`, `SITAnalysisUI`, `CodeEditorUI`), `PerformanceControls.js`, and the two **app-wide** panels the framework mounts itself rather than attaching per type: `HelpOverlayUI` (the `?` overlay) and `EvolutionControlsUI` (the Evolution panel) |
-| `export/` | `ImageSave`, `MeshExport`, `AudioExport`, `MidiExport`, `ExportNaming` |
+| `export/` | `ImageSave`, `MeshExport`, `AudioExport`, `MidiExport`, `ExportNaming`, `ShareLink` |
 | `representations/` | `PTORepresentation`, `TreeRepresentation`, `DAGRepresentation`, `Grammar.js` |
 | `modalities/` | `Canvas2DModality`, `MIDIModality`, `AudioModality`, `ThreeDModality` |
 | `scripts/` | headless dev tools (preview renderers, `sit-music.js`, EEG sender, PTO repro) and `git-hooks/`. `scripts/lib/` holds the shared PNG writer and `canvas2d.js`, a minimal `CanvasRenderingContext2D` over that raster — the harness's canvas context draws nothing, so this is how a **2D** type gets eyeballed offline (paths/fill/stroke/transforms only, antialiased by supersampling; no clip, text or ImageData, so it suits path-drawing types, not pixel-pushing ones) |
@@ -411,6 +413,14 @@ animated type too heavy for a whole grid, so prefer vector drawing.
 ## Start page (landing) and the default type
 
 With no `#Type` in the URL (or an unknown one), the app opens on the **landing page** (`framework/Landing.js`): one live random individual from each of 16 randomly-chosen types, drawn with `EvolutionaryAlgorithm.createValid` exactly as a population's would be. Clicking a tile calls `setIndividualType(cls, { seed, pushHistory: true })`: a fresh run of that type with **that very individual** in slot 0 — deliberately **not** liked, since choosing a type is not a vote for that individual (`EvolutionaryAlgorithm.seed`, which also rewrites generation 0's history entry), and a pushed history entry so Back returns to the landing page. The landing page is an **overlay over the run**, not a replacement — the app title links to `#`, and Back/Forward/hand-edited hashes all go through the idempotent `_syncToHash()` (hashchange + popstate), which returns to the *same* population when the hash names the type already underneath. The tiles are not an EA population (mixed types' traces can't be crossed), so they live in their own list; hotkeys are off while it is up, and the hidden grid's 3D tiles idle (`canvas._landing` tells the two apart in `animate3DWithSharedScene`). Eligibility is the registry's: `hidden` types and those marked `landing: false` (need live input, or say little as a still) are never shown; a test asserts at least 16 remain.
+
+## Share links
+
+A share link carries one individual: `<app>#DrumMachine/<payload>` (`export/ShareLink.js`). The part before the slash is the ordinary type deep link (`InteractiveEAFramework.parseHash` splits them), so a link degrades to its type. The payload is one **format character** then the body; format `1` is base64url(deflate-raw(JSON)) of `{ app, type, phenoSig, genome, settings }` — the PNG provenance minus the phenotype snapshot. Deflate is not optional: a step sequencer's full trace is ~30 KB of JSON but ~4 KB deflated (worst types ~7 KB). A new encoding (e.g. values-only replayed positionally through PTO's tracer, which is what `Tracer.sample` already does by name) gets a new format character and old links keep decoding. `settings` is what the genome alone doesn't fix but changes what the sender saw/heard: the palette (if `usesColorPalette()`), the Performance dials the type declares, and, for a user-loaded photo/clip (which can't travel), its filename plus a fingerprint of its bytes (`ShareLink.fingerprint`: SHA-256 prefix, kept by `Photo`/`AudioClip` at load). The recipient is told which file to load; when they load one, `checkSharedSource` uses the fingerprint to say whether it really is that file (a name match alone can't: every phone has an IMG_0001.jpg). Bytes, not decoded pixels, because decoding and our resize may differ between browsers. Applying settings validates every value — a link is untrusted input.
+
+**Sending** never changes anything locally. The lightbox's ↗ Share builds the link when the zoom opens (and after an edit gesture), not on click, because `navigator.share`/clipboard must run inside the click's user activation. Touch → native share sheet; mouse → copy to clipboard.
+
+**Arrival** (`openSharedLink` in `ExportManager.js`, from `main.js` at startup or `_syncToHash` on a pasted link): decode → `applySettings` → `ImageSave.reconstruct` → `setIndividualType(C, { seed, family: true })` → `openZoom`. `family` makes `EvolutionaryAlgorithm.seed` fill the rest of generation 0 with **mutants of the shared individual**, mutation rate rising across the grid from ½× to 4× the current rate, so closing the zoom shows look-alikes. The seed is not liked. The type switch `replaceState`s the URL down to `#Type`, so a refresh after evolving doesn't jump back. **`ImageSave.reconstruct` is the one reconstruct path** (revive + phenotype-signature check) for file load and links alike; they differ only in what an unfaithful result means — file load refuses, a link loads with a warning ("made with a different version of Anemone"). The signature, not a hash of the generator source, is the version check: it also catches edits to the top-level tables a generator reads, and ignores edits that don't change the outcome. `tests/run.js` round-trips a link for **every registered type** — a generator whose genome stops surviving JSON (e.g. `rnd.choice` over production *arrays*, which then fail PTO's identity match) fails the suite.
 
 `AnemoneIndividual` (in `main.js`) is the class of the undrawn run that sits under the landing page at startup; it is only ever seen if the user lands on `#Anemone`.
 

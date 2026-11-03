@@ -83,10 +83,27 @@ class EvolutionaryAlgorithm {
     // a fresh generation 0, as if it had been drawn there. It is NOT liked: picking
     // a type is not a vote for that individual, so liking it stays the user's call.
     // The history entry is rewritten so time travel back to generation 0 sees it too.
-    seed(individual) {
-        const old = this.population[0];
-        if (old && old.stopMIDI) old.stopMIDI();
+    //
+    // With `family`, the rest of the generation becomes mutants of it (a shared
+    // link's arrival) instead of staying random: mutation strength rises across
+    // the grid from half to four times the current rate, so the tiles nearest the
+    // seed are close look-alikes and the far ones wander — the recipient's likely
+    // "more like this, but…" is already on screen.
+    seed(individual, { family = false } = {}) {
+        const n = this.population.length;
+        const replaced = family ? n : 1;
+        for (let i = 0; i < replaced; i++) {
+            const old = this.population[i];
+            if (old && old.stopMIDI) old.stopMIDI();
+        }
         this.population[0] = individual;
+        if (family) {
+            for (let i = 1; i < n; i++) {
+                const f = n > 2 ? (i - 1) / (n - 2) : 0;
+                const rate = Math.min(1, this.mutationRate * Math.pow(2, -1 + 3 * f));
+                this.population[i] = this.createValidMutant(individual, rate);
+            }
+        }
         this.history.pop();
         this.saveGeneration();
     }
@@ -117,11 +134,11 @@ class EvolutionaryAlgorithm {
     // Produce a single mutated variant of one parent (no crossover). Used when
     // exactly one individual is liked, so the whole next generation is mutants
     // of that individual.
-    createValidMutant(parent) {
+    createValidMutant(parent, rate = this.mutationRate) {
         const maxAttempts = 100;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const child = parent.clone();
-            child.mutate(this.mutationRate);
+            child.mutate(rate);
 
             if (child.setMidiOutput && this.midiOutput) {
                 child.setMidiOutput(this.midiOutput);

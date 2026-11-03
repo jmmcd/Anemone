@@ -29,6 +29,7 @@ class Photo {
         this._version = 0;
         this._userLoaded = false;
         this._name = 'built-in gradient';
+        this._fingerprint = null;
         this._source = this._createDefaultImage(); // immediate placeholder + offline fallback
         this._cache = new Map();                    // "WxH" → ImageData (for _cacheVersion)
         this._cacheVersion = 0;
@@ -45,6 +46,11 @@ class Photo {
 
     /** True once the *user* has loaded their own photo (vs. the default). */
     hasImage() { return this._userLoaded; }
+
+    // SHA-256 prefix of the user's file bytes (ShareLink.fingerprint), so a share
+    // link can say which photo it was made with and confirm a match. Null for the
+    // built-in default.
+    fingerprint() { return this._fingerprint; }
 
     // A colourful placeholder so PhotoFilterIndividuals show something evolvable
     // before any photo is loaded (and so the type is self-contained for demos).
@@ -100,10 +106,14 @@ class Photo {
      * image is decoded and installed (version bumped); the caller then re-renders.
      */
     async setImageFromFile(file) {
+        let fp = null;
+        try { fp = window.ShareLink ? await window.ShareLink.fingerprint(await file.arrayBuffer()) : null; }
+        catch (err) { console.warn('Fingerprint failed:', err); }
         const url = URL.createObjectURL(file);
         try {
             const img = await this._loadImage(url);
             this._installImage(img, file.name || 'photo', true);
+            this._fingerprint = fp;
         } finally {
             URL.revokeObjectURL(url);
         }
