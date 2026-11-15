@@ -1003,6 +1003,18 @@ console.log('\nLeeuwenberg coding language, read as music:');
         assert(piece.notes.length > 0, 'nested parallel rows should still sound');
         assert(ms < 2000, `interpreting nested parallel rows took ${ms}ms — the DAG is being walked as a tree`);
     });
+    check('an indicator over nested parallels copies the DAG, not the tree (DAG guard)', () => {
+        // | |, ⟨ ⟩ and ‾ ‾ deep-copy their stream to set a flag; _setFlag must
+        // memoise by array identity, as _countValues does. This code came out of
+        // the music generator (found by scripts/filter-stats.js): | | over an
+        // iterated parallel structure. Copied as a tree it exhausted a 4 GB heap.
+        const code = JSON.parse('{"k":"seq","items":[{"k":"seq","items":[{"k":"seq","items":[{"k":"num","a":0},{"k":"iter","ns":[3],"child":{"k":"num","a":0}}]},{"k":"seq","items":[{"k":"num","a":1},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]},{"k":"abs","child":{"k":"iter","ns":[6],"cross":false,"child":{"k":"par","rows":[{"k":"iter","ns":[5],"cross":false,"child":{"k":"seq","items":[{"k":"num","a":4},{"k":"iter","ns":[2],"child":{"k":"num","a":0}}]}},{"k":"op","op":"+","cross":false,"a":{"k":"chunk","child":{"k":"comb","a":{"k":"out","child":{"k":"iter","ns":[2,4],"cross":true,"child":{"k":"seq","items":[{"k":"num","a":0},{"k":"iter","ns":[2],"child":{"k":"num","a":0}}]}}},"b":{"k":"seq","items":[{"k":"num","a":5},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]}}},"b":{"k":"cont","child":{"k":"op","op":"x","cross":false,"a":{"k":"seq","items":[{"k":"num","a":-3},{"k":"iter","ns":[1],"child":{"k":"num","a":0}}]},"b":{"k":"rev","child":{"k":"rev","child":{"k":"seq","items":[{"k":"num","a":-1},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]}}}}}},{"k":"osi","ns":[4],"side":"r","a":{"k":"comb","a":{"k":"brk","child":{"k":"int","child":{"k":"brk","child":{"k":"seq","items":[{"k":"num","a":1},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]}}}},"b":{"k":"seq","items":[{"k":"num","a":-2},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]}},"b":{"k":"seq","items":[{"k":"num","a":-2},{"k":"iter","ns":[4],"child":{"k":"num","a":0}}]}}],"indep":[false,false,false],"every":[false,false,false]}}},{"k":"seq","items":[{"k":"num","a":1},{"k":"iter","ns":[3],"child":{"k":"num","a":0}}]},{"k":"seq","items":[{"k":"num","a":-2},{"k":"iter","ns":[5],"child":{"k":"num","a":0}}]},{"k":"out","child":{"k":"rev","child":{"k":"seq","items":[{"k":"num","a":1},{"k":"iter","ns":[2],"child":{"k":"num","a":0}}]}}}]},{"k":"iter","ns":[7,2],"cross":false,"child":{"k":"seq","items":[{"k":"num","a":-3},{"k":"hide","child":{"k":"iter","ns":[4],"child":{"k":"num","a":0}}}]}}]}');
+        const t0 = Date.now();
+        const items = SITLanguage.evaluate(code, 360 / 5);
+        const ms = Date.now() - t0;
+        assert(items.length > 0, 'the code should still produce items');
+        assert(ms < 2000, `evaluating took ${ms}ms — _setFlag is copying the DAG as a tree`);
+    });
 }
 
 console.log('\nLeeuwenberg code music individual:');
@@ -1825,13 +1837,55 @@ console.log('\nEvolution controls:');
         const parent = ea.population[0];
         const shape = (ind) => JSON.stringify(ind.phenotype);
         ea.mutationRate = 0;
+        ea.dedupe = 'off';      // with the duplicate filter on, an unchanged mutant is refused
         assert(shape(ea.createValidMutant(parent)) === shape(parent), 'rate 0 should produce no change');
+        ea.dedupe = 'phenotype';
         ea.mutationRate = 1;
         let differed = false;
         for (let i = 0; i < 5 && !differed; i++) {
             differed = shape(ea.createValidMutant(parent)) !== shape(parent);
         }
         assert(differed, 'rate 1 should change the phenotype');
+    });
+
+    check('mutation always changes at least one gene (no silent parent copies)', () => {
+        // SuperShape's trace is short, so position-wise selection at a low rate
+        // picks nothing most of the time; the operator must force one change.
+        const vals = (g) => JSON.stringify(Object.keys(g).map(k => [k, g[k].val]));
+        const parent = new classes.SuperShapeIndividual();
+        for (let i = 0; i < 200; i++) {
+            const child = parent.clone();
+            child.mutate(0.01);
+            assert(vals(child.genome) !== vals(parent.genome), `mutant ${i} has the parent's genotype`);
+        }
+        const same = parent.clone();
+        same.mutate(0);
+        assert(vals(same.genome) === vals(parent.genome), 'rate 0 should still mean no change');
+    });
+
+    check('the duplicate filter refuses repeats and counts what it saved', () => {
+        const ea = mkEA();
+        const shape = (ind) => JSON.stringify(ind.phenotype);
+        const parent = ea.population[0];
+        ea.mutationRate = 0;    // every mutant is a copy of its parent
+        const child = ea.createValidMutant(parent);
+        assert(shape(child) !== shape(parent), 'a copy of the parent should be refused (fallback is a fresh random)');
+        const m = ea.stats.mutation;
+        assert(m.dupParent === 100 && m.genoDup === 100 && m.phenoDup === 100, `100 parent copies should be counted, got ${JSON.stringify(m)}`);
+        assert(m.fallbacks === 1 && m.accepted === 0, 'the give-up should be counted as a fallback');
+        assert(ea.stats.init.accepted === 16 + 1, 'generation 0 plus the fallback draw are init acceptances');
+    });
+
+    check('a generation of distinct phenotypes after evolving (Grid)', () => {
+        const ea = mkEA();
+        for (let g = 0; g < 5; g++) {
+            ea.toggleLike(ea.population[0]);
+            ea.evolve();
+            // the elite is a deliberate copy, so compare only the bred slots
+            const bred = ea.population.slice(1).map(ind => JSON.stringify(ind.phenotype));
+            assert(new Set(bred).size === bred.length, `generation ${g + 1} has duplicate offspring`);
+        }
+        assert(ea.stats.mutation.accepted === 5 * 15, 'every bred slot is an accepted mutant');
     });
 
     check('evolve honours the population size that was set', () => {

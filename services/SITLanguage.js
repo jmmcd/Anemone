@@ -327,22 +327,32 @@ const SITLanguage = {
      * Descends into the structural markers too — a vanishing sign over a
      * parallel continuation must hide the copies it fans, not merely the marker
      * (figure 10h vanishes a whole star this way).
+     *
+     * Memoised by array identity, like _countValues and for the same reason: a
+     * parallel structure attaches ONE evaluated branch at every node, so the
+     * stream is a DAG, and copying it as a tree costs the product of the row
+     * lengths (a generated code with nested parallels exhausted a 4 GB heap
+     * here). The memo also keeps the copy's sharing identical to the original's.
      */
-    _setFlag(items, flag) {
-        return items.map(it => {
-            if (it.chunk) return { chunk: this._setFlag(it.chunk, flag) };
+    _setFlag(items, flag, memo = new Map()) {
+        if (memo.has(items)) return memo.get(items);
+        const out = [];
+        memo.set(items, out);
+        for (const it of items) {
+            if (it.chunk) { out.push({ chunk: this._setFlag(it.chunk, flag, memo) }); continue; }
             const copy = Object.assign({}, it);
             copy[flag] = true;
-            if (it.fan) copy.fan = Object.assign({}, it.fan, { sub: this._setFlag(it.fan.sub, flag) });
+            if (it.fan) copy.fan = Object.assign({}, it.fan, { sub: this._setFlag(it.fan.sub, flag, memo) });
             if (it.field) {
                 copy.field = {
-                    base: this._setFlag(it.field.base, flag),
-                    sub: this._setFlag(it.field.sub, flag),
+                    base: this._setFlag(it.field.base, flag, memo),
+                    sub: this._setFlag(it.field.sub, flag, memo),
                 };
             }
-            if (it.sub) copy.sub = this._setFlag(it.sub, flag);
-            return copy;
-        });
+            if (it.sub) copy.sub = this._setFlag(it.sub, flag, memo);
+            out.push(copy);
+        }
+        return out;
     },
 
     _gcd(a, b) { while (b) { const t = a % b; a = b; b = t; } return a; },

@@ -135,11 +135,35 @@ class PTORepresentation {
      * We implement this directly rather than calling PTO's mutatePositionWiseInd
      * because that hardcodes the per-entry probability to 1/n; in interactive EC
      * we want the caller's `rate` to control the mutation strength.
+     *
+     * At least one entry always changes (for any rate > 0). Position-wise
+     * selection alone picks NO entry with probability (1 − rate)^n — a third of
+     * all mutants of a 10-entry trace at rate 0.1 — and a mutant identical to its
+     * parent is a wasted tile. So if the draw changed nothing, one entry is forced
+     * to mutate, trying entries in random order: PTO's fine per-entry mutation
+     * always moves the value, except on a one-value pool or a zero-width range,
+     * which is skipped. (Measured by scripts/filter-stats.js: this was the bulk
+     * of the duplicates the EA's filter had been catching.)
      */
     mutate(geno, rate = 0.1) {
+        const keys = Object.keys(geno);
         const newGeno = {};
-        for (const key of Object.keys(geno)) {
-            newGeno[key] = Math.random() < rate ? geno[key].mutation() : geno[key];
+        let changed = false;
+        for (const key of keys) {
+            if (Math.random() < rate) {
+                newGeno[key] = geno[key].mutation();
+                if (newGeno[key].val !== geno[key].val) changed = true;
+            } else {
+                newGeno[key] = geno[key];
+            }
+        }
+        if (!changed && rate > 0) {
+            for (let i = keys.length - 1; i >= 0; i--) {      // random order, without repeats
+                const j = Math.floor(Math.random() * (i + 1));
+                [keys[i], keys[j]] = [keys[j], keys[i]];
+                const m = geno[keys[i]].mutation();
+                if (m.val !== geno[keys[i]].val) { newGeno[keys[i]] = m; break; }
+            }
         }
         return this._remember(this.op().fixInd(newGeno));
     }

@@ -20,10 +20,31 @@ class EvolutionaryAlgorithm {
         // it backs the "export all liked" feature. Deduped by id in toggleLike.
         this.likedArchive = [];
 
+        // Duplicate filtering. 'phenotype' (default) rejects a new candidate whose
+        // expressed phenotype has already been shown in this run; 'genotype'
+        // rejects only an identical trace; 'off' admits duplicates. Elite and
+        // locked clones are deliberate copies and are never checked. A rejected
+        // candidate is redrawn, exactly as an invalid one is — duplicates are
+        // wasted user attention just as trivial individuals are.
+        this.dedupe = EvolutionaryAlgorithm.DEFAULT_DEDUPE;
+        this._resetBookkeeping();
+
         this.initializePopulation();
     }
-    
+
+    // Run-level bookkeeping: the identity keys of everything shown so far, and
+    // the counters (EvolutionaryAlgorithm.emptyStats) that record what the
+    // filters saved the user from. scripts/filter-stats.js reads `stats`.
+    _resetBookkeeping() {
+        this._seenGeno = new Set();
+        this._seenPheno = new Set();
+        this._batch = new Set();      // level keys of the generation being built
+        this.stats = EvolutionaryAlgorithm.emptyStats();
+    }
+
     initializePopulation(carried = []) {
+        this._batch = new Set();
+        carried.forEach(ind => this._register(ind));
         this.population = carried.slice(0, this.populationSize);
         while (this.population.length < this.populationSize) {
             const individual = this.createValidIndividual();
@@ -52,8 +73,120 @@ class EvolutionaryAlgorithm {
         return true;
     }
 
+    // ---- Candidate admission (validity + duplicate filters) ----------------
+    //
+    // Every newly bred or drawn candidate passes through _admit(). The duplicate
+    // check runs FIRST because it is cheap (a hash of the phenotype) where some
+    // validate()s build geometry; the order hardly changes the counts, because
+    // everything already seen passed validate() and validate() is a function of
+    // the phenotype — so a phenotype duplicate is (almost) never also invalid.
+
+    // Identity keys of an individual, cached against its genome object (mutate
+    // and crossover assign a new genome, so a stale cache cannot survive them).
+    static identityKeys(ind) {
+        if (ind._idKeys && ind._idKeys.genome === ind.genome) return ind._idKeys;
+        const keys = {
+            genome: ind.genome,
+            geno: EvolutionaryAlgorithm._genotypeKey(ind.genome),
+            pheno: EvolutionaryAlgorithm._phenotypeKey(ind),
+        };
+        ind._idKeys = keys;
+        return keys;
+    }
+
+    // A PTO trace is a dict name → {funName, args, val, mode}; two traces are the
+    // same genotype iff they record the same values under the same names. (args
+    // and mode are fixed by the generator's call site, so they add nothing.)
+    static _genotypeKey(genome) {
+        let str;
+        try {
+            if (genome && typeof genome === 'object' && !Array.isArray(genome)) {
+                str = Object.keys(genome).map(k => {
+                    const e = genome[k];
+                    return k + '=' + JSON.stringify(e && typeof e === 'object' && 'val' in e ? e.val : e);
+                }).join('|');
+            } else {
+                str = JSON.stringify(genome);
+            }
+        } catch (e) { return null; }
+        return str == null ? null : EvolutionaryAlgorithm._hash(str);
+    }
+
+    // The raw generator output (this.phenotype), not getPhenotype(): that is the
+    // phenotype as the representation defines it, and some getPhenotype()
+    // overrides do real work (executing a turtle program) we need not repeat.
+    static _phenotypeKey(ind) {
+        let str;
+        try { str = JSON.stringify(ind.phenotype); } catch (e) { return null; }
+        return str == null ? null : EvolutionaryAlgorithm._hash(str);
+    }
+
+    // cyrb53: a 53-bit string hash. 32 bits (FNV, as in the phenotype signature)
+    // would give a ~1e-3 chance of a false duplicate somewhere in a long run;
+    // 53 bits makes that negligible without storing whole phenotypes.
+    static _hash(str) {
+        let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+        for (let i = 0; i < str.length; i++) {
+            const ch = str.charCodeAt(i);
+            h1 = Math.imul(h1 ^ ch, 2654435761);
+            h2 = Math.imul(h2 ^ ch, 1597334677);
+        }
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+        return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+    }
+
+    _levelKey(keys) {
+        return this.dedupe === 'genotype' ? keys.geno : keys.pheno;
+    }
+
+    // Record an individual as shown (on screen in some generation of this run).
+    _register(ind) {
+        const keys = EvolutionaryAlgorithm.identityKeys(ind);
+        if (keys.geno != null) this._seenGeno.add(keys.geno);
+        if (keys.pheno != null) this._seenPheno.add(keys.pheno);
+        const k = this._levelKey(keys);
+        if (k != null) this._batch.add(k);
+    }
+
+    // Judge one candidate from `source` ('init' | 'mutation' | 'crossover'),
+    // bred from `parents` (empty for a fresh random one). Records the outcome in
+    // this.stats and, if admitted, registers it as shown. Returns true to admit.
+    _admit(ind, source, parents = []) {
+        const s = this.stats[source];
+        s.candidates++;
+        const keys = EvolutionaryAlgorithm.identityKeys(ind);
+        // Measured regardless of the filter level, so one run reports both.
+        const genoDup = keys.geno != null && this._seenGeno.has(keys.geno);
+        const phenoDup = keys.pheno != null && this._seenPheno.has(keys.pheno);
+        if (genoDup) s.genoDup++;
+        if (phenoDup) s.phenoDup++;
+
+        if (this.dedupe !== 'off' && (this.dedupe === 'genotype' ? genoDup : phenoDup)) {
+            const k = this._levelKey(keys);
+            if (parents.some(p => this._levelKey(EvolutionaryAlgorithm.identityKeys(p)) === k)) s.dupParent++;
+            else if (this._batch.has(k)) s.dupSibling++;
+            else s.dupEarlier++;
+            return false;
+        }
+        if (!ind.validate()) { s.invalid++; return false; }
+        s.accepted++;
+        this._register(ind);
+        return true;
+    }
+
     createValidIndividual() {
-        return EvolutionaryAlgorithm.createValid(this.individualClass, this.midiOutput);
+        const maxAttempts = 100;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const individual = new this.individualClass();
+            if (individual.setMidiOutput && this.midiOutput) individual.setMidiOutput(this.midiOutput);
+            if (this._admit(individual, 'init')) return individual;
+        }
+        // Give up on novelty, not on validity: a valid repeat beats a broken tile.
+        this.stats.init.fallbacks++;
+        const fallback = EvolutionaryAlgorithm.createValid(this.individualClass, this.midiOutput);
+        this._register(fallback);
+        return fallback;
     }
 
     // A fresh random individual of `individualClass` that passes validate(). Static
@@ -97,6 +230,7 @@ class EvolutionaryAlgorithm {
             if (old && old.stopMIDI) old.stopMIDI();
         }
         this.population[0] = individual;
+        this._register(individual);
         if (family) {
             for (let i = 1; i < n; i++) {
                 const f = n > 2 ? (i - 1) / (n - 2) : 0;
@@ -108,27 +242,27 @@ class EvolutionaryAlgorithm {
         this.saveGeneration();
     }
 
-    createValidChildren(parent1, parent2) {
+    // Breed `needed` (1 or 2) admitted children from two parents. Children are
+    // admitted individually: a crossover whose first child is fine and second a
+    // duplicate keeps the first, rather than throwing the pair away.
+    createValidChildren(parent1, parent2, needed = 2) {
         const maxAttempts = 100;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const [child1, child2] = parent1.crossover(parent2);
-            child1.mutate(this.mutationRate);
-            child2.mutate(this.mutationRate);
-
-            if (child1.setMidiOutput && this.midiOutput) {
-                child1.setMidiOutput(this.midiOutput);
-            }
-            if (child2.setMidiOutput && this.midiOutput) {
-                child2.setMidiOutput(this.midiOutput);
-            }
-
-            if (child1.validate() && child2.validate()) {
-                return [child1, child2];
+        const out = [];
+        for (let attempt = 0; attempt < maxAttempts && out.length < needed; attempt++) {
+            const children = parent1.crossover(parent2);
+            for (const child of children) {
+                if (out.length >= needed) break;
+                child.mutate(this.mutationRate);
+                if (child.setMidiOutput && this.midiOutput) child.setMidiOutput(this.midiOutput);
+                if (this._admit(child, 'crossover', [parent1, parent2])) out.push(child);
             }
         }
-
-        console.warn(`Unable to produce two valid children for ${this.individualClass.name} after ${maxAttempts} attempts; using fallback individuals.`);
-        return [this.createValidIndividual(), this.createValidIndividual()];
+        if (out.length < needed) {
+            console.warn(`Unable to produce ${needed} valid, novel children for ${this.individualClass.name} after ${maxAttempts} attempts; using fallback individuals.`);
+            this.stats.crossover.fallbacks++;
+            while (out.length < needed) out.push(this.createValidIndividual());
+        }
+        return out;
     }
 
     // Produce a single mutated variant of one parent (no crossover). Used when
@@ -144,12 +278,13 @@ class EvolutionaryAlgorithm {
                 child.setMidiOutput(this.midiOutput);
             }
 
-            if (child.validate()) {
+            if (this._admit(child, 'mutation', [parent])) {
                 return child;
             }
         }
 
-        console.warn(`Unable to produce a valid mutant for ${this.individualClass.name} after ${maxAttempts} attempts; using a fallback individual.`);
+        console.warn(`Unable to produce a valid, novel mutant for ${this.individualClass.name} after ${maxAttempts} attempts; using a fallback individual.`);
+        this.stats.mutation.fallbacks++;
         return this.createValidIndividual();
     }
 
@@ -192,6 +327,8 @@ class EvolutionaryAlgorithm {
         const singleParent = this.selectedIndividuals.length === 1;
 
         const newPopulation = [...carried];
+        this._batch = new Set();
+        carried.forEach(ind => this._register(ind));
 
         const elite = this.selectedIndividuals.slice(0, 2);
         const eliteClones = elite.map(ind => {
@@ -202,7 +339,9 @@ class EvolutionaryAlgorithm {
             console.log(`Elite clone: ${ind.constructor.name} -> ${clone.constructor.name}`);
             return clone.validate() ? clone : this.createValidIndividual();
         });
-        newPopulation.push(...eliteClones.slice(0, Math.max(0, this.populationSize - newPopulation.length)));
+        const elitesKept = eliteClones.slice(0, Math.max(0, this.populationSize - newPopulation.length));
+        elitesKept.forEach(ind => this._register(ind));
+        newPopulation.push(...elitesKept);
 
         while (newPopulation.length < this.populationSize) {
             if (singleParent) {
@@ -215,13 +354,8 @@ class EvolutionaryAlgorithm {
 
             console.log(`Parents: ${parent1.constructor.name}, ${parent2.constructor.name}`);
 
-            const [child1, child2] = this.createValidChildren(parent1, parent2);
-            console.log(`Children: ${child1.constructor.name}, ${child2.constructor.name}`);
-
-            newPopulation.push(child1);
-            if (newPopulation.length < this.populationSize) {
-                newPopulation.push(child2);
-            }
+            const needed = Math.min(2, this.populationSize - newPopulation.length);
+            newPopulation.push(...this.createValidChildren(parent1, parent2, needed));
         }
 
         console.log(`Final population types: ${newPopulation.map(ind => ind.constructor.name).join(', ')}`);
@@ -332,6 +466,7 @@ class EvolutionaryAlgorithm {
         this.history = [];
         this.selectedIndividuals = [];
         this.likedArchive = [];
+        this._resetBookkeeping();
         this.initializePopulation();
     }
     
@@ -345,3 +480,24 @@ class EvolutionaryAlgorithm {
 // squares so the grid stays square (see --grid-cols in styles.css).
 EvolutionaryAlgorithm.DEFAULT_MUTATION_RATE = 0.1;
 EvolutionaryAlgorithm.POPULATION_SIZES = [9, 16, 25];
+// Duplicate filter level: 'phenotype' | 'genotype' | 'off' (see the constructor).
+EvolutionaryAlgorithm.DEDUPE_LEVELS = ['phenotype', 'genotype', 'off'];
+EvolutionaryAlgorithm.DEFAULT_DEDUPE = 'phenotype';
+// Per-source counters of what the filters did. Sources: 'init' (fresh random
+// draws: generation 0, re-rolls with no likes, padding), 'mutation' (one like:
+// a mutant of it), 'crossover' (two or more likes: crossover + mutation).
+//   candidates  — individuals generated and judged
+//   accepted    — admitted to the population (shown to the user)
+//   invalid     — rejected by validate()
+//   dupParent / dupSibling / dupEarlier — rejected as a duplicate (at the
+//                 filter level) of one of its own parents / of another member
+//                 of the generation being built / of anything shown earlier
+//   genoDup, phenoDup — candidates that WERE a genotype / phenotype duplicate,
+//                 counted whatever the filter level (phenoDup − genoDup is
+//                 neutral variation: a new trace that expresses an old phenotype)
+//   fallbacks   — times 100 attempts failed and a random valid one was used
+EvolutionaryAlgorithm.emptyStats = () => {
+    const blank = () => ({ candidates: 0, accepted: 0, invalid: 0,
+        dupParent: 0, dupSibling: 0, dupEarlier: 0, genoDup: 0, phenoDup: 0, fallbacks: 0 });
+    return { init: blank(), mutation: blank(), crossover: blank() };
+};
