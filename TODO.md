@@ -26,6 +26,8 @@
 
 * "Injection" or active intervention is a key feature. It partly works in Anemone drum machine and melody. EndlessForms had an interesting different approach: "The technical insight is to inject the distance to the surface of the object [the user's uploaded object] as an input [ie a variable] to the CPPN." (https://ieeexplore.ieee.org/abstract/document/6557986). Other options can include eg non-interactive search to try to match the user's object, direct backward inference via the generator...
 
+* Lock not just individuals but features. This relates to the injection or backward mapping.
+
 
 # NEW APPLICATIONS
 
