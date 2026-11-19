@@ -129,8 +129,8 @@ class MIDIModality {
      * buffer loop is the fallback when no output is available).
      *
      * seq = { bpm, ppq, loopTicks, notes:[{ pitch, velocity, start, duration, channel }] }.
-     * Uses a lookahead scheduler: a short interval schedules note-on/off for every loop
-     * iteration entering a ~120 ms horizon via output.send(bytes, timestampMs). Web MIDI
+     * Uses a lookahead scheduler: a short interval schedules note-on/off for every note
+     * whose onset enters a ~120 ms horizon via output.send(bytes, timestampMs). Web MIDI
      * timestamps are in the performance.now() domain — the same clock the transport uses,
      * so loops stay phase-aligned. Returns false (a no-op) if there's no MIDI output, so
      * the caller can fall back to synthesised audio.
@@ -146,17 +146,30 @@ class MIDIModality {
         const now0 = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
         const phase = transport ? transport.phase(loopSec) : 0;
         const t0 = now0 - phase;   // virtual bar-0 start (seconds), so we enter at `phase`
-        let nextLoop = 0;
 
+        // Only notes whose note-on falls inside the lookahead window are sent,
+        // window by window. A message sent with a future timestamp can't be
+        // recalled (MIDIOutput.clear() is not reliably implemented), so handing
+        // the browser a whole loop at once meant that Stop let the rest of the
+        // bar play out on the receiving DAW. Now at most LOOKAHEAD of note-ons is
+        // in flight. (A note-off may be queued further ahead; a stray note-off
+        // after the all-notes-off on stop is harmless.)
+        let from = now0;           // everything before this is already scheduled
+        let first = true;
         const tick = () => {
             const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
             const horizon = now + LOOKAHEAD;
-            while (t0 + nextLoop * loopSec < horizon) {
-                const base = t0 + nextLoop * loopSec;
+            if (horizon <= from) return;
+            for (let k = Math.floor((from - t0) / loopSec); t0 + k * loopSec < horizon; k++) {
+                const base = t0 + k * loopSec;
                 for (const n of seq.notes) {
                     const on = base + n.start * tickSec;
                     const off = base + (n.start + n.duration) * tickSec;
-                    if (off <= now) continue;                       // already elapsed
+                    const startsInWindow = on >= from && on < horizon;
+                    // Entering mid-loop: a note already sounding at the entry point
+                    // starts now, as the audio path would play it.
+                    const sounding = first && on < from && off > from;
+                    if (!startsInWindow && !sounding) continue;
                     const ch = (n.channel || 0) & 0x0f;
                     const pitch = Math.max(0, Math.min(127, Math.round(n.pitch)));
                     const vel = Math.max(1, Math.min(127, Math.round(n.velocity)));
@@ -165,8 +178,9 @@ class MIDIModality {
                         out.send([0x80 | ch, pitch, 0], off * 1000);
                     } catch (e) { /* send failed — skip this note */ }
                 }
-                nextLoop++;
             }
+            from = horizon;
+            first = false;
         };
         tick();
         this._seqTimer = setInterval(tick, 25);

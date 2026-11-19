@@ -2749,6 +2749,41 @@ check('describe() names the parts and credits the artist (CC-BY)', () => {
     assert(/David Revoy/.test(text), 'CC-BY artwork must carry attribution in the app');
 });
 
+// --- Live MIDI sequence scheduling ---
+// Messages sent with a future timestamp cannot be recalled, so the scheduler
+// must only ever have the lookahead window's note-ons in flight: otherwise Stop
+// lets the rest of the bar play out on the receiving DAW.
+console.log('\nLive MIDI sequence scheduling:');
+check('playSequence sends each note-on once, only within the lookahead, and nothing after stop', () => {
+    const env = load();
+    let T = 0, timer = null;
+    env.sandbox.performance.now = () => T * 1000;
+    env.sandbox.setInterval = (fn) => { timer = fn; return 1; };
+    env.sandbox.clearInterval = () => { timer = null; };
+    const sent = [];
+    const m = new env.MIDIModality();
+    m.midiOutput = { send: (bytes, ts) => sent.push({ bytes, ts: ts === undefined ? T * 1000 : ts, at: T }) };
+    // 120 bpm, ppq 4: a tick is 0.125 s; a 16-tick (2 s) loop with 8 notes.
+    const notes = [];
+    for (let i = 0; i < 8; i++) notes.push({ pitch: 60 + i, velocity: 100, start: i * 2, duration: 1 });
+    m.playSequence({ bpm: 120, ppq: 4, loopTicks: 16, notes }, null);
+    const ons = () => sent.filter(e => (e.bytes[0] & 0xf0) === 0x90);
+    for (const e of ons()) assert(e.ts / 1000 - e.at <= 0.12 + 1e-9, `a note-on was queued ${e.ts / 1000 - e.at}s ahead`);
+    for (T = 0.025; T < 4.0; T += 0.025) timer();            // two full loops, 25 ms ticks
+    const times = ons().map(e => Math.round(e.ts) / 1000);
+    for (const e of ons()) assert(e.ts / 1000 - e.at <= 0.12 + 1e-9, 'every note-on stays inside the lookahead');
+    assert(new Set(times).size === times.length, 'no note-on is sent twice');
+    for (let k = 0; k < 2; k++) for (let i = 0; i < 8; i++) {
+        const t = k * 2 + i * 0.25;
+        assert(times.some(x => Math.abs(x - t) < 1e-6), `missing note-on at ${t}s`);
+    }
+    m.stopSequence();
+    const before = ons().length;
+    assert(timer === null, 'stop clears the scheduler');
+    assert(!ons().some(e => e.ts / 1000 > T + 0.12 + 1e-9), 'nothing beyond the lookahead was queued before stop');
+    assert(ons().length === before, 'nothing is sent after stop');
+});
+
 // --- Shared MIDI modality ---
 // All sound individuals reference the framework's single shared MIDIModality
 // (rather than each constructing their own AudioContext), and clones keep that
