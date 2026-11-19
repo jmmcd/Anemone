@@ -16,13 +16,10 @@ const shapesGenerator = (rnd) => { const bytes = []; for (let i = 0; i < 60; i++
 const shapesRepresentation = new PTORepresentation(shapesGenerator);
 
 class ShapesIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = shapesRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = shapesRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     getPhenotype() {
         const commands = [];

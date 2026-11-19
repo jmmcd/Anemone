@@ -52,15 +52,13 @@ const blindWatchmakerGenerator = (rnd) => {
 const blindWatchmakerRepresentation = new PTORepresentation(blindWatchmakerGenerator);
 
 class BlindWatchmakerIndividual extends Individual {
+    static representation = blindWatchmakerRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+
     // this.genome is the PTO trace; this.phenotype (inherited) is the {genes,
     // depth} object the generator produced. mutate/crossover/clone are inherited.
-    constructor(genome = null) {
-        super();
-        this.representation = blindWatchmakerRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
 
     validate() {
         return this.buildPaths().length > 0;

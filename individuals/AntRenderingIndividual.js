@@ -52,14 +52,11 @@ const antRenderingGenerator = (rnd) => {
 const antRenderingRepresentation = new PTORepresentation(antRenderingGenerator);
 
 class AntRenderingIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = antRenderingRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; } // 'palette' colour mode maps luminance → palette
-    usesPhoto() { return true; }        // attaches the Photo panel; walks the shared photo
+    static representation = antRenderingRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // 'palette' colour mode maps luminance → palette
+        usesPhoto: true, // attaches the Photo panel; walks the shared photo
+    };
 
     renderKey() {
         return JSON.stringify(this.phenotype) + '|photo' + window.Photo.version()

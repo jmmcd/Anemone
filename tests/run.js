@@ -193,6 +193,51 @@ console.log('\nFramework hotkey table + partial-class split:');
     });
 }
 
+// --- Declarative subclasses (static representation + capabilities) ---
+console.log('\nDeclarative subclasses (static representation / capabilities):');
+{
+    const FLAG_METHODS = Object.keys(Individual.DEFAULT_CAPABILITIES);
+
+    check('every type names a representation and the constructor installs it', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const C = classes[name];
+            assert(C.representation, `${name} has no static representation`);
+            const ind = new C();
+            assert(ind.representation === C.representation, `${name}: instance representation is not the shared one`);
+            const again = new C(ind.genome);
+            assert(again.genome === ind.genome, `${name}: a given genome must be kept, not redrawn`);
+        }
+    });
+
+    check('capability flags are declared, not overridden as methods', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            for (let P = classes[name].prototype; P && P !== Individual.prototype; P = Object.getPrototypeOf(P)) {
+                for (const f of FLAG_METHODS) {
+                    assert(!Object.prototype.hasOwnProperty.call(P, f),
+                        `${P.constructor.name} overrides ${f}(); declare it in static capabilities instead`);
+                }
+            }
+        }
+    });
+
+    check('capabilities merge down the class chain', () => {
+        const c2 = classes.SITCodeIndividual, c3 = classes.SITCode3DIndividual;
+        assert(new c2().usesColorPalette() && !new c2().is3D(), 'SITCode: palette, 2D');
+        assert(new c3().usesColorPalette() && new c3().is3D(), 'SITCode3D inherits palette and adds is3D');
+        assert(new classes.EEGSonificationIndividual().usesMIDISync(), 'EEG inherits MIDI sync from MouseMusic');
+        assert(new classes.CatIndividual().isEditable(), 'explicit isEditable');
+        assert(new classes.DrumMachineIndividual().isEditable(), 'isEditable defaults to isGridEditable');
+        assert(!new classes.GridIndividual().isEditable(), 'not editable by default');
+    });
+
+    check('an unknown capability key is an error, not silently ignored', () => {
+        class Typo extends Individual { static capabilities = { usesColourPalette: true }; }
+        let threw = false;
+        try { Typo.caps(); } catch (e) { threw = /unknown capability/.test(e.message); }
+        assert(threw, 'a misspelt capability must throw');
+    });
+}
+
 // --- Genetic operators ---
 console.log('\nGenetic operators (construct / mutate / crossover / clone):');
 for (const name of INDIVIDUAL_CLASSES) {

@@ -222,14 +222,16 @@ const leeGenerator3D = (rnd) => {
 const leeRepresentation3D = new PTORepresentation(leeGenerator3D);
 
 class SITCode3DIndividual extends SITCodeIndividual {
+    static capabilities = {
+        is3D: true,
+    };
+
     constructor(genome = null) {
         super(genome);
         this.threeDModality = new ThreeDModality();
     }
 
-    defaultRepresentation() { return leeRepresentation3D; }
-
-    is3D() { return true; }
+    static representation = leeRepresentation3D;
 
     /** The interpreted figure: drawn segments plus the branch grids. Cached. */
     figure() {

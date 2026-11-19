@@ -13,11 +13,13 @@
 const patternTreeRepresentation = new PTORepresentation(treeGenerator);
 
 class PatternIndividual extends Individual {
-    constructor(genome = null) {
-        // Skip automatic genome generation
-        super();
+    static representation = patternTreeRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-        this.representation = patternTreeRepresentation;
+    constructor(genome = null) {
+        super(genome);
 
         // Configure 2D canvas renderer
         this.canvasRenderer = new Canvas2DModality({
@@ -28,10 +30,7 @@ class PatternIndividual extends Individual {
             })
         });
 
-        this.genome = genome || this.representation.generateRandom();
     }
-
-    usesColorPalette() { return true; }
 
     // The evaluable node tree, built (and cached per trace) from the plain-data
     // phenotype. this.phenotype stays the raw plain-data tree PTO produced.

@@ -204,19 +204,21 @@ const DRUM_HAT_CHANNELS = [2, 3];              // chh, ohh — one physical hat 
 const DRUM_CHANNEL_GAIN = [1, 1, 1, 1, 0.5, 0.5, 0.3, 0.3]; // tom/cowbell sit further back
 
 class DrumMachineIndividual extends Individual {
+    static representation = drumMachineRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // rows are palette-coloured
+        usesPerformanceControls: true, // attaches the global Performance panel
+        performanceDials: ['bpm', 'swing', 'humanize', 'drive', 'length'],
+        usesMIDISync: true, // attaches the MIDI Clock Sync panel
+        isGridEditable: true, // click/drag cell editing in the zoom (see below)
+    };
+
     constructor(genome = null) {
-        super();
-        this.representation = drumMachineRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         // Shared buffer/graph playback modality (local fallback for tests).
         this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
         this.isPlaying = false;
     }
-
-    usesColorPalette() { return true; }        // rows are palette-coloured
-    usesPerformanceControls() { return true; } // attaches the global Performance panel
-    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive', 'length']; }
-    usesMIDISync() { return true; }            // attaches the MIDI Clock Sync panel
 
     // Effective bar length in steps: the genome's `length` gene, unless the global
     // "Length" override is locked (the default, forcing 16). Shared concept with the
@@ -320,7 +322,6 @@ class DrumMachineIndividual extends Individual {
     // click/drag it in the zoom lightbox. Each edit is written to the addressable
     // per-cell genes (hit_c_s / vel_c_s) via representation.setGene, so evolution
     // continues from the edited genome (see the header's EDITABLE LOOPS note).
-    isGridEditable() { return true; }
 
     // Map a canvas pixel (already in canvas coordinate space) to { c, s }, or null
     // if outside the grid. Inverse of the layout used by visualize().

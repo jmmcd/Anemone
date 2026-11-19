@@ -102,15 +102,16 @@ function waterTowerExprString(e) {
 }
 
 class WaterTowerIndividual extends Individual {
+    static representation = waterTowerRepresentation;
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = waterTowerRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.tubeSides = 6;
     }
-
-    is3D() { return true; }
-    usesColorPalette() { return true; }
 
     // The graph: { nodes: [{ xyz, layer, idx }], edges: [[a, b]], layers: [[ids]] }.
     // A pure function of the phenotype, memoised on it (phenotypes are cached

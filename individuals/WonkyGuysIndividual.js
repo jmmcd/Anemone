@@ -254,11 +254,7 @@ const wonkyDraw = new Editable(function (self, ctx, width, height) {
 });
 
 class WonkyGuysIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = wonkyRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = wonkyRepresentation;
 
     // The generator is a flat parameter vector (still worth tweaking); the draw
     // function is where the character actually lives. Expose both, draw first.

@@ -63,11 +63,11 @@ const superShape3DGenerator = (rnd) => {
 const superShape3DRepresentation = new PTORepresentation(superShape3DGenerator);
 
 class SuperShape3DIndividual extends RadialSurface3DIndividual {
+    static representation = superShape3DRepresentation;
+
     constructor(genome = null) {
-        super();
-        this.representation = superShape3DRepresentation;
+        super(genome);
         this.radiusEps = 0; // Gielis formula is already positive/bounded
-        this.genome = genome || this.representation.generateRandom();
     }
 
     // Readable summary instead of the raw superformula strings.

@@ -61,11 +61,10 @@ const SHEEP_TRAIT_RANGES = {
 };
 
 class SheepIndividual extends Individual {
-    constructor(genome = null) {
-        super();
+    static representation = sheepRepresentation;
 
-        this.representation = sheepRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+    constructor(genome = null) {
+        super(genome);
 
         // Expose the fixed network (tests check the shapes).
         this.hiddenSize = SHEEP_W_HIDDEN.length;

@@ -11,13 +11,10 @@ const gridGenerator = (rnd) => { const cells = []; for (let i = 0; i < 64; i++) 
 const gridRepresentation = new PTORepresentation(gridGenerator);
 
 class GridIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = gridRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = gridRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     visualize(canvas) {
         const ctx = canvas.getContext('2d');

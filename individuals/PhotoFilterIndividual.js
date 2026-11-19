@@ -69,14 +69,11 @@ const photoFilterGenerator = (rnd) => {
 const photoFilterRepresentation = new PTORepresentation(photoFilterGenerator);
 
 class PhotoFilterIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = photoFilterRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; } // gradientMap / tint / edgeHue use the palette
-    usesPhoto() { return true; }        // attaches the Photo panel
+    static representation = photoFilterRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // gradientMap / tint / edgeHue use the palette
+        usesPhoto: true, // attaches the Photo panel
+    };
 
     renderKey() {
         return JSON.stringify(this.phenotype) + '|photo' + window.Photo.version()

@@ -125,19 +125,20 @@ const endlessFormsGenerator = (rnd) => {
 const endlessFormsRepresentation = new PTORepresentation(endlessFormsGenerator);
 
 class EndlessFormsIndividual extends Individual {
+    static representation = endlessFormsRepresentation;
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = endlessFormsRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.threeDModality = new ThreeDModality();
         this.gx = EF_GRID;
         this.gz = EF_GRID;
         this.gy = EF_GRID_Y;
         this.yspan = EF_GRID_Y / EF_GRID; // taller query domain, cubic voxels
     }
-
-    is3D()             { return true; }
-    usesColorPalette() { return true; }
 
     // Reject degenerate forms so the grid shows interesting sculptures:
     //   1. an output depending on <2 spatial inputs is always a slab (one axis),

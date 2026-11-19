@@ -69,24 +69,25 @@ const melodyGenerator = (rnd) => {
 const melodyRepresentation = new PTORepresentation(melodyGenerator);
 
 class MelodyIndividual extends Individual {
+    static representation = melodyRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // rows are palette-coloured
+        usesPerformanceControls: true, // attaches the global Performance panel
+        performanceDials: ['bpm', 'swing', 'length'],
+        usesMIDISync: true, // attaches the MIDI Clock Sync panel
+        isGridEditable: true,
+        // The melody's artefact is the sound (MIDI/audio), not the piano-roll tile.
+        usesImageSave: false,
+    };
+
     constructor(genome = null) {
-        super();
-        this.representation = melodyRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         // Shared output modalities (local fallbacks for tests): notes → MIDI, else synth.
         const fw = (typeof window !== 'undefined') && window.framework;
         this.midiModality = (fw && fw.sharedMIDI) || new MIDIModality();
         this.audio = (fw && fw.sharedAudio) || new AudioModality();
         this.isPlaying = false;
     }
-
-    usesColorPalette() { return true; }        // rows are palette-coloured
-    usesPerformanceControls() { return true; } // attaches the global Performance panel
-    performanceDials() { return ['bpm', 'swing', 'length']; }
-    usesMIDISync() { return true; }            // attaches the MIDI Clock Sync panel
-    isGridEditable() { return true; }
-    // The melody's artefact is the sound (MIDI/audio), not the piano-roll tile.
-    usesImageSave() { return false; }
 
     // Audible MIDI velocity (1–127) from a cell's stored seed (seed ∈ [0.6,1]).
     _velocity(seed) { return Math.max(1, Math.min(127, Math.round(seed * 127))); }

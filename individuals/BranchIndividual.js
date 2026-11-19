@@ -67,13 +67,10 @@ const branchGenerator = (rnd) => {
 const branchRepresentation = new PTORepresentation(branchGenerator);
 
 class BranchIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = branchRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = branchRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     validate() {
         return this.buildPaths().length > 0;

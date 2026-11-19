@@ -21,15 +21,16 @@ const supershapeGenerator = (rnd) => [
 const supershapeRepresentation = new PTORepresentation(supershapeGenerator);
 
 class SuperShapeIndividual extends Individual {
+    static representation = supershapeRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super();
-        this.representation = supershapeRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.numPoints = 1000;
         this.phiRange = 2 * Math.PI;
     }
-
-    usesColorPalette() { return true; }
 
     getParameters() {
         // Extract parameters from genome: [m_numerator, m_denominator, n1, n2, n3, a, b]

@@ -406,11 +406,7 @@ function rsRefLabel(ref) {
 const rsDrawingCache = new WeakMap();
 
 class ReflectiveSketchIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = reflectiveSketchRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = reflectiveSketchRepresentation;
 
     /** The resolved drawing: strokes with control points + the crossings registry. */
     drawing() {

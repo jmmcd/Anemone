@@ -21,7 +21,7 @@
 // EASY TO REMOVE (revert to discrete-only): delete this file and its four
 // one-line registrations — index.html (<script> + <option>), Anemone.js
 // (individualTypeMap), tests/harness.js (SOURCES + INDIVIDUAL_CLASSES). The
-// discrete original is untouched apart from a defaultRepresentation() hook.
+// discrete original is untouched apart from its static `representation`.
 
 const SIT_TURN_RANGE = 135;                 // continuous turn ∈ [-135, 135]°
 const SIT_LEN_MIN = 0.7, SIT_LEN_MAX = 2.0; // continuous length range
@@ -69,7 +69,7 @@ const sitContinuousRepresentation = new PTORepresentation(sitContinuousGenerator
 class StructuralInformationContinuousIndividual extends StructuralInformationIndividual {
     // Only difference from the discrete parent: the representation (hence the
     // generator / search space). All rendering and reporting are inherited.
-    defaultRepresentation() { return sitContinuousRepresentation; }
+    static representation = sitContinuousRepresentation;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

@@ -150,18 +150,13 @@ const sitGenerator = (rnd) => {
 const sitRepresentation = new PTORepresentation(sitGenerator);
 
 class StructuralInformationIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = this.defaultRepresentation();
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-    // The shared representation for this type. A subclass can swap the generator
-    // (discrete vs continuous alphabet) by overriding just this — no constructor
-    // or other code needed. See StructuralInformationContinuousIndividual.
-    defaultRepresentation() { return sitRepresentation; }
-
-    usesColorPalette() { return true; }
+    // A subclass can swap the generator (discrete vs continuous alphabet) by
+    // naming its own static representation — no constructor or other code needed. See StructuralInformationContinuousIndividual.
+    static representation = sitRepresentation;
 
     validate() {
         return this.buildPaths().length > 0;

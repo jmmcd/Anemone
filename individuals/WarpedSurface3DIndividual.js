@@ -36,11 +36,7 @@ const warpedSurfaceGenerator = (rnd) => {
 const warpedSurfaceRepresentation = new PTORepresentation(warpedSurfaceGenerator);
 
 class WarpedSurface3DIndividual extends RadialSurface3DIndividual {
-    constructor(genome = null) {
-        super();
-        this.representation = warpedSurfaceRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = warpedSurfaceRepresentation;
 
     editableSections() {
         return [

@@ -476,10 +476,15 @@ const jennGenerator = (rnd) => {
 const jennRepresentation = new PTORepresentation(jennGenerator);
 
 class JennPolytopeIndividual extends Individual {
+    static representation = jennRepresentation;
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+        animatesGeometry: true, // the zoom loop drives setAnimationTime (4D rotation)
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = jennRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.tubeSides = 6;        // cross-section resolution of an edge tube (rounder rods)
         // Extra, time-varying 4D rotation applied on top of the genome's static
         // orientation, in the three w-planes (xw, yw, zw). Zero by default (static
@@ -496,9 +501,6 @@ class JennPolytopeIndividual extends Individual {
         // smooth tanh (not a hard clamp) so rods sweeping outward stay curved.
         this.maxProjRadius = 6;
     }
-
-    is3D() { return true; }
-    usesColorPalette() { return true; }
 
     // Geometry for this individual's phenotype (routes the duoprism's p,q through).
     _geom() {
@@ -536,10 +538,10 @@ class JennPolytopeIndividual extends Individual {
         return out;
     }
 
-    // Framework hooks for geometry that changes over time (see Anemone.js zoom
-    // loop): opt in, and advance the animated 4D rotation from a clock. Absolute
-    // (not incremental) so it stays smooth and honours the play/pause clock.
-    animatesGeometry() { return true; }
+    // Framework hook for geometry that changes over time (see the zoom loop;
+    // opted into via animatesGeometry): advance the animated 4D rotation from a
+    // clock. Absolute (not incremental) so it stays smooth and honours the
+    // play/pause clock.
     setAnimationTime(seconds) {
         this._anim4DAngles = [seconds * 0.31, seconds * 0.19, seconds * 0.11];
     }

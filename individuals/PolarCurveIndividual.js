@@ -59,11 +59,13 @@ const polarCurveGenerator = (rnd) => {
 const polarCurveRepresentation = new PTORepresentation(polarCurveGenerator);
 
 class PolarCurveIndividual extends Individual {
-    constructor(genome = null) {
-        super();
+    static representation = polarCurveRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-        this.representation = polarCurveRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+    constructor(genome = null) {
+        super(genome);
 
         // Polar coordinate parameters. tMax is not fixed here: it comes from the
         // evolved turn count (see generatePolarPoints), tMax = turns · 2π. We
@@ -99,8 +101,6 @@ class PolarCurveIndividual extends Individual {
 
         return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(phenotype);
     }
-
-    usesColorPalette() { return true; }
 
     // The interesting knob here is the grammar (the generator is boilerplate
     // derivation); expose both, grammar first.

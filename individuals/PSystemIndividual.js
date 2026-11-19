@@ -177,13 +177,10 @@ const pSystemGenerator = (rnd) => {
 const pSystemRepresentation = new PTORepresentation(pSystemGenerator);
 
 class PSystemIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = pSystemRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = pSystemRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     validate() {
         return this._simulate().list.length > 0;

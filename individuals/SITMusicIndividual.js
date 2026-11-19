@@ -528,6 +528,29 @@ const leeEncodeMusic = (pheno) => {
 };
 
 class SITMusicIndividual extends SITCodeIndividual {
+    static capabilities = {
+        usesColorPalette: true, // voices are palette-coloured
+        usesPerformanceControls: true, // global tempo/swing dials
+        performanceDials: ['bpm', 'swing'],
+        usesMIDISync: true, // follow a DAW's MIDI clock
+        // Attaches the Leeuwenberg Analysis panel: the reverse map (a melody → a
+        // code → a genome). This is the only type that can receive one, since it is
+        // the only one whose generator can be run backwards (see fromCode).
+        usesSITAnalysis: true,
+        // Start from the beginning, every time — unlike the step sequencers.
+        //
+        // They are one bar repeating, so entering at the shared Transport phase is
+        // what keeps the beat as you move across the grid. A Leeuwenberg code is not
+        // a bar: it is a piece of whatever length its own structure gives it, up to
+        // sixteen bars, and its regularities are heard FROM THE START (an arch, a
+        // sequence, a repeat with a transposed answer). Dropping into the middle of
+        // one at whatever phase the previous tile happened to leave the clock at
+        // would hide exactly what there is to listen for.
+        usesSharedPhase: false,
+        // Like the melody grid, the artefact is the sound; the piano roll is a view of it.
+        usesImageSave: false,
+    };
+
     constructor(genome = null) {
         super(genome);
         // Shared output modalities (local fallbacks for tests): notes → MIDI, else synth.
@@ -537,7 +560,7 @@ class SITMusicIndividual extends SITCodeIndividual {
         this.isPlaying = false;
     }
 
-    defaultRepresentation() { return leeRepresentationMusic; }
+    static representation = leeRepresentationMusic;
 
     /**
      * Build an individual from a code that was ANALYSED out of a real melody
@@ -607,29 +630,6 @@ class SITMusicIndividual extends SITCodeIndividual {
         return flat(a) === flat(b);
     }
 
-    usesColorPalette() { return true; }         // voices are palette-coloured
-    usesPerformanceControls() { return true; }  // global tempo/swing dials
-    performanceDials() { return ['bpm', 'swing']; }
-    usesMIDISync() { return true; }             // follow a DAW's MIDI clock
-    // Attaches the Leeuwenberg Analysis panel: the reverse map (a melody → a
-    // code → a genome). This is the only type that can receive one, since it is
-    // the only one whose generator can be run backwards (see fromCode).
-    usesSITAnalysis() { return true; }
-
-    /**
-     * Start from the beginning, every time — unlike the step sequencers.
-     *
-     * They are one bar repeating, so entering at the shared Transport phase is
-     * what keeps the beat as you move across the grid. A Leeuwenberg code is not
-     * a bar: it is a piece of whatever length its own structure gives it, up to
-     * sixteen bars, and its regularities are heard FROM THE START (an arch, a
-     * sequence, a repeat with a transposed answer). Dropping into the middle of
-     * one at whatever phase the previous tile happened to leave the clock at
-     * would hide exactly what there is to listen for.
-     */
-    usesSharedPhase() { return false; }
-    // Like the melody grid, the artefact is the sound; the piano roll is a view of it.
-    usesImageSave() { return false; }
 
     /** The scale table for this code's rotational family (see LEE_SCALES). */
     scale() {

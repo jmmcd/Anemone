@@ -112,15 +112,13 @@ const LSYS_STEP_MIN = 2, LSYS_STEP_MAX = 20;
 const LSYS_WIDTH_MIN = 0.6, LSYS_WIDTH_MAX = 5;
 
 class LSystemIndividual extends Individual {
+    static representation = lsystemRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+
     // this.genome is the PTO trace; this.phenotype (inherited) is the L-system
     // spec the generator produced. mutate/crossover/clone are inherited.
-    constructor(genome = null) {
-        super();
-        this.representation = lsystemRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
 
     // The spec stringifies to "[object Object]" (base renderKey would collide
     // across individuals), so fold the whole spec into a string key by hand.

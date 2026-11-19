@@ -73,13 +73,83 @@ const AnimationClock = {
 /**
  * Individual — base class for all individual types.
  *
- * Holds a representation strategy object (this.representation) and delegates the
- * genetic operators to it. A typical subclass only needs to construct its
- * representation, set this.genome, and implement visualize(); mutate/crossover/
- * clone are inherited. Subclasses with non-standard genome semantics (variable
- * length, mixed int/float, MIDI re-wiring on clone, etc.) override as needed.
+ * A subclass is mostly declarative. It names its shared representation and its
+ * capabilities as static fields, and implements visualize():
+ *
+ *     class FooIndividual extends Individual {
+ *         static representation = fooRepresentation;      // a PTORepresentation
+ *         static capabilities = { usesColorPalette: true };
+ *         visualize(canvas) { ... this.phenotype ... }
+ *     }
+ *
+ * The base constructor installs the representation and draws a random genome
+ * when none is given; mutate/crossover/clone delegate to the representation.
+ * A subclass writes a constructor only for genuinely per-instance state, and
+ * calls super(genome) first.
  */
 class Individual {
+    // The type's shared, stateless representation (a PTORepresentation). One
+    // per type, assigned by reference, so a generator edit in the code editor
+    // reaches every individual of the type. Inherited down a subclass chain
+    // unless the subclass names its own.
+    static representation = null;
+
+    // Capability declarations, read by the framework through the flag methods
+    // below. A class lists only what it changes from DEFAULT_CAPABILITIES, and
+    // declarations merge down the class chain (SITCode3D inherits SITCode's
+    // palette and adds is3D). Keys are the flag-method names, so there is one
+    // vocabulary: grepping for `usesPhoto` finds both declarations and readers.
+    static capabilities = {};
+
+    static DEFAULT_CAPABILITIES = Object.freeze({
+        // The shared Three.js render path.
+        is3D: false,
+        // Framework-attached panels: palette, photo, audio clip, Performance
+        // dials (and which ones), MIDI clock sync, OSC input, SIT analysis.
+        usesColorPalette: false,
+        usesPhoto: false,
+        usesAudio: false,
+        usesPerformanceControls: false,
+        performanceDials: ['bpm', 'swing', 'humanize', 'drive'],
+        usesMIDISync: false,
+        usesOSCInput: false,
+        usesSITAnalysis: false,
+        // Draws from window.RoboParts; that service re-renders a type with this
+        // flag when a late batch of parts arrives.
+        usesRoboParts: false,
+        // Whether the lightbox offers a PNG "Save". A type whose artefact is
+        // really the sound can opt out so the lightbox shows only what matters.
+        usesImageSave: true,
+        // The zoom canvas is a step grid edited by the default grid session.
+        isGridEditable: false,
+        // The type supports direct manipulation (see beginEditSession). null
+        // means "same as isGridEditable".
+        isEditable: null,
+        // The tile redraws every frame off Individual.AnimationClock, which is
+        // what makes [ / ] mean animation speed and . mean play/pause.
+        animatesContinuously: false,
+        // A 3D type whose geometry (not just the camera) changes over time; the
+        // zoom loop rebuilds its mesh each frame via setAnimationTime().
+        animatesGeometry: false,
+        // Playback enters at the shared Transport phase (a loop) rather than
+        // at its own start (a piece). See usesSharedPhase() below.
+        usesSharedPhase: true,
+    });
+
+    /** The merged capabilities of this class (cached per class). */
+    static caps() {
+        if (Object.prototype.hasOwnProperty.call(this, '_caps')) return this._caps;
+        const parent = Object.getPrototypeOf(this);
+        const inherited = (parent && typeof parent.caps === 'function')
+            ? parent.caps() : Individual.DEFAULT_CAPABILITIES;
+        const own = Object.prototype.hasOwnProperty.call(this, 'capabilities') ? this.capabilities : {};
+        for (const k of Object.keys(own)) {
+            if (!(k in Individual.DEFAULT_CAPABILITIES)) throw new Error(`${this.name}: unknown capability "${k}"`);
+        }
+        this._caps = Object.freeze({ ...inherited, ...own });
+        return this._caps;
+    }
+
     constructor(genome = null) {
         this.fitness = 0;
         this.selected = false;
@@ -87,44 +157,35 @@ class Individual {
         this._cachedImageData = null;
         this._cacheKey = null;
 
-        if (genome !== null) {
+        const rep = this.constructor.representation;
+        if (rep) {
+            this.representation = rep;
+            this.genome = genome || rep.generateRandom();
+        } else if (genome !== null) {
             this.genome = genome;
         }
     }
 
     // --- Capability flags (read by the framework) ---
-    is3D()             { return false; }
-    usesColorPalette() { return false; }
-    usesPhoto()        { return false; }
-    usesAudio()        { return false; }
-    // Whether the type draws from the shared identikit part library
-    // (window.RoboParts). Those parts arrive asynchronously, so the service uses
-    // this to decide whether a late-arriving batch is worth a re-render.
-    usesRoboParts()    { return false; }
-    // Whether the lightbox offers a PNG "Save" of the tile. Default true; a type
-    // whose artefact is really the sound (e.g. MelodyIndividual → MIDI only) can
-    // opt out so its lightbox shows just the relevant export.
-    usesImageSave()    { return true; }
-    // A type whose tile visual is a directly-editable grid (e.g. a step sequencer).
-    // When true, the framework wires click/drag on the zoom lightbox canvas to
-    // editCellAtXY(); the type maps pixels→cell and folds the edit into its genome.
-    isGridEditable()   { return false; }
-    // Whether the framework attaches the global Performance panel (tempo/swing/…).
-    usesPerformanceControls() { return false; }
-    // Which Performance dials this type exposes (a subset of PerformanceControls.dials).
-    // Step sequencers override: drum → all four, melody → tempo + swing.
-    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive']; }
-    // Whether the framework attaches the MIDI Clock Sync panel — a type whose sound
-    // has a tempo (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs)
-    // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
-    usesMIDISync() { return false; }
-    // A type whose tile redraws every frame off `Individual.AnimationClock`
-    // (AnimatedPattern, Cat) rather than rendering once and caching. The
-    // framework reads this to decide what `[` / `]` / `.` mean for the current
-    // type — animation speed and play/pause, rather than loop length or camera
-    // zoom — so the hotkeys and the ? overlay follow the capability, not a
-    // hard-coded list of classes.
-    animatesContinuously() { return false; }
+    // Declared via static `capabilities`; these are the readers.
+    is3D()                    { return this.constructor.caps().is3D; }
+    usesColorPalette()        { return this.constructor.caps().usesColorPalette; }
+    usesPhoto()               { return this.constructor.caps().usesPhoto; }
+    usesAudio()               { return this.constructor.caps().usesAudio; }
+    usesRoboParts()           { return this.constructor.caps().usesRoboParts; }
+    usesImageSave()           { return this.constructor.caps().usesImageSave; }
+    usesPerformanceControls() { return this.constructor.caps().usesPerformanceControls; }
+    performanceDials()        { return this.constructor.caps().performanceDials; }
+    usesMIDISync()            { return this.constructor.caps().usesMIDISync; }
+    usesOSCInput()            { return this.constructor.caps().usesOSCInput; }
+    usesSITAnalysis()         { return this.constructor.caps().usesSITAnalysis; }
+    isGridEditable()          { return this.constructor.caps().isGridEditable; }
+    animatesContinuously()    { return this.constructor.caps().animatesContinuously; }
+    animatesGeometry()        { return this.constructor.caps().animatesGeometry; }
+    isEditable() {
+        const c = this.constructor.caps();
+        return c.isEditable === null ? c.isGridEditable : c.isEditable;
+    }
 
     // --- Active intervention (direct manipulation of the phenotype) --------------
     // A type can let the user edit its rendered phenotype *directly* — by pointer,
@@ -145,8 +206,6 @@ class Individual {
     // The genome-writeback contract is the individual's: an edit must go through
     // the representation (setCellHit → representation.setGene), not just mutate a
     // cached phenotype, or the change is lost at the next mutate/clone.
-    isEditable() { return this.isGridEditable(); }
-
     beginEditSession(canvas, session = {}) {
         return this._gridEditSession(canvas, session);
     }
@@ -304,7 +363,7 @@ class Individual {
      * starts from the beginning each time, and its playhead is measured from
      * `_playStart` rather than from the global clock.
      */
-    usesSharedPhase() { return true; }
+    usesSharedPhase() { return this.constructor.caps().usesSharedPhase; }
 
     /**
      * How long one time round lasts, in seconds — derived from the note

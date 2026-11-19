@@ -27,8 +27,13 @@
  * generate3DPoints()/is3D(), so every subclass gets both for free.
  */
 class RadialSurface3DIndividual extends Individual {
-    constructor() {
-        super();
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+
+    constructor(genome = null) {
+        super(genome);
         this.threeDModality = new ThreeDModality();
         this.thetaPoints = 50;
         this.phiPoints = 100;
@@ -36,11 +41,7 @@ class RadialSurface3DIndividual extends Individual {
         // the origin) and avoids a fully collapsed radius. Subclasses may override
         // after super() (SuperShape3D sets 0).
         this.radiusEps = 0.05;
-        // Subclasses set this.representation and this.genome after super().
     }
-
-    is3D() { return true; }
-    usesColorPalette() { return true; }
 
     // --- Expression → numeric function ------------------------------------
     // Compile an expression over the given variable names to a numeric function,

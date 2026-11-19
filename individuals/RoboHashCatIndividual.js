@@ -121,10 +121,14 @@ const roboCatRepresentation = new PTORepresentation(roboCatGenerator);
 let roboCatScratch = null;
 
 class RoboHashCatIndividual extends Individual {
+    static representation = roboCatRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+        usesRoboParts: true,
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = roboCatRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
 
         // Begin fetching the set the first time one of these exists, so a user
         // who never picks this type downloads none of it.
@@ -132,9 +136,6 @@ class RoboHashCatIndividual extends Individual {
             window.RoboParts.ensureLoaded(ROBOCAT_SET);
         }
     }
-
-    usesColorPalette() { return true; }
-    usesRoboParts()    { return true; }
 
     // The phenotype is an object, so the base renderKey() would stringify to
     // "[object Object]" and never invalidate. Include the parts service version

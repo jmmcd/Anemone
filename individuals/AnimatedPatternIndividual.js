@@ -70,21 +70,17 @@ const animatedPatternRepresentation = new PTORepresentation(animatedPatternGener
 // of it. Because the clock *accumulates* animation-seconds, pausing and speed
 // changes no longer make the tiles jump when they resume.
 class AnimatedPatternIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = animatedPatternRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = animatedPatternRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+        animatesContinuously: true,
+    };
 
     static adjustPeriodScale(factor) { Individual.AnimationClock.adjustScale(factor); }
     static get periodScale() { return Individual.AnimationClock.scale; }
 
     static togglePause() { Individual.AnimationClock.togglePause(); }
     static get paused() { return Individual.AnimationClock.paused; }
-
-    usesColorPalette() { return true; }
-
-    animatesContinuously() { return true; }
 
     editableSections() {
         return [

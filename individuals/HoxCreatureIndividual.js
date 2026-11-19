@@ -85,13 +85,10 @@ const HOX_INK = '#141414'; // cartoon black for every outline
 const hoxLerp = (a, b, t) => a + (b - a) * t;
 
 class HoxCreatureIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = hoxCreatureRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = hoxCreatureRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     // Genome panel: the Hox array (segment → expressed archetype → strength),
     // so a homeotic mutation is visible in the data, not just the picture.

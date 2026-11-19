@@ -82,14 +82,17 @@ const anemoneGenerator = (rnd) => {
 const anemoneRepresentation = new PTORepresentation(anemoneGenerator);
 
 class AnemoneIndividual extends Individual {
+    static representation = anemoneRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+
     // this.genome is the PTO trace (the genotype). this.phenotype (inherited,
     // derived by the representation) is the byte array the generator produced.
     // mutate/crossover/clone are inherited from Individual and delegate to
     // this.representation (PTORepresentation), so there are no operator overrides.
     constructor(genome = null) {
-        super();
-        this.representation = anemoneRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
 
         // Command mapping
         this.commands = {
@@ -111,8 +114,6 @@ class AnemoneIndividual extends Individual {
         // Available characters for genome generation
         this.characters = Object.keys(this.commands);
     }
-
-    usesColorPalette() { return true; }
 
     validate() {
         return this.executeGenome().length > 0;

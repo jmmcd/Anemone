@@ -52,13 +52,10 @@ const patternGrammarGenerator = (rnd) => {
 const patternGrammarRepresentation = new PTORepresentation(patternGrammarGenerator);
 
 class PatternGrammarIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = patternGrammarRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = patternGrammarRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     // The interesting knob here is the grammar (the generator is boilerplate
     // derivation); expose both, grammar first.

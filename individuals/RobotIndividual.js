@@ -808,11 +808,7 @@ const robotDraw = new Editable(function (self, ctx, width, height) {
 });
 
 class RobotIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = robotRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = robotRepresentation;
 
     // The generator defines the search space; the draw function is where the
     // robot actually lives. Expose both, draw first.

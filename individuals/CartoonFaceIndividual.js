@@ -912,15 +912,12 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
 });
 
 class CartoonFaceIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = cartoonFaceRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    // Colours are semantic here (skin is skin), so the app palette would only
-    // wreck them — this type opts out and carries its own tables.
-    usesColorPalette() { return false; }
+    static representation = cartoonFaceRepresentation;
+    static capabilities = {
+        // Colours are semantic here (skin is skin), so the app palette would only
+        // wreck them — this type opts out and carries its own tables.
+        usesColorPalette: false,
+    };
 
     // The generator is the prior; the draw is the artwork. Both are worth editing,
     // artwork first (a draw edit keeps the evolved population, see CodeEditorUI).

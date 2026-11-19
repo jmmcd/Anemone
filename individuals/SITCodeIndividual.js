@@ -171,15 +171,11 @@ const leeGenerator2D = (rnd) => {
 const leeRepresentation2D = new PTORepresentation(leeGenerator2D);
 
 class SITCodeIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = this.defaultRepresentation();
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-    defaultRepresentation() { return leeRepresentation2D; }
-
-    usesColorPalette() { return true; }
+    static representation = leeRepresentation2D;
 
     // Degrees per angle unit: every literal in the code is an integer multiple
     // of this. See the header on the discrete/continuous unification.

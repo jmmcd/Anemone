@@ -655,17 +655,14 @@ const catDraw = new Editable(function (self, ctx, width, height, pose, P) {
 });
 
 class CatIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = catRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
-
-    // Redraws every frame off the shared clock, so `[` / `]` are animation speed
-    // and `.` is play/pause for this type (see framework/Hotkeys.js).
-    animatesContinuously() { return true; }
+    static representation = catRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+        // Redraws every frame off the shared clock, so `[` / `]` are animation speed
+        // and `.` is play/pause for this type (see framework/Hotkeys.js).
+        animatesContinuously: true,
+        isEditable: true, // a click on the leg band cycles the gait (beginEditSession)
+    };
 
     // All three stages of generator → pose → draw. Pose is the interesting one:
     // it is where the parametric animation lives, and editing it keeps the
@@ -738,16 +735,6 @@ class CatIndividual extends Individual {
         });
     }
 
-    // --- Active intervention: edit the walk, and keep the edit ---------------
-    // The gait is a gene, so the only way to change it would otherwise be to
-    // wait for mutation to resample it. This session lets the user set it
-    // directly on the zoom canvas and writes it back into the trace, so the
-    // change is heritable — the edited cat breeds its new gait into its
-    // children instead of the intervention being discarded at the next evolve.
-    // (See DEVELOPERS.md > Active intervention; the step sequencers use the
-    // base grid session, this type supplies its own gesture.)
-    isEditable() { return true; }
-
     /**
      * One gesture: a click in the leg band below the body cycles the gait,
      * walk → trot → pace → bound → walk.
@@ -763,6 +750,14 @@ class CatIndividual extends Individual {
      * individually addressable — hence the explicit `{ name: 'gait' }` in the
      * generator.
      */
+    // --- Active intervention: edit the walk, and keep the edit ---------------
+    // The gait is a gene, so the only way to change it would otherwise be to
+    // wait for mutation to resample it. This session lets the user set it
+    // directly on the zoom canvas and writes it back into the trace, so the
+    // change is heritable — the edited cat breeds its new gait into its
+    // children instead of the intervention being discarded at the next evolve.
+    // (See DEVELOPERS.md > Active intervention; the step sequencers use the
+    // base grid session, this type supplies its own gesture.)
     beginEditSession(canvas, session = {}) {
         if (!canvas) return () => {};
         const abort = new AbortController();

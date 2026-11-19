@@ -42,16 +42,19 @@ const mouseMusicGenerator = (rnd) => {
 const mouseMusicRepresentation = new PTORepresentation(mouseMusicGenerator);
 
 class MouseMusicIndividual extends Individual {
-    constructor(genome = null) {
-        super();
+    static capabilities = {
+        // Attaches the MIDI Clock Sync panel: an active external clock (e.g. GarageBand)
+        // paces this DAG's evaluation loop to the DAW's tempo (see MIDIModality.start()),
+        // inherited by EEGSonificationIndividual too.
+        usesMIDISync: true,
+    };
 
-        this.representation = this.makeRepresentation();
+    constructor(genome = null) {
+        super(genome);
 
         // Use the framework's single shared MIDIModality (falls back to a local
         // one outside the app, e.g. in tests).
         this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
-
-        this.genome = genome || this.representation.generateRandom();
 
         this.timeStep = 100;
 
@@ -62,11 +65,8 @@ class MouseMusicIndividual extends Individual {
         this.canvas = null;
     }
 
-    // Which PTO representation this individual uses; overridden by subclasses
-    // (e.g. EEG uses 5 inputs / 2 outputs). Called from the constructor.
-    makeRepresentation() {
-        return mouseMusicRepresentation;
-    }
+    // EEGSonificationIndividual names its own (5 inputs / 2 outputs).
+    static representation = mouseMusicRepresentation;
 
     // The runnable DAG, built once per trace from the plain-data phenotype and
     // cached (it carries runtime state: energy, mouse/EEG/time-driven values).
@@ -90,11 +90,6 @@ class MouseMusicIndividual extends Individual {
     setMidiOutput(midiOutput) {
         this.midiModality.setMidiOutput(midiOutput);
     }
-
-    // Attaches the MIDI Clock Sync panel: an active external clock (e.g. GarageBand)
-    // paces this DAG's evaluation loop to the DAW's tempo (see MIDIModality.start()),
-    // inherited by EEGSonificationIndividual too.
-    usesMIDISync() { return true; }
 
     setupMouseTracking(canvas) {
         const dag = this.dag;

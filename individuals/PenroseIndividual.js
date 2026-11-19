@@ -15,11 +15,10 @@ const penroseGenerator = (rnd) => [
 const penroseRepresentation = new PTORepresentation(penroseGenerator);
 
 class PenroseIndividual extends Individual {
-    constructor(genome = null) {
-        super();
+    static representation = penroseRepresentation;
 
-        this.representation = penroseRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+    constructor(genome = null) {
+        super(genome);
 
         // Golden ratio
         this.phi = (1 + Math.sqrt(5)) / 2;
