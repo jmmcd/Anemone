@@ -115,26 +115,23 @@ class InteractiveEAFramework {
                     console.log(`  ${index}: "${output.name}" (${output.manufacturer}) state=${output.state} conn=${output.connection}`);
                 });
 
-                if (outputs.length > 0) {
-                    let preferredOutput = outputs.find(output => output.name.includes('IAC Driver'));
-                    if (!preferredOutput) preferredOutput = outputs.find(output => output.name.includes('Logic Pro Virtual'));
-                    if (!preferredOutput) {
-                        preferredOutput = outputs[0];
-                        console.log(`⚠️ No IAC Driver / Logic Pro Virtual output found — falling back to first port: "${preferredOutput.name}"`);
-                    }
-
-                    this.midiOutput = preferredOutput;
-                    console.log(`✓ Framework using MIDI output: ${preferredOutput.name}`);
-                    if (preferredOutput.connection === 'closed') {
-                        // Guard: on some systems port.open() never resolves. Never let it
-                        // stall app init (the whole UI is chained off initializeMIDI) — race
-                        // it against a timeout. sendNote works regardless (ports auto-open).
-                        await this._openPortSafely(preferredOutput);
-                        console.log(`🔧 MIDI port opened: state=${preferredOutput.state} conn=${preferredOutput.connection}`);
-                    }
-                } else {
-                    console.log('⚠️ No MIDI outputs found — will use Web Audio fallback');
+                // Which output plays is the user's choice (the Sound output menu),
+                // not a guess: a virtual bus like the IAC Driver exists whether or
+                // not anything is listening on it, and a browser cannot tell, so
+                // preferring it meant silence until a DAW was opened. The default is
+                // the built-in synth; a chosen port is remembered by name.
+                const saved = this._loadSoundOutput();
+                if (saved !== InteractiveEAFramework.BUILTIN_SYNTH
+                    && outputs.some(o => o.name === saved)) {
+                    await this.setSoundOutput(saved);
                 }
+                // Hot-plugging: a newly connected port appears in the menu (it
+                // re-reads the list); a vanished chosen port falls back to the synth.
+                midiAccess.onstatechange = () => {
+                    if (this.midiOutput && this.midiOutput.state === 'disconnected') {
+                        this.setSoundOutput(InteractiveEAFramework.BUILTIN_SYNTH, { remember: false });
+                    }
+                };
 
                 // MIDI input, for MIDI Clock sync (window.MIDISync): lets an external
                 // DAW (e.g. GarageBand/Logic sending Beat Clock over the same IAC bus
@@ -171,9 +168,55 @@ class InteractiveEAFramework {
             console.log('Web MIDI API not supported');
         }
 
-        // Wire the resolved output (or null → Web Audio fallback) into the
+        // Wire the chosen output (or null → the built-in synth) into the
         // single shared modality that every sound individual references.
         this.sharedMIDI.setMidiOutput(this.midiOutput);
+    }
+
+    /** MIDI output ports the Sound output menu can offer (empty until MIDI access resolves). */
+    midiOutputPorts() {
+        return this.midiAccess ? Array.from(this.midiAccess.outputs.values()) : [];
+    }
+
+    /** The current Sound output: a MIDI port's name, or BUILTIN_SYNTH. */
+    soundOutput() {
+        return this.midiOutput ? this.midiOutput.name : InteractiveEAFramework.BUILTIN_SYNTH;
+    }
+
+    /**
+     * Route sound to a MIDI port (by name) or to the built-in synth. Every MIDI
+     * path reads framework.sharedMIDI.midiOutput — null means synthesise — so
+     * this is the one switch. Whatever is playing restarts on the new output.
+     */
+    async setSoundOutput(name, { remember = true } = {}) {
+        const port = name === InteractiveEAFramework.BUILTIN_SYNTH ? null
+            : this.midiOutputPorts().find(o => o.name === name) || null;
+        const playing = this.currentlyPlaying;
+        if (playing && playing.stopMIDI) playing.stopMIDI();
+        if (this.midiOutput && this.midiOutput !== port) {
+            try { this.sharedMIDI.allNotesOff(); } catch (e) { /* port gone */ }
+        }
+        this.midiOutput = port;
+        this.sharedMIDI.setMidiOutput(port);
+        if (this.ea) this.ea.midiOutput = port;
+        if (port && port.connection === 'closed') {
+            // Guard: on some systems port.open() never resolves; never let it hang.
+            await this._openPortSafely(port);
+        }
+        console.log(`🎹 Sound output: ${port ? port.name : 'built-in synth'}`);
+        if (remember) this._saveSoundOutput(this.soundOutput());
+        if (playing && playing.playMIDI && this.currentlyPlaying === playing) playing.playMIDI();
+    }
+
+    // The choice is a per-browser convenience, so localStorage; it can be
+    // missing or throw (private window), and then the default stands.
+    _loadSoundOutput() {
+        try { return localStorage.getItem('anemone.soundOutput') || InteractiveEAFramework.BUILTIN_SYNTH; }
+        catch (e) { return InteractiveEAFramework.BUILTIN_SYNTH; }
+    }
+
+    _saveSoundOutput(name) {
+        try { localStorage.setItem('anemone.soundOutput', name); } catch (e) { /* not persisted */ }
     }
 
     // Open a MIDI port without ever hanging app init: a port.open() that never
@@ -874,3 +917,6 @@ class InteractiveEAFramework {
     
     // (methods live in framework/Shared3D.js — partial class, prototype-merged)
 }
+
+// The Sound output menu's value for "no MIDI port: synthesise in the browser".
+InteractiveEAFramework.BUILTIN_SYNTH = 'Built-in synth';

@@ -7,6 +7,31 @@
  */
 
 class MIDIModality {
+    /**
+     * setInterval that keeps time in a background tab. A hidden tab's timers are
+     * throttled to about once a second, which turns a 25 ms MIDI scheduler into
+     * sparse, bunched notes (and stalls the clock a DAW follows); a dedicated
+     * worker's timers are not throttled that way, so the tick runs there and
+     * posts back. The worker is built from a Blob, which also works under
+     * file://. Falls back to a plain setInterval (tests, no Worker). Returns a
+     * function that stops the ticker.
+     */
+    static every(ms, fn) {
+        try {
+            if (typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined') {
+                const src = 'let t=null;onmessage=e=>{clearInterval(t);t=setInterval(()=>postMessage(0),e.data)}';
+                const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+                const w = new Worker(url);
+                URL.revokeObjectURL(url);
+                w.onmessage = () => fn();
+                w.postMessage(ms);
+                return () => w.terminate();
+            }
+        } catch (e) { /* fall through to a plain timer */ }
+        const id = setInterval(fn, ms);
+        return () => clearInterval(id);
+    }
+
     /** Scientific pitch name of a MIDI note number (60 → "C4"). */
     static noteName(midi) {
         const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -165,7 +190,9 @@ class MIDIModality {
                 for (const n of seq.notes) {
                     const on = base + n.start * tickSec;
                     const off = base + (n.start + n.duration) * tickSec;
-                    const startsInWindow = on >= from && on < horizon;
+                    // A note whose onset has already passed (a late tick) is
+                    // dropped rather than played late in a bunch.
+                    const startsInWindow = on >= from && on < horizon && on >= now - 0.03;
                     // Entering mid-loop: a note already sounding at the entry point
                     // starts now, as the audio path would play it.
                     const sounding = first && on < from && off > from;
@@ -183,14 +210,14 @@ class MIDIModality {
             first = false;
         };
         tick();
-        this._seqTimer = setInterval(tick, 25);
+        this._seqTimer = MIDIModality.every(25, tick);
         this.isRunning = true;
         return true;
     }
 
     /** Stop the looping note sequence and silence any held notes. */
     stopSequence() {
-        if (this._seqTimer) { clearInterval(this._seqTimer); this._seqTimer = null; }
+        if (this._seqTimer) { this._seqTimer(); this._seqTimer = null; }
         this.isRunning = false;
         this.allNotesOff();
     }
@@ -209,14 +236,14 @@ class MIDIModality {
         if (!this.midiOutput || !(bpm > 0)) return;
         try { this.midiOutput.send([0xFA]); } catch(e) {}
         const ms = 60000 / (bpm * 24);
-        this._clockTimer = setInterval(() => {
+        this._clockTimer = MIDIModality.every(ms, () => {
             try { if (this.midiOutput) this.midiOutput.send([0xF8]); } catch(e) {}
-        }, ms);
+        });
     }
 
     stopClock() {
         if (this._clockTimer) {
-            clearInterval(this._clockTimer);
+            this._clockTimer();
             this._clockTimer = null;
             try { if (this.midiOutput) this.midiOutput.send([0xFC]); } catch(e) {}
         }

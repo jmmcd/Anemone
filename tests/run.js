@@ -2784,6 +2784,26 @@ check('playSequence sends each note-on once, only within the lookahead, and noth
     assert(ons().length === before, 'nothing is sent after stop');
 });
 
+check('a late scheduler tick drops the notes it missed instead of bunching them', () => {
+    const env = load();
+    let T = 0, timer = null;
+    env.sandbox.performance.now = () => T * 1000;
+    env.sandbox.setInterval = (fn) => { timer = fn; return 1; };
+    env.sandbox.clearInterval = () => { timer = null; };
+    const sent = [];
+    const m = new env.MIDIModality();
+    m.midiOutput = { send: (bytes, ts) => sent.push({ bytes, ts }) };
+    const notes = [];
+    for (let i = 0; i < 8; i++) notes.push({ pitch: 60 + i, velocity: 100, start: i * 2, duration: 1 });
+    m.playSequence({ bpm: 120, ppq: 4, loopTicks: 16, notes }, null);
+    const before = sent.length;
+    T = 1.0; timer();                       // a throttled tab: one tick a second late
+    const ons = sent.slice(before).filter(e => (e.bytes[0] & 0xf0) === 0x90);
+    assert(!ons.some(e => e.ts / 1000 < 1.0 - 1e-9), 'a missed note-on was sent late');
+    assert(ons.length === 1 && Math.abs(ons[0].ts / 1000 - 1.0) < 1e-9, 'only the note at the tick time is sent');
+    m.stopSequence();
+});
+
 // --- Shared MIDI modality ---
 // All sound individuals reference the framework's single shared MIDIModality
 // (rather than each constructing their own AudioContext), and clones keep that
