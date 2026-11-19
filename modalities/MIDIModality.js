@@ -7,6 +7,12 @@
  */
 
 class MIDIModality {
+    /** Scientific pitch name of a MIDI note number (60 → "C4"). */
+    static noteName(midi) {
+        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        return names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+    }
+
     constructor() {
         this.midiOutput = null;
         this.audioContext = null;

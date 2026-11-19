@@ -109,6 +109,21 @@ class Canvas2DModality {
     }
 
     /**
+     * Trace a rounded-rectangle path (fill or stroke it after). Built from
+     * arcTo rather than ctx.roundRect, which the test harness's canvas lacks.
+     */
+    static roundRectPath(ctx, x, y, w, h, r) {
+        r = Math.max(0, Math.min(r, w / 2, h / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    /**
      * The resolution-independent pixel unit: 1 at the 128px tile, 6 at the
      * 768px zoom. Multiply any absolute-pixel quantity (a line width, a glow
      * radius) by it so the zoom is a faithful magnification of the tile.

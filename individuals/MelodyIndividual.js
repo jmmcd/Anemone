@@ -68,36 +68,17 @@ const melodyGenerator = (rnd) => {
 
 const melodyRepresentation = new PTORepresentation(melodyGenerator);
 
-class MelodyIndividual extends Individual {
+class MelodyIndividual extends StepSequencerIndividual {
     static representation = melodyRepresentation;
     static capabilities = {
-        usesColorPalette: true, // rows are palette-coloured
-        usesPerformanceControls: true, // attaches the global Performance panel
         performanceDials: ['bpm', 'swing', 'length'],
-        usesMIDISync: true, // attaches the MIDI Clock Sync panel
-        isGridEditable: true,
         // The melody's artefact is the sound (MIDI/audio), not the piano-roll tile.
         usesImageSave: false,
     };
-
-    constructor(genome = null) {
-        super(genome);
-        // Shared output modalities (local fallbacks for tests): notes → MIDI, else synth.
-        const fw = (typeof window !== 'undefined') && window.framework;
-        this.midiModality = (fw && fw.sharedMIDI) || new MIDIModality();
-        this.audio = (fw && fw.sharedAudio) || new AudioModality();
-        this.isPlaying = false;
-    }
+    static velFloor = MELODY_VEL_FLOOR;
 
     // Audible MIDI velocity (1–127) from a cell's stored seed (seed ∈ [0.6,1]).
     _velocity(seed) { return Math.max(1, Math.min(127, Math.round(seed * 127))); }
-
-    // Effective bar length in steps: the genome's `length` gene, unless the global
-    // "Length" override is locked (the default, forcing 16) — see PerformanceControls.
-    _effectiveLength() {
-        const p = window.PerformanceControls ? window.PerformanceControls.apply(this.phenotype) : this.phenotype;
-        return Math.max(1, Math.min(16, Math.round(p.length)));
-    }
 
     // Merge each row's runs of consecutive on-cells (within the active length) into
     // held notes { pitch, velocity, start(step), steps }. This is the phenotype the
@@ -119,29 +100,6 @@ class MelodyIndividual extends Individual {
             }
         }
         return notes;
-    }
-
-    // Grid geometry for a W×H canvas — the single source of truth shared by visualize()
-    // and cellAtCanvasXY(), so a click always lands on the cell it appears to. Row r is
-    // drawn with r=0 (lowest pitch) at the BOTTOM.
-    _gridLayout(W, H) {
-        const rows = 8, cols = 16;
-        const pad = Math.max(2, Math.floor(W * 0.02));
-        const cw = (W - 2 * pad) / cols;
-        const gridH = H - 2 * pad;
-        const chh = gridH / rows;
-        return { rows, cols, pad, cw, chh, gridH, yTop: pad };
-    }
-
-    _roundRect(ctx, x, y, w, h, r) {
-        r = Math.max(0, Math.min(r, w / 2, h / 2));
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.arcTo(x + w, y, x + w, y + h, r);
-        ctx.arcTo(x + w, y + h, x, y + h, r);
-        ctx.arcTo(x, y + h, x, y, r);
-        ctx.arcTo(x, y, x + w, y, r);
-        ctx.closePath();
     }
 
     // --- Tile visual: a piano roll (low pitch at the bottom, held notes as bars) -----
@@ -182,7 +140,7 @@ class MelodyIndividual extends Individual {
                     const m = Math.min(cw, chh) * 0.14;
                     const x = pad + s * cw + m, w = (e - s) * cw - 2 * m;
                     const by = y + m, bh = chh - 2 * m;
-                    this._roundRect(ctx, x, by, w, bh, Math.min(6, chh * 0.3, w * 0.5));
+                    Canvas2DModality.roundRectPath(ctx, x, by, w, bh, Math.min(6, chh * 0.3, w * 0.5));
                     ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},0.28)`;
                     ctx.fill();
                     const f = Math.max(0.12, this.cellVel(r, s));
@@ -213,60 +171,16 @@ class MelodyIndividual extends Individual {
         }
     }
 
-    // --- Direct cell editing (folded back into the genome, like the drum machine) ----
-    cellAtCanvasXY(canvas, px, py) {
-        const { rows, cols, pad, cw, chh, yTop } = this._gridLayout(canvas.width, canvas.height);
-        const s = Math.floor((px - pad) / cw);
-        const rowFromTop = Math.floor((py - yTop) / chh);
-        const c = (rows - 1) - rowFromTop;      // low pitch (r=0) at the bottom
-        if (s < 0 || s >= cols || c < 0 || c >= rows) return null;
-        return { c, s };
-    }
-
-    cellOn(c, s) {
-        const p = this.phenotype;
-        return !!(p && p.grid && p.grid[c][s] > 0);
-    }
-
-    // Turn a cell on/off by forcing its hit gene, and replace the genome so the edit is
-    // heritable (a freshly-on cell reuses its existing velocity-seed gene).
-    setCellHit(c, s, on) {
-        this.genome = melodyRepresentation.setGene(this.genome, `hit_${c}_${s}`, on ? 1 : 0);
-        this.invalidateImageCache();
-    }
-
     // First step of the held note containing (c, s) — a run of on-cells is ONE
     // note, sounded at the head cell's velocity, so both reading and editing a
     // velocity must address the head. Without this, dragging on the tail of a
     // held note would silently edit a gene that is neither heard nor drawn.
-    _runStart(c, s) {
+    noteHead(c, s) {
         const p = this.phenotype;
         if (!p || !p.grid || !p.grid[c] || !(p.grid[c][s] > 0)) return s;
         let head = s;
         while (head > 0 && p.grid[c][head - 1] > 0) head--;
         return head;
-    }
-
-    // Per-cell velocity, as the 0..1 `vel_c_s` gene — also the fraction of the note
-    // bar drawn filled, so the height is exactly the gene being edited. The stored
-    // grid value is the seed MELODY_VEL_FLOOR + (1−floor)·gene (a note is never
-    // silent). Same contract as DrumMachine, so both inherit one gesture.
-    cellVel(c, s) {
-        const p = this.phenotype;
-        const head = this._runStart(c, s);
-        const seed = (p && p.grid && p.grid[c] && p.grid[c][head]) || 0;
-        return seed > 0 ? Math.max(0, Math.min(1, (seed - MELODY_VEL_FLOOR) / (1 - MELODY_VEL_FLOOR))) : 0;
-    }
-
-    setCellVel(c, s, v) {
-        const gene = Math.max(0, Math.min(1, v));
-        this.genome = melodyRepresentation.setGene(this.genome, `vel_${c}_${this._runStart(c, s)}`, gene);
-        this.invalidateImageCache();
-    }
-
-    midiToNoteName(midi) {
-        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        return names[midi % 12] + (Math.floor(midi / 12) - 1);
     }
 
     describeExtra() {
@@ -275,7 +189,7 @@ class MelodyIndividual extends Individual {
         const L = this._effectiveLength();
         let s = `<span class="genome-label">Feel:</span> ${Math.round(p.bpm)} BPM · swing ${p.swing.toFixed(2)} · length ${L} steps\n`;
         for (let r = 7; r >= 0; r--) { // high pitch first, matching the visual
-            const name = this.midiToNoteName(p.scale[r]).padStart(3, ' ');
+            const name = MIDIModality.noteName(p.scale[r]).padStart(3, ' ');
             let line = '';
             for (let step = 0; step < 16; step++) line += step >= L ? '·' : (p.grid[r][step] > 0 ? '█' : '·');
             s += '  ' + name + ' ' + line + '\n';
@@ -352,8 +266,4 @@ class MelodyIndividual extends Individual {
         });
         return { bpm: p.bpm, ppq, loopTicks: this._effectiveLength() * stepTicks, notes };
     }
-
-    // --- Playback (unified step-sequencer path: live MIDI else synth) -----------------
-    playMIDI() { this.playSequenced(); }
-    stopMIDI() { this.stopSequenced(); }
 }

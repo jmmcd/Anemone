@@ -51,11 +51,6 @@ class MouseMusicIndividual extends Individual {
 
     constructor(genome = null) {
         super(genome);
-
-        // Use the framework's single shared MIDIModality (falls back to a local
-        // one outside the app, e.g. in tests).
-        this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
-
         this.timeStep = 100;
 
         // Mouse tracking

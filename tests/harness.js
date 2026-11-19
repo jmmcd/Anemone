@@ -44,6 +44,7 @@ const SOURCES = [
     'individuals/PhotoFilterIndividual.js',
     'individuals/AntRenderingIndividual.js',
     'individuals/AudioFilterIndividual.js',
+    'individuals/StepSequencerIndividual.js',   // base of DrumMachine + Melody
     'individuals/DrumMachineIndividual.js',
     'individuals/MelodyIndividual.js',
     'individuals/MouseMusicIndividual.js',

@@ -97,13 +97,6 @@ class AudioFilterIndividual extends Individual {
         usesAudio: true, // attaches the Audio panel
     };
 
-    constructor(genome = null) {
-        super(genome);
-        // Shared buffer/graph playback modality (local fallback for tests).
-        this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
-        this.isPlaying = false;
-    }
-
     // --- Tile visual: shared source waveform washed with a symbolic tint --------
     visualize(canvas) {
         const ctx = canvas.getContext('2d');

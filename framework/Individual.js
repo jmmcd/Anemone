@@ -318,15 +318,29 @@ class Individual {
         };
     }
 
+    // --- Sound output ---------------------------------------------------------
+    // The framework owns one output modality per medium — sharedMIDI for notes,
+    // sharedAudio for buffers/graphs — so only one individual sounds at a time
+    // and the app has one AudioContext. A sound type just reads these; outside
+    // the app (tests, headless scripts) each instance gets its own fallback,
+    // made on first use so a silent type never creates one.
+    get midiModality() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        return (fw && fw.sharedMIDI) || this._midiFallback || (this._midiFallback = new MIDIModality());
+    }
+
+    get audio() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        return (fw && fw.sharedAudio) || this._audioFallback || (this._audioFallback = new AudioModality());
+    }
+
     // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
     // Play this individual's loop LIVE over MIDI when an output is available, else
     // fall back to a synthesised AudioBuffer through the shared AudioModality. Both
     // paths enter at the shared Transport phase so switching/editing resumes in time.
     // The type only supplies toMIDISequence() (with a loopTicks) and renderToAudioBuffer().
     playSequenced() {
-        const fw = (typeof window !== 'undefined') && window.framework;
-        const midi = (fw && fw.sharedMIDI) || this.midiModality;
-        const audio = (fw && fw.sharedAudio) || this.audio;
+        const midi = this.midiModality, audio = this.audio;
         // A LOOP enters at the shared Transport phase, so switching between
         // tiles keeps the beat. A PIECE starts at its beginning — see
         // usesSharedPhase(). Both paths (MIDI and synth) read the same decision,

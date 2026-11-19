@@ -47,9 +47,9 @@ const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Indiv
 console.log('\nIndividual-type registry:');
 {
     const ROOT = path.join(__dirname, '..');
-    // Concrete individual classes only; these two are abstract base classes that
+    // Concrete individual classes only; these are abstract base classes that
     // match *Individual.js but are intentionally not registered.
-    const ABSTRACT_BASES = new Set(['Individual', 'RadialSurface3DIndividual']);
+    const ABSTRACT_BASES = new Set(['Individual', 'RadialSurface3DIndividual', 'StepSequencerIndividual']);
 
     check('every registry entry resolves to an Individual subclass', () => {
         for (const t of INDIVIDUAL_TYPES) {
