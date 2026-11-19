@@ -223,54 +223,11 @@ class WaterTowerIndividual extends Individual {
         return out;
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const key = JSON.stringify(this.renderKey());
-            const cached = framework.shared3D.meshes.get(this.id);
-            if (cached && key === this._lastBuiltKey) {
-                framework.renderMeshToCanvas(canvas, this.id, cached);
-                return;
-            }
-            this._lastBuiltKey = key;
-            const { vertices, indices, colors } = this.generate3DPoints();
-            if (!this.threeDModality) this.threeDModality = new ThreeDModality();
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-            return;
-        }
-        this.render2DProjection(canvas);
-    }
-
-    // 2D fallback (no shared 3D / headless tests): the graph seen from slightly
-    // above, as lines coloured by height.
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, w, h);
+    // 2D fallback: the graph's edges, coloured by height.
+    wireframe() {
         const { edges } = this.graph();
         const { pts, ts } = this._sceneNodes();
-        const tilt = 0.35, c = Math.cos(tilt), s = Math.sin(tilt);
-        const proj = pts.map(q => [q[0], q[1] * c + q[2] * s]);
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        for (const [x, y] of proj) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-        const scale = 0.85 * Math.min(w, h) / (Math.max(x1 - x0, y1 - y0) || 1);
-        const sx = x => w / 2 + (x - (x0 + x1) / 2) * scale;
-        const sy = y => h / 2 - (y - (y0 + y1) / 2) * scale;
-        ctx.lineWidth = Math.max(1, Math.min(w, h) / 128);
-        for (const [a, b] of edges) {
-            const col = window.Palette.color((ts[a] + ts[b]) / 2);
-            ctx.strokeStyle = `rgb(${col.r},${col.g},${col.b})`;
-            ctx.beginPath();
-            ctx.moveTo(sx(proj[a][0]), sy(proj[a][1]));
-            ctx.lineTo(sx(proj[b][0]), sy(proj[b][1]));
-            ctx.stroke();
-        }
-    }
-
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) framework.removeMeshFromScene(this.id);
+        return edges.map(([a, b]) => ({ pts: [pts[a], pts[b]], ts: [(ts[a] + ts[b]) / 2] }));
     }
 
     getPhenotype() {

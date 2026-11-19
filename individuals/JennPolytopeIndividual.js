@@ -547,7 +547,7 @@ class JennPolytopeIndividual extends Individual {
     }
     // Return to the genome's static orientation (called when the zoom closes) so
     // the grid tile isn't left frozen mid-morph.
-    resetAnimation() { this._anim4DAngles = [0, 0, 0]; this._lastBuiltKey = null; }
+    resetAnimation() { this._anim4DAngles = [0, 0, 0]; this._meshKey = null; }
 
     // Great-circle interpolation on the unit 3-sphere.
     _slerp4(p, q, t) {
@@ -833,95 +833,68 @@ class JennPolytopeIndividual extends Individual {
         return new THREE.Mesh(g, material);
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            // Small grid tiles (128px) render at reduced detail; the zoom lightbox
-            // (768px) and STL export get full detail.
-            let lod = canvas.width >= 400 ? 1 : 0.6;
-            // While the 4D rotation is actively morphing, the mesh is rebuilt every
-            // frame on the CPU — cap detail so even the 600-cell stays smooth; the
-            // motion masks it. (Pausing rotation returns to full detail.)
-            const ea = this._anim4DAngles;
-            const morphing = (ea[0] || ea[1] || ea[2]) && framework.rotationEnabled;
-            if (morphing) {
-                // Per-frame CPU rebuild: throttle only the dense 600-cell (1200
-                // faces); the sparse big-face polytopes are cheap even at full
-                // detail, and they're the ones whose limb needs it to stay round.
-                const dense = this._geom().faces.length > 300;
-                lod = Math.min(lod, dense ? 0.5 : 1);
-            }
-
-            // Skip the (expensive) rebuild when nothing that affects the geometry
-            // has changed — e.g. a paused zoom re-rendering the same pose each
-            // frame, or the same-size canvas re-entering. Just re-render the
-            // cached mesh (the camera may still be orbiting).
-            const buildKey = `${ea.join(',')}|${lod}|${this.renderKey()}`;
-            const cached = framework.shared3D.meshes.get(this.id);
-            if (cached && buildKey === this._lastBuiltKey) {
-                framework.renderMeshToCanvas(canvas, this.id, cached);
-                return;
-            }
-            this._lastBuiltKey = buildKey;
-
-            const { struts, glass } = this._buildParts(lod, morphing);
-            const group = new THREE.Group();
-            if (struts.indices.length) group.add(this._threeMesh(struts, false));
-            if (glass.indices.length) group.add(this._threeMesh(glass, true));
-            // A soft light background makes the transparent glass faces read as
-            // bright coloured film (the Jenn look) instead of murky dark tint.
-            group.userData.background3D = 0xe9ecf2;
-            // Robust framing hint (consumed by renderMeshToCanvas). Stereographic
-            // projection flings 1–2 vertices near the north pole out to a large
-            // radius, dragging a genuinely-flat 2-face into a big hard-cornered
-            // sheet. If the camera frames the full bounding box (its default), that
-            // outlier face fills the view and the compact core shrinks into a corner.
-            // Instead we hand the framer a robust centre+radius over the *polytope
-            // vertices* (median centre, ~80th-percentile radius), so the core fills
-            // the frame and the rare stretched face's ugly corners spill off-screen
-            // (cropped, not popped — this is continuous under the 4D morph). This is
-            // what keeps the look compact and Jenn-like.
-            const fh = this._framingHint();
-            group.userData.framingCenter = fh.center;
-            group.userData.framingRadius = fh.radius;
-            framework.addMeshToScene(this.id, group);
-            framework.renderMeshToCanvas(canvas, this.id, group);
-            return;
+    // Small grid tiles (128px) render at reduced detail; the zoom lightbox
+    // (768px) and STL export get full detail. While the 4D rotation is actively
+    // morphing, the mesh is rebuilt every frame on the CPU — cap detail so even
+    // the 600-cell stays smooth; the motion masks it. (Pausing rotation returns
+    // to full detail.)
+    meshLOD(canvas) {
+        let lod = canvas.width >= 400 ? 1 : 0.6;
+        if (this._morphing()) {
+            // Per-frame CPU rebuild: throttle only the dense 600-cell (1200
+            // faces); the sparse big-face polytopes are cheap even at full
+            // detail, and they're the ones whose limb needs it to stay round.
+            const dense = this._geom().faces.length > 300;
+            lod = Math.min(lod, dense ? 0.5 : 1);
         }
-        this.render2DProjection(canvas);
+        return lod;
     }
 
-    // 2D fallback (no shared 3D / headless tests): orthographic wireframe of the
-    // projected 1-skeleton, gently spinning.
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, w, h);
+    _morphing() {
+        const ea = this._anim4DAngles, fw = window.framework;
+        return !!((ea[0] || ea[1] || ea[2]) && fw && fw.rotationEnabled);
+    }
 
+    // The mesh also depends on the animated 4D pose, so a paused zoom
+    // re-rendering the same pose each frame reuses it (the camera may still be
+    // orbiting) instead of rebuilding.
+    meshKey(lod) { return `${this._anim4DAngles.join(',')}|${lod}|${this.renderKey()}`; }
+
+    // Two materials, so a THREE.Group rather than one flat mesh.
+    buildMesh(lod) {
+        const { struts, glass } = this._buildParts(lod, this._morphing());
+        const group = new THREE.Group();
+        if (struts.indices.length) group.add(this._threeMesh(struts, false));
+        if (glass.indices.length) group.add(this._threeMesh(glass, true));
+        // A soft light background makes the transparent glass faces read as
+        // bright coloured film (the Jenn look) instead of murky dark tint.
+        group.userData.background3D = 0xe9ecf2;
+        // Robust framing hint (consumed by renderMeshToCanvas). Stereographic
+        // projection flings 1–2 vertices near the north pole out to a large
+        // radius, dragging a genuinely-flat 2-face into a big hard-cornered
+        // sheet. If the camera frames the full bounding box (its default), that
+        // outlier face fills the view and the compact core shrinks into a corner.
+        // Instead we hand the framer a robust centre+radius over the *polytope
+        // vertices* (median centre, ~80th-percentile radius), so the core fills
+        // the frame and the rare stretched face's ugly corners spill off-screen
+        // (cropped, not popped — this is continuous under the 4D morph). This is
+        // what keeps the look compact and Jenn-like.
+        const fh = this._framingHint();
+        group.userData.framingCenter = fh.center;
+        group.userData.framingRadius = fh.radius;
+        return group;
+    }
+
+    // 2D fallback: the projected 1-skeleton, coloured by w.
+    wireframe() {
         const p = this.phenotype;
         const { verts, edges } = this._geom();
         const rverts = verts.map(v => this._rotate4(v, p.rot));
         const proj = rverts.map(v => this._project(v, p.projScale));
-        const scale = Math.min(w, h) / (this.maxProjRadius * 2.2);
-        const sx = x => w / 2 + x * scale, sy = y => h / 2 + y * scale;
-
-        ctx.lineWidth = Math.max(1, Math.min(w, h) / 128);
-        for (const [i, j] of edges) {
-            let t = (rverts[i][3] + rverts[j][3] + 2) / 4;
-            const col = window.Palette.color(p.colorReverse ? 1 - t : t);
-            ctx.strokeStyle = col.css || `rgb(${col.r},${col.g},${col.b})`;
-            ctx.beginPath();
-            ctx.moveTo(sx(proj[i][0]), sy(proj[i][1]));
-            ctx.lineTo(sx(proj[j][0]), sy(proj[j][1]));
-            ctx.stroke();
-        }
-    }
-
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) framework.removeMeshFromScene(this.id);
+        return edges.map(([i, j]) => {
+            const t = (rverts[i][3] + rverts[j][3] + 2) / 4;
+            return { pts: [proj[i], proj[j]], ts: [p.colorReverse ? 1 - t : t] };
+        });
     }
 
     getPhenotype() {

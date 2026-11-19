@@ -1,9 +1,10 @@
 /**
  * ThreeDModality
  *
- * Wraps the Three.js mesh creation and shared-scene rendering pipeline.
- * Any 3D individual delegates mesh construction and rendering here,
- * keeping its own code focused on geometry generation.
+ * Static Three.js mesh helpers for 3D individuals: createMesh (flat arrays →
+ * a lit, vertex-coloured mesh) and the rod-and-ball emitters below. The shared-
+ * scene render path itself lives in the Individual base (visualize3D), so a 3D
+ * type only produces geometry.
  */
 
 class ThreeDModality {
@@ -13,7 +14,7 @@ class ThreeDModality {
      * @param {number[]} indices  - Triangle indices
      * @param {number[]} colors   - Flat [r,g,b, r,g,b, ...] array (values 0-1)
      */
-    createMesh(vertices, indices, colors) {
+    static createMesh(vertices, indices, colors) {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -30,22 +31,6 @@ class ThreeDModality {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         return mesh;
-    }
-
-    /**
-     * Full pipeline: build mesh, register with shared scene, render to canvas.
-     * Requires the framework's shared 3D scene to be available.
-     * @param {HTMLCanvasElement} canvas
-     * @param {string} id - Individual id (used as mesh key in shared scene)
-     * @param {number[]} vertices
-     * @param {number[]} indices
-     * @param {number[]} colors
-     * @param {object} framework - window.framework reference
-     */
-    render(canvas, id, vertices, indices, colors, framework) {
-        const mesh = this.createMesh(vertices, indices, colors);
-        framework.addMeshToScene(id, mesh);
-        framework.renderMeshToCanvas(canvas, id, mesh);
     }
 
     // --- Shared rod-and-ball geometry -------------------------------------------

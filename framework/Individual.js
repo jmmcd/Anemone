@@ -412,7 +412,109 @@ class Individual {
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {
+        if (this.is3D()) return this.visualize3D(canvas);
         throw new Error("visualize() must be implemented by subclass");
+    }
+
+    // --- 3D (types declaring is3D) ----------------------------------------------
+    // A 3D type supplies generate3DPoints(lod) → { vertices, indices, colors }
+    // (flat arrays; also what STL export reads) and inherits the rest: the mesh
+    // goes into the framework's shared Three.js scene and is rebuilt only when
+    // meshKey(lod) changes, the scene entry is freed by cleanup(), and without
+    // WebGL (tests, a lost context) render2DProjection draws a fixed-view 2D
+    // projection instead. Hooks, all optional:
+    //   meshLOD(canvas)  detail level for this canvas (tiles may use less)
+    //   meshKey(lod)     what the mesh depends on (add animation state here)
+    //   buildMesh(lod)   a THREE object, when one flat mesh is not enough
+    //   wireframe()      [{ pts: [[x,y,z]…], ts: [t…] }] lines for the 2D fallback
+
+    visualize3D(canvas) {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        if (!(fw && fw.shared3D)) return this.render2DProjection(canvas);
+        const lod = this.meshLOD(canvas);
+        const key = this.meshKey(lod);
+        const cached = fw.shared3D.meshes.get(this.id);
+        if (cached && key === this._meshKey) {
+            fw.renderMeshToCanvas(canvas, this.id, cached);
+            return;
+        }
+        const mesh = this.buildMesh(lod);
+        if (!mesh) return;
+        this._meshKey = key;
+        fw.addMeshToScene(this.id, mesh);
+        fw.renderMeshToCanvas(canvas, this.id, mesh);
+    }
+
+    meshLOD(canvas) { return 1; }
+
+    meshKey(lod) { return `${lod}|${this.renderKey()}`; }
+
+    buildMesh(lod) {
+        const { vertices, indices, colors } = this.generate3DPoints(lod);
+        if (!indices.length) return null;
+        return ThreeDModality.createMesh(vertices, indices, colors);
+    }
+
+    wireframe() { return null; }
+
+    // Free this individual's entry in the shared 3D scene (the framework calls
+    // it when an individual leaves the grid).
+    cleanup() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        if (this.is3D() && fw && fw.shared3D) fw.removeMeshFromScene(this.id);
+        this._meshKey = null;
+    }
+
+    render2DProjection(canvas) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        const cy = Math.cos(0.6), sy = Math.sin(0.6), cx = Math.cos(0.4), sx = Math.sin(0.4);
+        const project = (x, y, z) => {
+            const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+            return [x1, y * cx - z1 * sx, y * sx + z1 * cx];
+        };
+        const lines = this.wireframe();
+        let items;                                   // projected [x, y, depth] + colour
+        if (lines) {
+            items = lines.map(l => ({ pts: l.pts.map(p => project(p[0], p[1], p[2])), ts: l.ts }));
+        } else {
+            const { vertices, colors } = this.generate3DPoints();
+            items = [];
+            for (let i = 0; i < vertices.length; i += 3) {
+                items.push({ p: project(vertices[i], vertices[i + 1], vertices[i + 2]),
+                    rgb: [colors[i], colors[i + 1], colors[i + 2]] });
+            }
+        }
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const grow = (p) => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); };
+        for (const it of items) (it.pts || [it.p]).forEach(grow);
+        if (!(x1 >= x0)) return;
+        const scale = 0.85 * Math.min(w, h) / (Math.max(x1 - x0, y1 - y0) || 1);
+        const X = (p) => w / 2 + (p[0] - (x0 + x1) / 2) * scale;
+        const Y = (p) => h / 2 - (p[1] - (y0 + y1) / 2) * scale;   // scene y is up
+        const px = Canvas2DModality.pixelScale(w, h);
+        if (lines) {
+            ctx.lineWidth = Math.max(1, 1.4 * px);
+            for (const { pts, ts } of items) {
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const c = window.Palette.color(ts[Math.min(i, ts.length - 1)]);
+                    ctx.strokeStyle = `rgb(${c.r},${c.g},${c.b})`;
+                    ctx.beginPath();
+                    ctx.moveTo(X(pts[i]), Y(pts[i]));
+                    ctx.lineTo(X(pts[i + 1]), Y(pts[i + 1]));
+                    ctx.stroke();
+                }
+            }
+        } else {
+            items.sort((a, b) => b.p[2] - a.p[2]);   // far first
+            const r = Math.max(1, 2 * px);
+            for (const { p, rgb } of items) {
+                ctx.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`;
+                ctx.fillRect(X(p) - r / 2, Y(p) - r / 2, r, r);
+            }
+        }
     }
 
     // --- Editable code sections (for the live code editor, CodeEditorUI) ---

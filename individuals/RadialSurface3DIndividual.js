@@ -38,7 +38,6 @@ class RadialSurface3DIndividual extends Individual {
 
     constructor(genome = null) {
         super(genome);
-        this.threeDModality = new ThreeDModality();
         this.thetaPoints = 50;
         this.phiPoints = 100;
         // |f| + radiusEps keeps the surface a proper radial one (no folds through
@@ -104,78 +103,6 @@ class RadialSurface3DIndividual extends Individual {
         }
 
         return { vertices, indices, colors };
-    }
-
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const { vertices, indices, colors } = this.generate3DPoints();
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-        } else {
-            this.render2DProjection(canvas);
-        }
-    }
-
-    // 2D-canvas fallback when shared 3D isn't available (rotating point cloud).
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, width, height);
-
-        const { vertices, colors } = this.generate3DPoints();
-        const time = Date.now() * 0.001;
-        const projectedPoints = [];
-
-        for (let i = 0; i < vertices.length; i += 3) {
-            const x = vertices[i];
-            const y = vertices[i + 1];
-            const z = vertices[i + 2];
-
-            const rotY = time * 0.5;
-            const rotX = time * 0.3;
-            const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
-            const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
-
-            const x1 = x * cosY - z * sinY;
-            const z1 = x * sinY + z * cosY;
-            const y2 = y * cosX - z1 * sinX;
-            const z2 = y * sinX + z1 * cosX;
-
-            const distance = 15;
-            const focal = 500;
-            if (z2 + distance > 0.1) {
-                projectedPoints.push({
-                    x: (x1 * focal) / (z2 + distance) + width / 2,
-                    y: (y2 * focal) / (z2 + distance) + height / 2,
-                    z: z2 + distance,
-                    colorR: colors[i / 3 * 3] * 255,
-                    colorG: colors[i / 3 * 3 + 1] * 255,
-                    colorB: colors[i / 3 * 3 + 2] * 255
-                });
-            }
-        }
-
-        projectedPoints.sort((a, b) => b.z - a.z);
-        projectedPoints.forEach(point => {
-            if (point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) {
-                const size = Math.max(1, 4 - point.z * 0.1);
-                ctx.fillStyle = `rgb(${Math.round(point.colorR)}, ${Math.round(point.colorG)}, ${Math.round(point.colorB)})`;
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-    }
-
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            framework.removeMeshFromScene(this.id);
-        }
     }
 
     // Separable → { meridianExpr, crossExpr }; bivariate → { biExpr }. The

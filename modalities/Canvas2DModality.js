@@ -108,6 +108,15 @@ class Canvas2DModality {
         ctx.restore();
     }
 
+    /**
+     * The resolution-independent pixel unit: 1 at the 128px tile, 6 at the
+     * 768px zoom. Multiply any absolute-pixel quantity (a line width, a glow
+     * radius) by it so the zoom is a faithful magnification of the tile.
+     */
+    static pixelScale(width, height) {
+        return Math.min(width, height) / 128;
+    }
+
     /** Filled circle centred at (cx, cy). */
     static drawCircle(data, width, height, cx, cy, radius, color) {
         const r2 = radius * radius;

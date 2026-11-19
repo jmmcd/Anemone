@@ -226,11 +226,6 @@ class SITCode3DIndividual extends SITCodeIndividual {
         is3D: true,
     };
 
-    constructor(genome = null) {
-        super(genome);
-        this.threeDModality = new ThreeDModality();
-    }
-
     static representation = leeRepresentation3D;
 
     /** The interpreted figure: drawn segments plus the branch grids. Cached. */
@@ -487,71 +482,14 @@ class SITCode3DIndividual extends SITCodeIndividual {
         return Math.hypot(n[0], n[1], n[2]) < 1e-9;
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const lod = canvas.width >= 400 ? 1 : 0.7;
-            const { vertices, indices, colors } = this.generate3DPoints(lod);
-            if (!indices.length) return;
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-            return;
-        }
-        this.render2DProjection(canvas);
-    }
+    // SITCodeIndividual's 2D visualize would shadow the base 3D path.
+    visualize(canvas) { return this.visualize3D(canvas); }
 
-    // 2D fallback when the shared 3D scene isn't available (headless tests, and
-    // a deep-linked startup before the scene exists): a slowly-rotating
-    // orthographic wireframe of the contour itself.
-    render2DProjection(canvas) {
-        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
-            // The fallback has no shading, so draw skinned families as their
-            // meridian wires (polylines(true) keeps them) rather than losing them.
-            const lines = this.polylines(true);
-            if (!lines.length) return imageData;
+    meshLOD(canvas) { return canvas.width >= 400 ? 1 : 0.7; }
 
-            const s = Math.min(width, height) / 128;
-            const cosY = Math.cos(0.6), sinY = Math.sin(0.6);
-            const cosX = Math.cos(0.4), sinX = Math.sin(0.4);
-            const project = (p) => {
-                const x1 = p[0] * cosY - p[2] * sinY;
-                const z1 = p[0] * sinY + p[2] * cosY;
-                const y2 = p[1] * cosX - z1 * sinX;
-                return [x1, y2];
-            };
-
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            const proj = lines.map(l => l.pts.map(p => {
-                const q = project(p);
-                minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]);
-                minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]);
-                return q;
-            }));
-            const margin = 10 * s;
-            const dw = maxX - minX, dh = maxY - minY;
-            const scale = Math.min(dw > 0 ? (width - 2 * margin) / dw : 1,
-                dh > 0 ? (height - 2 * margin) / dh : 1);
-            const ox = (width - dw * scale) / 2 - minX * scale;
-            const oy = (height - dh * scale) / 2 - minY * scale;
-
-            for (let li = 0; li < proj.length; li++) {
-                const pl = proj[li], ts = lines[li].ts;
-                for (let i = 0; i < pl.length - 1; i++) {
-                    const color = window.Palette.color(ts[Math.min(i, ts.length - 1)]);
-                    Canvas2DModality.drawThickLine(
-                        data, width, height,
-                        pl[i][0] * scale + ox, pl[i][1] * scale + oy,
-                        pl[i + 1][0] * scale + ox, pl[i + 1][1] * scale + oy,
-                        color, Math.max(1, 1.4 * s));
-                }
-            }
-            return imageData;
-        });
-    }
+    // The 2D fallback has no shading, so skinned families are drawn as their
+    // meridian wires (polylines(true) keeps them) rather than lost.
+    wireframe() { return this.polylines(true); }
 
     getPhenotype() {
         const p = this.phenotype;
