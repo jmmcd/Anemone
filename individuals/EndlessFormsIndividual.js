@@ -125,19 +125,19 @@ const endlessFormsGenerator = (rnd) => {
 const endlessFormsRepresentation = new PTORepresentation(endlessFormsGenerator);
 
 class EndlessFormsIndividual extends Individual {
+    static representation = endlessFormsRepresentation;
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = endlessFormsRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-        this.threeDModality = new ThreeDModality();
+        super(genome);
         this.gx = EF_GRID;
         this.gz = EF_GRID;
         this.gy = EF_GRID_Y;
         this.yspan = EF_GRID_Y / EF_GRID; // taller query domain, cubic voxels
     }
-
-    is3D()             { return true; }
-    usesColorPalette() { return true; }
 
     // Reject degenerate forms so the grid shows interesting sculptures:
     //   1. an output depending on <2 spatial inputs is always a slab (one axis),
@@ -222,29 +222,28 @@ class EndlessFormsIndividual extends Individual {
     // centres over the query domain: x,z ∈ [-1,1], y ∈ [-yspan,yspan]; symX folds x→|x|.
     // Finally _keepLargestBody prunes everything but the largest connected mass.
     _field() {
-        const p = this.phenotype;
-        if (this._fieldCache && this._fieldCache.key === p) return this._fieldCache;
+        return this.derive('field', (p) => {
 
-        const { gx, gy, gz, yspan } = this;
-        const data = new Float32Array(gx * gy * gz);
-        const thr = p.threshold;
-        let count = 0;
-        for (let k = 0; k < gz; k++) {
-            const z = ((k + 0.5) / gz) * 2 - 1;
-            for (let j = 0; j < gy; j++) {
-                const y = (((j + 0.5) / gy) * 2 - 1) * yspan;
-                for (let i = 0; i < gx; i++) {
-                    let x = ((i + 0.5) / gx) * 2 - 1;
-                    if (p.symX) x = Math.abs(x);
-                    const v = this._query(x, y, z);
-                    data[i + gx * (j + gy * k)] = thr - v; // <0 ⇔ occupied
-                    if (v > thr) count++;
+            const { gx, gy, gz, yspan } = this;
+            const data = new Float32Array(gx * gy * gz);
+            const thr = p.threshold;
+            let count = 0;
+            for (let k = 0; k < gz; k++) {
+                const z = ((k + 0.5) / gz) * 2 - 1;
+                for (let j = 0; j < gy; j++) {
+                    const y = (((j + 0.5) / gy) * 2 - 1) * yspan;
+                    for (let i = 0; i < gx; i++) {
+                        let x = ((i + 0.5) / gx) * 2 - 1;
+                        if (p.symX) x = Math.abs(x);
+                        const v = this._query(x, y, z);
+                        data[i + gx * (j + gy * k)] = thr - v; // <0 ⇔ occupied
+                        if (v > thr) count++;
+                    }
                 }
             }
-        }
-        count = this._keepLargestBody(data);
-        this._fieldCache = { key: p, data, count };
-        return this._fieldCache;
+            count = this._keepLargestBody(data);
+            return { data, count };
+        });
     }
 
     // Keep only the largest connected body, discarding floating material —
@@ -445,59 +444,10 @@ class EndlessFormsIndividual extends Individual {
         return { vertices, indices, colors };
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const { vertices, indices, colors } = this.generate3DPoints();
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-        } else {
-            this._render2DFallback(canvas);
-        }
-    }
+    /** What visualize() draws: the voxel field (see _field). */
+    getPhenotype() { return this._field(); }
 
-    // Minimal 2D fallback (no WebGL / headless): a rotating point cloud of the
-    // surface vertices, so the type still renders (and never throws) off the
-    // shared 3D scene.
-    _render2DFallback(canvas) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width, height = canvas.height;
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
-
-        const { vertices, colors } = this.generate3DPoints();
-        const time = Date.now() * 0.001, rotY = time * 0.5;
-        const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
-        const scale = Math.min(width, height) / (Math.max(this.gx, this.gy) * 1.6);
-        const pts = [];
-        for (let i = 0; i < vertices.length; i += 3) {
-            const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
-            const x1 = x * cosY - z * sinY;
-            const z1 = x * sinY + z * cosY;
-            pts.push({
-                x: x1 * scale + width / 2,
-                y: -y * scale + height / 2,
-                z: z1,
-                r: colors[i], g: colors[i + 1], b: colors[i + 2],
-            });
-        }
-        pts.sort((a, b) => a.z - b.z);
-        for (const pt of pts) {
-            ctx.fillStyle = `rgb(${Math.round(pt.r * 255)},${Math.round(pt.g * 255)},${Math.round(pt.b * 255)})`;
-            ctx.fillRect(pt.x, pt.y, 2, 2);
-        }
-    }
-
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) framework.removeMeshFromScene(this.id);
-    }
-
-    renderKey() {
-        return JSON.stringify(this.phenotype) + '|' + window.Palette.name();
-    }
-
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const frac = (this._field().count / (this.gx * this.gy * this.gz) * 100).toFixed(1);
         const style = EF_SMOOTH ? 'smooth' : 'voxels';

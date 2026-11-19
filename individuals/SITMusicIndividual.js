@@ -528,16 +528,30 @@ const leeEncodeMusic = (pheno) => {
 };
 
 class SITMusicIndividual extends SITCodeIndividual {
-    constructor(genome = null) {
-        super(genome);
-        // Shared output modalities (local fallbacks for tests): notes → MIDI, else synth.
-        const fw = (typeof window !== 'undefined') && window.framework;
-        this.midiModality = (fw && fw.sharedMIDI) || new MIDIModality();
-        this.audio = (fw && fw.sharedAudio) || new AudioModality();
-        this.isPlaying = false;
-    }
+    static capabilities = {
+        usesColorPalette: true, // voices are palette-coloured
+        usesPerformanceControls: true, // global tempo/swing dials
+        performanceDials: ['bpm', 'swing'],
+        usesMIDISync: true, // follow a DAW's MIDI clock
+        // Attaches the Leeuwenberg Analysis panel: the reverse map (a melody → a
+        // code → a genome). This is the only type that can receive one, since it is
+        // the only one whose generator can be run backwards (see fromCode).
+        usesSITAnalysis: true,
+        // Start from the beginning, every time — unlike the step sequencers.
+        //
+        // They are one bar repeating, so entering at the shared Transport phase is
+        // what keeps the beat as you move across the grid. A Leeuwenberg code is not
+        // a bar: it is a piece of whatever length its own structure gives it, up to
+        // sixteen bars, and its regularities are heard FROM THE START (an arch, a
+        // sequence, a repeat with a transposed answer). Dropping into the middle of
+        // one at whatever phase the previous tile happened to leave the clock at
+        // would hide exactly what there is to listen for.
+        usesSharedPhase: false,
+        // Like the melody grid, the artefact is the sound; the piano roll is a view of it.
+        usesImageSave: false,
+    };
 
-    defaultRepresentation() { return leeRepresentationMusic; }
+    static representation = leeRepresentationMusic;
 
     /**
      * Build an individual from a code that was ANALYSED out of a real melody
@@ -607,30 +621,6 @@ class SITMusicIndividual extends SITCodeIndividual {
         return flat(a) === flat(b);
     }
 
-    usesColorPalette() { return true; }         // voices are palette-coloured
-    usesPerformanceControls() { return true; }  // global tempo/swing dials
-    performanceDials() { return ['bpm', 'swing']; }
-    usesMIDISync() { return true; }             // follow a DAW's MIDI clock
-    // Attaches the Leeuwenberg Analysis panel: the reverse map (a melody → a
-    // code → a genome). This is the only type that can receive one, since it is
-    // the only one whose generator can be run backwards (see fromCode).
-    usesSITAnalysis() { return true; }
-
-    /**
-     * Start from the beginning, every time — unlike the step sequencers.
-     *
-     * They are one bar repeating, so entering at the shared Transport phase is
-     * what keeps the beat as you move across the grid. A Leeuwenberg code is not
-     * a bar: it is a piece of whatever length its own structure gives it, up to
-     * sixteen bars, and its regularities are heard FROM THE START (an arch, a
-     * sequence, a repeat with a transposed answer). Dropping into the middle of
-     * one at whatever phase the previous tile happened to leave the clock at
-     * would hide exactly what there is to listen for.
-     */
-    usesSharedPhase() { return false; }
-    // Like the melody grid, the artefact is the sound; the piano roll is a view of it.
-    usesImageSave() { return false; }
-
     /** The scale table for this code's rotational family (see LEE_SCALES). */
     scale() {
         const p = this.phenotype;
@@ -658,12 +648,7 @@ class SITMusicIndividual extends SITCodeIndividual {
 
     /** The interpreted piece (cached per phenotype — evaluation is not cheap). */
     music() {
-        const p = this.phenotype;
-        if (this._musicFor !== p) {
-            this._musicFor = p;
-            this._music = SITLanguage.interpretMusic(this.items());
-        }
-        return this._music;
+        return this.derive('music', () => SITLanguage.interpretMusic(this.items()));
     }
 
     /**
@@ -727,7 +712,7 @@ class SITMusicIndividual extends SITCodeIndividual {
         const notes = this.getPhenotype();
         if (!notes.length) return;
         const grains = this.grains();
-        const s = Math.min(W, H) / 128;           // resolution-independent pixel unit
+        const s = Canvas2DModality.pixelScale(W, H);           // resolution-independent pixel unit
         const pad = Math.max(2, Math.round(3 * s));
 
         let lo = Infinity, hi = -Infinity;
@@ -753,7 +738,7 @@ class SITMusicIndividual extends SITCodeIndividual {
             const nx = x(n.start), nw = Math.max(1.5 * s, x(n.start + n.dur) - nx - 0.5 * s);
             const ny = y(n.pitch) + rowH * 0.12, nh = Math.max(1.5 * s, rowH * 0.76);
             const r = Math.min(2 * s, nh * 0.45, nw * 0.5);
-            this._roundRect(ctx, nx, ny, nw, nh, r);
+            Canvas2DModality.roundRectPath(ctx, nx, ny, nw, nh, r);
             // Velocity reads as opacity, matching the step sequencers' "a quiet
             // note is still a note" wash.
             ctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${0.45 + 0.55 * (n.velocity / 127)})`;
@@ -766,17 +751,6 @@ class SITMusicIndividual extends SITCodeIndividual {
         // usesSharedPhase).
         const at = this.playheadFraction();
         if (at !== null) Canvas2DModality.drawPlayhead(ctx, x(at * grains), pad, gridH, s);
-    }
-
-    _roundRect(ctx, x, y, w, h, r) {
-        r = Math.max(0, Math.min(r, w / 2, h / 2));
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.arcTo(x + w, y, x + w, y + h, r);
-        ctx.arcTo(x + w, y + h, x, y + h, r);
-        ctx.arcTo(x, y + h, x, y, r);
-        ctx.arcTo(x, y, x + w, y, r);
-        ctx.closePath();
     }
 
     // --- Playback (unified step-sequencer path: live MIDI else synth) ---------
@@ -854,6 +828,13 @@ class SITMusicIndividual extends SITCodeIndividual {
         }[(p && p.family)] || 'diatonic';
     }
 
+    summary() {
+        const p = this.phenotype;
+        const { values, ops } = SITLanguage.load(p && p.root);
+        return `Leeuwenberg music code — I = ${values + ops}, ${this.getPhenotype().length} notes, `
+            + `${this.scaleName()} on ${MIDIModality.noteName((p && p.tonic) || 60)}`;
+    }
+
     describeExtra() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);
@@ -869,7 +850,7 @@ class SITMusicIndividual extends SITCodeIndividual {
         s += `  → ${notes.length} notes in ${piece.voices} voices,`
             + ` up to ${this.polyphony()} at once (compression ×${ratio})\n`;
         s += `  scale: ${this.scaleName()} (${(p && p.family) || '?'} to the octave)`
-            + ` · key ${this.midiToNoteName((p && p.tonic) || 60)}\n`;
+            + ` · key ${MIDIModality.noteName((p && p.tonic) || 60)}\n`;
         s += `  ${Math.round(p ? p.bpm : 120)} BPM · swing ${(p ? p.swing : 0).toFixed(2)}`
             + ` · ${this.grains()} grains (${(this.grains() / 16).toFixed(1)} bars)\n`;
         s += '\n<span class="genome-label">Language used:</span>\n';
@@ -879,11 +860,6 @@ class SITMusicIndividual extends SITCodeIndividual {
         s += '\n<span class="genome-label">Piano roll:</span>\n';
         s += this._pianoRoll(notes);
         return s;
-    }
-
-    midiToNoteName(midi) {
-        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        return names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
     }
 
     /** A compact ASCII piano roll for the genome panel (one column per grain). */
@@ -900,7 +876,7 @@ class SITMusicIndividual extends SITCodeIndividual {
                 const a = Math.floor(n.start * scale), b = Math.max(a + 1, Math.ceil((n.start + n.dur) * scale));
                 for (let i = a; i < Math.min(cols, b); i++) row[i] = (i === a) ? '█' : '▬';
             }
-            s += '  ' + this.midiToNoteName(pitch).padStart(3, ' ') + ' ' + row.join('') + '\n';
+            s += '  ' + MIDIModality.noteName(pitch).padStart(3, ' ') + ' ' + row.join('') + '\n';
         }
         return s;
     }

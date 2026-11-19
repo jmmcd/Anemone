@@ -108,6 +108,108 @@ class Canvas2DModality {
         ctx.restore();
     }
 
+    /** A new ImageData filled with one opaque colour (default black). */
+    static filledImageData(ctx, width, height, color = { r: 0, g: 0, b: 0 }) {
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = color.r; data[i + 1] = color.g; data[i + 2] = color.b; data[i + 3] = 255;
+        }
+        return imageData;
+    }
+
+    /**
+     * A bounding-box accumulator: `Canvas2DModality.bounds().add(x, y)…`, or
+     * `.addSegment(s)` for an {x1,y1,x2,y2} segment. `empty` until something
+     * finite is added.
+     */
+    static bounds() {
+        return {
+            minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity,
+            add(x, y) {
+                if (x < this.minX) this.minX = x; if (x > this.maxX) this.maxX = x;
+                if (y < this.minY) this.minY = y; if (y > this.maxY) this.maxY = y;
+                return this;
+            },
+            addSegment(s) { return this.add(s.x1, s.y1).add(s.x2, s.y2); },
+            get empty() { return !(this.maxX >= this.minX && this.maxY >= this.minY); },
+        };
+    }
+
+    /**
+     * Fit a bounding box into width×height, centred, leaving `margin` pixels on
+     * each side. A box that is flat on one axis (a straight line) fits on the
+     * other; a single point gets scale 1. Returns { scale, ox, oy, x(v), y(v) }.
+     */
+    static fitTransform(b, width, height, margin = 0) {
+        const dw = b.maxX - b.minX, dh = b.maxY - b.minY;
+        const sx = dw > 0 ? (width - 2 * margin) / dw : Infinity;
+        const sy = dh > 0 ? (height - 2 * margin) / dh : Infinity;
+        const scale = Math.min(sx, sy) === Infinity ? 1 : Math.min(sx, sy);
+        const ox = (width - dw * scale) / 2 - b.minX * scale;
+        const oy = (height - dh * scale) / 2 - b.minY * scale;
+        return { scale, ox, oy, x: (v) => v * scale + ox, y: (v) => v * scale + oy };
+    }
+
+    /**
+     * The common tile of the line-drawing types: {x1,y1,x2,y2} segments fitted
+     * to the canvas over a solid background, drawn as thick lines, with an
+     * optional palette-coloured bloom; cached through renderCached. Options:
+     *   segments()        → the segment list (called only on a cache miss)
+     *   background        {r,g,b}, default black
+     *   margin            pixels left on each side when fitting (default 20)
+     *   color(seg)        → {r,g,b}
+     *   width(seg, px)    → line width in pixels; px is pixelScale(), so a
+     *                       width in tile units is `w * px`
+     *   bloom             { radius (tile px), strength }, optional
+     */
+    static renderSegments(canvas, holder, opts) {
+        Canvas2DModality.renderCached(canvas, holder, (ctx, width, height) => {
+            const background = opts.background || { r: 0, g: 0, b: 0 };
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height, background);
+            const segs = opts.segments();
+            if (!segs.length) return imageData;
+            const b = Canvas2DModality.bounds();
+            for (const sg of segs) b.addSegment(sg);
+            if (b.empty) return imageData;
+            const T = Canvas2DModality.fitTransform(b, width, height, opts.margin == null ? 20 : opts.margin);
+            const px = Canvas2DModality.pixelScale(width, height);
+            const data = imageData.data;
+            for (const sg of segs) {
+                Canvas2DModality.drawThickLine(data, width, height,
+                    T.x(sg.x1), T.y(sg.y1), T.x(sg.x2), T.y(sg.y2), opts.color(sg), opts.width(sg, px));
+            }
+            if (opts.bloom) {
+                Canvas2DModality.bloom(imageData, { radius: opts.bloom.radius * px, strength: opts.bloom.strength, background });
+            }
+            return imageData;
+        });
+    }
+
+    /**
+     * Trace a rounded-rectangle path (fill or stroke it after). Built from
+     * arcTo rather than ctx.roundRect, which the test harness's canvas lacks.
+     */
+    static roundRectPath(ctx, x, y, w, h, r) {
+        r = Math.max(0, Math.min(r, w / 2, h / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    /**
+     * The resolution-independent pixel unit: 1 at the 128px tile, 6 at the
+     * 768px zoom. Multiply any absolute-pixel quantity (a line width, a glow
+     * radius) by it so the zoom is a faithful magnification of the tile.
+     */
+    static pixelScale(width, height) {
+        return Math.min(width, height) / 128;
+    }
+
     /** Filled circle centred at (cx, cy). */
     static drawCircle(data, width, height, cx, cy, radius, color) {
         const r2 = radius * radius;

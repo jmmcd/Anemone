@@ -59,11 +59,18 @@ const polarCurveGenerator = (rnd) => {
 const polarCurveRepresentation = new PTORepresentation(polarCurveGenerator);
 
 class PolarCurveIndividual extends Individual {
-    constructor(genome = null) {
-        super();
+    static representation = polarCurveRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+    // r(t). The POLAR preset omits the protected-division rewrite: division by
+    // zero gives Infinity/NaN, which the compiler's guard maps to a unit radius,
+    // whereas the regex rewrite can't balance parentheses and would mangle most
+    // of this grammar's expressions into uncompilable code.
+    static expression = { vars: ['t'], preset: 'POLAR' };
 
-        this.representation = polarCurveRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+    constructor(genome = null) {
+        super(genome);
 
         // Polar coordinate parameters. tMax is not fixed here: it comes from the
         // evolved turn count (see generatePolarPoints), tMax = turns · 2π. We
@@ -75,15 +82,8 @@ class PolarCurveIndividual extends Individual {
 
     // The phenotype is { turns, expr }; the meaningful "phenotype" for display,
     // validation and evaluation is the r(t) expression string.
-    getPhenotype() {
-        return this.phenotype.expr;
-    }
-
-    // renderKey must fold in every input that changes the pixels. The base would
-    // return the { turns, expr } object, which stringifies to "[object Object]"
-    // and would collide across all individuals — so build a string key by hand.
-    renderKey() {
-        return `${this.phenotype.turns}:${this.phenotype.expr}`;
+    summary() {
+        return `r(t) = ${this.phenotype.expr}`;
     }
 
     // Surface the evolved turn count next to the expression in the genome panel.
@@ -92,15 +92,10 @@ class PolarCurveIndividual extends Individual {
     }
 
     validate() {
-        const phenotype = this.getPhenotype();
-        if (typeof phenotype !== 'string' || phenotype.trim() === '') {
-            return false;
-        }
-
-        return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(phenotype);
+        const expr = this.phenotype && this.phenotype.expr;
+        if (typeof expr !== 'string' || expr.trim() === '') return false;
+        return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(expr);
     }
-
-    usesColorPalette() { return true; }
 
     // The interesting knob here is the grammar (the generator is boilerplate
     // derivation); expose both, grammar first.
@@ -113,29 +108,18 @@ class PolarCurveIndividual extends Individual {
 
     // Override visualization for polar coordinate drawing
     visualize(canvas) {
-        console.time(`visualize-${this.id}`);
-
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
             // Background color (first color in palette)
             const backgroundColor = window.Palette.color(0);
-
-            // Fill background
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = backgroundColor.r;     // Red
-                data[i + 1] = backgroundColor.g; // Green
-                data[i + 2] = backgroundColor.b; // Blue
-                data[i + 3] = 255;              // Alpha
-            }
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height, backgroundColor);
+            const data = imageData.data;
 
             // Resolution scale: everything in absolute pixels (line thickness,
             // glow radius) is multiplied by this so a zoomed render (768px) is a
             // faithful magnification of the 128px tile rather than the same
             // absolute marks on a 6× larger canvas (which made the glow look weak
             // and the curve a hairline). Reference is the 128px grid tile.
-            const s = Math.min(width, height) / 128;
+            const s = Canvas2DModality.pixelScale(width, height);
 
             // Generate polar coordinates
             const polarPoints = this.generatePolarPoints();
@@ -151,23 +135,24 @@ class PolarCurveIndividual extends Individual {
             return imageData;
         });
         
-        console.timeEnd(`visualize-${this.id}`);
     }
     
     generatePolarPoints() {
-        const points = [];
-        const turns = this.phenotype.turns;
-        const tMax = turns * 2 * Math.PI;       // always a multiple of 2π
-        const numPoints = turns * this.pointsPerTurn;
-        const tStep = (tMax - this.tMin) / numPoints;
+        return this.derive('points', (p) => {
+            const points = [];
+            const turns = p.turns;
+            const tMax = turns * 2 * Math.PI;       // always a multiple of 2π
+            const numPoints = turns * this.pointsPerTurn;
+            const tStep = (tMax - this.tMin) / numPoints;
 
-        for (let i = 0; i <= numPoints; i++) {
-            const t = this.tMin + i * tStep;
-            const r = this.evaluateExpression(t, 0); // y parameter unused for polar
-            points.push({ t, r });
-        }
+            for (let i = 0; i <= numPoints; i++) {
+                const t = this.tMin + i * tStep;
+                const r = this.evaluateExpression(t, 0); // y parameter unused for polar
+                points.push({ t, r });
+            }
 
-        return points;
+            return points;
+        });
     }
     
     drawPolarCurve(data, width, height, polarPoints, s = 1) {
@@ -257,36 +242,11 @@ class PolarCurveIndividual extends Individual {
 
     // Override expression evaluation to work with single parameter t
     evaluateExpression(t, unused) {
-        const expression = this.getPhenotype();
-
-        try {
-            // Pre-compile the expression for faster evaluation. Cache keyed by the
-            // expression string, so it auto-invalidates when the genome changes
-            // (mutation/crossover produce a new genome → new expression).
-            if (this._compiledExpression == null || this._compiledKey !== expression) {
-                this._compiledExpression = this.compileExpressionForT(expression);
-                this._compiledKey = expression;
-            }
-
-            const result = this._compiledExpression(t);
-            
-            // Clamp result to reasonable range to prevent extreme values
-            return Math.max(-5000, Math.min(5000, result));
-            
-        } catch (error) {
-            console.warn('Expression evaluation error:', error, 'Expression:', expression);
-            return 1.0; // Default radius for errors
-        }
+        // Compiled functions are total (see ExpressionCompiler), so no try here;
+        // clamp to tame blow-ups.
+        const result = this.expressionFn(this.phenotype.expr)(t);
+        return Math.max(-5000, Math.min(5000, result));
     }
     
-    // Compile r(t). The POLAR preset (services/ExpressionCompiler.js) omits the
-    // protected-division rewrite: division/modulo by zero produces
-    // Infinity/NaN, which the isFinite guard maps to a unit radius, whereas the
-    // regex rewrite can't balance parentheses and would mangle most of this
-    // grammar's expressions into uncompilable code.
-    compileExpressionForT(expression) {
-        return ExpressionCompiler.compile(expression, ['t'],
-            ExpressionCompiler.PRESETS.POLAR);
-    }
     
 }

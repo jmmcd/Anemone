@@ -36,11 +36,7 @@ const freeSurfaceGenerator = (rnd) => {
 const freeSurfaceRepresentation = new PTORepresentation(freeSurfaceGenerator);
 
 class FreeSurface3DIndividual extends RadialSurface3DIndividual {
-    constructor(genome = null) {
-        super();
-        this.representation = freeSurfaceRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = freeSurfaceRepresentation;
 
     editableSections() {
         return [

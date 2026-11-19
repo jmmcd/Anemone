@@ -203,28 +203,12 @@ const DRUM_HAT_CHANNELS = [2, 3];              // chh, ohh — one physical hat 
 // accents rather than lead (relative levels survive the RMS normalise).
 const DRUM_CHANNEL_GAIN = [1, 1, 1, 1, 0.5, 0.5, 0.3, 0.3]; // tom/cowbell sit further back
 
-class DrumMachineIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = drumMachineRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-        // Shared buffer/graph playback modality (local fallback for tests).
-        this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
-        this.isPlaying = false;
-    }
-
-    usesColorPalette() { return true; }        // rows are palette-coloured
-    usesPerformanceControls() { return true; } // attaches the global Performance panel
-    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive', 'length']; }
-    usesMIDISync() { return true; }            // attaches the MIDI Clock Sync panel
-
-    // Effective bar length in steps: the genome's `length` gene, unless the global
-    // "Length" override is locked (the default, forcing 16). Shared concept with the
-    // melody grid (see PerformanceControls); the [ and ] hotkeys drive it.
-    _effectiveLength() {
-        const p = window.PerformanceControls ? window.PerformanceControls.apply(this.phenotype) : this.phenotype;
-        return Math.max(1, Math.min(16, Math.round(p.length != null ? p.length : 16)));
-    }
+class DrumMachineIndividual extends StepSequencerIndividual {
+    static representation = drumMachineRepresentation;
+    static capabilities = {
+        performanceDials: ['bpm', 'swing', 'humanize', 'drive', 'length'],
+    };
+    static velFloor = DRUM_VEL_FLOOR;
 
     // 8 channels with the colour rows now spread over all cells is ~117 mutable
     // hit genes. Scale the framework's rate to keep a single-parent offspring
@@ -243,18 +227,6 @@ class DrumMachineIndividual extends Individual {
         const a = this.phenotype.accent;
         const accentTerm = a * DRUM_METRICAL[s] + (1 - a) * 0.7; // metrical tilt, centred near ~0.7
         return Math.min(1, seed * (0.6 + 0.4 * accentTerm));     // seed dominant, accent ±
-    }
-
-    // Grid geometry for a W×H canvas — the single source of truth shared by
-    // visualize() (drawing) and cellAtCanvasXY() (hit-testing), so a click always
-    // lands on the cell it appears to. Row c is drawn kick (c=0) at the BOTTOM.
-    _gridLayout(W, H) {
-        const rows = 8, cols = 16;
-        const pad = Math.max(2, Math.floor(W * 0.02));
-        const cw = (W - 2 * pad) / cols;
-        const gridH = H - 2 * pad;              // 8 rows fill the padded height
-        const chh = gridH / rows;
-        return { rows, cols, pad, cw, chh, gridH, yTop: pad };
     }
 
     // --- Tile visual: a step-sequencer grid (kick at the bottom) ----------------
@@ -311,56 +283,8 @@ class DrumMachineIndividual extends Individual {
         // individual currently sounding.
         const at = this.playheadFraction();
         if (at !== null) {
-            Canvas2DModality.drawPlayhead(ctx, pad + at * L * cw, yTop, gridH, Math.min(W, H) / 128);
+            Canvas2DModality.drawPlayhead(ctx, pad + at * L * cw, yTop, gridH, Canvas2DModality.pixelScale(W, H));
         }
-    }
-
-    // --- Direct cell editing (folded back into the genome) ----------------------
-    // The tile visual is a real step sequencer, so the framework lets the user
-    // click/drag it in the zoom lightbox. Each edit is written to the addressable
-    // per-cell genes (hit_c_s / vel_c_s) via representation.setGene, so evolution
-    // continues from the edited genome (see the header's EDITABLE LOOPS note).
-    isGridEditable() { return true; }
-
-    // Map a canvas pixel (already in canvas coordinate space) to { c, s }, or null
-    // if outside the grid. Inverse of the layout used by visualize().
-    cellAtCanvasXY(canvas, px, py) {
-        const { rows, cols, pad, cw, chh, yTop } = this._gridLayout(canvas.width, canvas.height);
-        const s = Math.floor((px - pad) / cw);
-        const rowFromTop = Math.floor((py - yTop) / chh);
-        const c = (rows - 1) - rowFromTop;      // kick (c=0) at the bottom
-        if (s < 0 || s >= cols || c < 0 || c >= rows) return null;
-        return { c, s };
-    }
-
-    cellOn(c, s) {
-        const p = this.phenotype;
-        return !!(p && p.grid && p.grid[c][s] > 0);
-    }
-
-    // Turn a cell on or off by forcing its hit gene, and replace this individual's
-    // genome with the result so the change is heritable. A freshly-turned-on cell
-    // reuses its existing velocity-seed gene (already in the trace), so it inherits
-    // a sensible dynamic rather than a flat default.
-    setCellHit(c, s, on) {
-        this.genome = drumMachineRepresentation.setGene(this.genome, `hit_${c}_${s}`, on ? 1 : 0);
-        this.invalidateImageCache();
-    }
-
-    // Per-cell velocity, as the 0..1 `vel_c_s` gene — which is also the fraction of
-    // the cell drawn filled, so the bar height is exactly the gene the user is
-    // editing. The stored grid value is the *seed* DRUM_VEL_FLOOR + (1−floor)·gene
-    // (a hit is never fully silent); accent tilts it further at render time.
-    cellVel(c, s) {
-        const p = this.phenotype;
-        const seed = (p && p.grid && p.grid[c] && p.grid[c][s]) || 0;
-        return seed > 0 ? Math.max(0, Math.min(1, (seed - DRUM_VEL_FLOOR) / (1 - DRUM_VEL_FLOOR))) : 0;
-    }
-
-    setCellVel(c, s, v) {
-        const gene = Math.max(0, Math.min(1, v));
-        this.genome = drumMachineRepresentation.setGene(this.genome, `vel_${c}_${s}`, gene);
-        this.invalidateImageCache();
     }
 
     describeExtra() {
@@ -520,12 +444,4 @@ class DrumMachineIndividual extends Individual {
         // loopTicks = the active bar length; the live-MIDI player loops on it.
         return { bpm: p.bpm, ppq, loopTicks: L * step, notes };
     }
-
-    // --- Playback (framework sound-individual interface) -----------------------
-    // Unified step-sequencer playback (base Individual.playSequenced): live MIDI to
-    // GM percussion when an output is available, else the synthesised loop buffer
-    // (renderToAudioBuffer) through the shared AudioModality — both entered at the
-    // shared Transport phase.
-    playMIDI() { this.playSequenced(); }
-    stopMIDI() { this.stopSequenced(); }
 }

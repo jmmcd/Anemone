@@ -97,7 +97,7 @@ if (mode === 'analyse') {
     for (let i = 0; i < n; i++) {
         const ind = validIndividual();
         const p = ind.phenotype;
-        console.log(`\n--- ${i + 1}: ${ind.scaleName()} on ${ind.midiToNoteName(p.tonic)},`
+        console.log(`\n--- ${i + 1}: ${ind.scaleName()} on ${env.sandbox.__MIDIModality.noteName(p.tonic)},`
             + ` ${Math.round(p.bpm)} BPM, I = ${Object.values(SITLanguage.load(p.root)).reduce((a, b) => a + b, 0)},`
             + ` ${ind.polyphony()} voices deep ---`);
         console.log(`  ${SITLanguage.notation(p.root).slice(0, 150)}`);

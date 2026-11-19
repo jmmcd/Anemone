@@ -171,15 +171,11 @@ const leeGenerator2D = (rnd) => {
 const leeRepresentation2D = new PTORepresentation(leeGenerator2D);
 
 class SITCodeIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = this.defaultRepresentation();
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-    defaultRepresentation() { return leeRepresentation2D; }
-
-    usesColorPalette() { return true; }
+    static representation = leeRepresentation2D;
 
     // Degrees per angle unit: every literal in the code is an integer multiple
     // of this. See the header on the discrete/continuous unification.
@@ -190,21 +186,12 @@ class SITCodeIndividual extends Individual {
 
     /** The evaluated item stream (cached per phenotype — evaluation is not cheap). */
     items() {
-        const p = this.phenotype;
-        if (this._itemsFor !== p) {
-            this._itemsFor = p;
-            this._items = SITLanguage.evaluate(p && p.root, this.unitDegrees());
-        }
-        return this._items;
+        return this.derive('items', (p) => SITLanguage.evaluate(p && p.root, this.unitDegrees()));
     }
 
     marks() {
         return SITLanguage.interpret2D(this.items(), this.unitDegrees());
     }
-
-    // The object phenotype stringifies to "[object Object]" and would collide in
-    // renderCached's key, so key on a precise serialisation of the code.
-    renderKey() { return JSON.stringify(this.phenotype); }
 
     /**
      * Reject figures that are not worth a tile: too few marks, or a contour so
@@ -227,31 +214,18 @@ class SITCodeIndividual extends Individual {
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height);
             const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
 
             const marks = this.marks();
             if (marks.length === 0) return imageData;
 
             // Resolution-independent pixel units (tiles 128px, zoom 768px).
-            const s = Math.min(width, height) / 128;
+            const s = Canvas2DModality.pixelScale(width, height);
 
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            for (const m of marks) {
-                minX = Math.min(minX, m.x1, m.x2); maxX = Math.max(maxX, m.x1, m.x2);
-                minY = Math.min(minY, m.y1, m.y2); maxY = Math.max(maxY, m.y1, m.y2);
-            }
-            const margin = 10 * s;
-            const drawW = maxX - minX, drawH = maxY - minY;
-            let scale = 1;
-            if (drawW > 0 && drawH > 0) scale = Math.min((width - 2 * margin) / drawW, (height - 2 * margin) / drawH);
-            else if (drawW > 0) scale = (width - 2 * margin) / drawW;
-            else if (drawH > 0) scale = (height - 2 * margin) / drawH;
-            const offsetX = (width - drawW * scale) / 2 - minX * scale;
-            const offsetY = (height - drawH * scale) / 2 - minY * scale;
+            const b = Canvas2DModality.bounds();
+            for (const m of marks) b.addSegment(m);
+            const { scale, ox: offsetX, oy: offsetY } = Canvas2DModality.fitTransform(b, width, height, 10 * s);
 
             // Stroke width. Three bounds, smallest wins:
             //  * 2.2·s — the nominal weight, resolution-independent;
@@ -301,7 +275,10 @@ class SITCodeIndividual extends Individual {
 
     // --- Self-description ---------------------------------------------------
 
-    getPhenotype() {
+    /** What visualize() draws: the contour marks (see marks). */
+    getPhenotype() { return this.marks(); }
+
+    summary() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);
         return `Leeuwenberg code — I = ${values + ops} (${values} values + ${ops} operators)`

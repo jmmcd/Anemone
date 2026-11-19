@@ -21,17 +21,18 @@ const supershapeGenerator = (rnd) => [
 const supershapeRepresentation = new PTORepresentation(supershapeGenerator);
 
 class SuperShapeIndividual extends Individual {
+    static representation = supershapeRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super();
-        this.representation = supershapeRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.numPoints = 1000;
         this.phiRange = 2 * Math.PI;
     }
 
-    usesColorPalette() { return true; }
-
-    getParameters() {
+    getPhenotype() {
         // Extract parameters from genome: [m_numerator, m_denominator, n1, n2, n3, a, b]
         const [m_numerator, m_denominator, n1, n2, n3, a, b] = this.phenotype;
         
@@ -121,30 +122,31 @@ class SuperShapeIndividual extends Individual {
     }
     
     generatePolarPoints() {
-        const params = this.getParameters();
-        const points = [];
+        return this.derive('points', (p) => {
+            const params = this.getPhenotype();
+            const points = [];
         
-        // Calculate proper φ range using the separate denominator value
-        this.phiRange = this.calculatePhiRange(params.m_denominator);
+            // Calculate proper φ range using the separate denominator value
+            this.phiRange = this.calculatePhiRange(params.m_denominator);
         
-        // Generate points from 0 to phiRange, ensuring proper closure
-        for (let i = 0; i < this.numPoints; i++) {
-            const phi = (i / this.numPoints) * this.phiRange;
-            const radius = this.calculateRadius(phi, params);
+            // Generate points from 0 to phiRange, ensuring proper closure
+            for (let i = 0; i < this.numPoints; i++) {
+                const phi = (i / this.numPoints) * this.phiRange;
+                const radius = this.calculateRadius(phi, params);
             
-            // Convert to Cartesian coordinates
-            const x = radius * Math.cos(phi);
-            const y = radius * Math.sin(phi);
+                // Convert to Cartesian coordinates
+                const x = radius * Math.cos(phi);
+                const y = radius * Math.sin(phi);
             
-            points.push({ x, y, phi, radius });
-        }
-        
-        
-        return points;
+                points.push({ x, y, phi, radius });
+            }
+
+            return points;
+        });
     }
     
     calculatePhiRange(denominator) {
-        const params = this.getParameters();
+        const params = this.getPhenotype();
         const p = Math.round(params.m_numerator);
         const q = Math.round(denominator);
         
@@ -171,137 +173,30 @@ class SuperShapeIndividual extends Individual {
         return Math.abs(a);
     }
     
+    // The superformula outline over the palette's low end, coloured by angle.
     visualize(canvas) {
-        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-            
-            // Background color (dark)
-            const backgroundColor = window.Palette.color(0);
-            
-            // Fill background
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = backgroundColor.r;
-                data[i + 1] = backgroundColor.g;
-                data[i + 2] = backgroundColor.b;
-                data[i + 3] = 255;
-            }
-            
-            // Generate the superformula points
-            const points = this.generatePolarPoints();
-            
-            if (points.length === 0) {
-                return imageData;
-            }
-            
-            // Find bounding box for scaling
-            const xCoords = points.map(p => p.x);
-            const yCoords = points.map(p => p.y);
-            const minX = Math.min(...xCoords);
-            const maxX = Math.max(...xCoords);
-            const minY = Math.min(...yCoords);
-            const maxY = Math.max(...yCoords);
-            
-            // Calculate scaling and centering
-            const margin = 20;
-            const drawWidth = maxX - minX;
-            const drawHeight = maxY - minY;
-            
-            let scale = 1;
-            if (drawWidth > 0 && drawHeight > 0) {
-                scale = Math.min(
-                    (width - 2 * margin) / drawWidth,
-                    (height - 2 * margin) / drawHeight
-                );
-            }
-            
-            const offsetX = (width - drawWidth * scale) / 2 - minX * scale;
-            const offsetY = (height - drawHeight * scale) / 2 - minY * scale;
-            
-            // Draw the shape with gradient colors
-            for (let i = 0; i < points.length - 1; i++) {
-                const p1 = points[i];
-                const p2 = points[i + 1];
-                
-                // Use angle for color variation
-                const colorT = 0.5 + 0.5 * (p1.phi / this.phiRange);
-                const color = window.Palette.color(colorT);
-                
-                // Scale and translate coordinates
-                const x1 = p1.x * scale + offsetX;
-                const y1 = p1.y * scale + offsetY;
-                const x2 = p2.x * scale + offsetX;
-                const y2 = p2.y * scale + offsetY;
-                
-                // Draw line segment
-                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, 2);
-            }
-            
-            // Draw filled shape option (uncomment for filled shapes)
-            //this.drawFilledShape(data, width, height, points, scale, offsetX, offsetY);
-            
-            return imageData;
+        Canvas2DModality.renderSegments(canvas, this, {
+            background: window.Palette.color(0),
+            segments: () => {
+                const pts = this.generatePolarPoints(), segs = [];
+                for (let i = 0; i < pts.length - 1; i++) {
+                    segs.push({ x1: pts[i].x, y1: pts[i].y, x2: pts[i + 1].x, y2: pts[i + 1].y, phi: pts[i].phi });
+                }
+                return segs;
+            },
+            color: (sg) => window.Palette.color(0.5 + 0.5 * (sg.phi / this.phiRange)),
+            width: () => 2,
         });
     }
     
-    drawFilledShape(data, width, height, points, scale, offsetX, offsetY) {
-        // Alternative: filled shape rendering using scanline algorithm
-        const scaledPoints = points.map(p => ({
-            x: p.x * scale + offsetX,
-            y: p.y * scale + offsetY
-        }));
-        
-        // Find bounding box
-        const minY = Math.max(0, Math.min(...scaledPoints.map(p => p.y)));
-        const maxY = Math.min(height, Math.max(...scaledPoints.map(p => p.y)));
-        
-        // Scanline fill
-        for (let y = minY; y < maxY; y++) {
-            const intersections = [];
-            
-            // Find intersections with polygon edges
-            for (let i = 0; i < scaledPoints.length - 1; i++) {
-                const p1 = scaledPoints[i];
-                const p2 = scaledPoints[i + 1];
-                
-                if ((p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y)) {
-                    const x = p1.x + (y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
-                    intersections.push(x);
-                }
-            }
-            
-            // Sort intersections
-            intersections.sort((a, b) => a - b);
-            
-            // Fill between pairs of intersections
-            for (let i = 0; i < intersections.length - 1; i += 2) {
-                const x1 = Math.max(0, Math.floor(intersections[i]));
-                const x2 = Math.min(width, Math.ceil(intersections[i + 1]));
-                
-                for (let x = x1; x < x2; x++) {
-                    const colorT = Math.random(); // Random color variation
-                    const color = window.Palette.color(colorT);
-                    
-                    const index = (Math.floor(y) * width + x) * 4;
-                    if (index >= 0 && index < data.length) {
-                        data[index] = color.r;
-                        data[index + 1] = color.g;
-                        data[index + 2] = color.b;
-                        data[index + 3] = 255;
-                    }
-                }
-            }
-        }
-    }
-    
-    getPhenotype() {
-        const params = this.getParameters();
+    summary() {
+        const params = this.getPhenotype();
         return `m=${params.m_numerator}/${params.m_denominator} (${params.m.toFixed(2)}), φRange=${(this.phiRange /
            + Math.PI).toFixed(1)}π, n1=${params.n1.toFixed(3)}, n2=${params.n2.toFixed(3)}, n3=${params.n3.toFixed(3)}, a=${params.a.toFixed(3)}, b=${params.b.toFixed(3)}`;
     }
     
     describeExtra() {
-        const p = this.getParameters();
+        const p = this.getPhenotype();
         return `\n<span class="genome-label">Formula:</span>\n${this._formulaLine(p, 'r(φ)')}\n`;
     }
 
@@ -310,7 +205,7 @@ class SuperShapeIndividual extends Individual {
     }
 
     getParameterInfo() {
-        const params = this.getParameters();
+        const params = this.getPhenotype();
         return {
             genome: this.phenotype,
             parameters: params,

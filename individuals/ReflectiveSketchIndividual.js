@@ -401,28 +401,13 @@ function rsRefLabel(ref) {
     return ref.kind;
 }
 
-// Construction is pure in the phenotype, and the phenotype object is cached per
-// trace by PTORepresentation, so memoise on its identity.
-const rsDrawingCache = new WeakMap();
-
 class ReflectiveSketchIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = reflectiveSketchRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = reflectiveSketchRepresentation;
 
     /** The resolved drawing: strokes with control points + the crossings registry. */
     drawing() {
-        const p = this.phenotype;
-        if (!p || typeof p !== 'object') return { strokes: [], crosses: [] };
-        let d = rsDrawingCache.get(p);
-        if (!d) { d = rsConstruct(p); rsDrawingCache.set(p, d); }
-        return d;
-    }
-
-    renderKey() {
-        return JSON.stringify(this.phenotype);
+        return this.derive('drawing', (p) =>
+            (p && typeof p === 'object') ? rsConstruct(p) : { strokes: [], crosses: [] });
     }
 
     validate() {
@@ -455,7 +440,7 @@ class ReflectiveSketchIndividual extends Individual {
         const strokes = drawing.strokes;
         if (!strokes.length) return;
 
-        const sc = Math.min(width, height) / 128;               // resolution independence
+        const sc = Canvas2DModality.pixelScale(width, height);               // resolution independence
         const weight = (spec && spec.weight) || 1, taper = (spec && spec.taper) || 0;
         const halfW = (s, t) => {
             const profile = (1 - taper) + taper * Math.pow(Math.sin(Math.PI * t), 0.5);
@@ -517,7 +502,10 @@ class ReflectiveSketchIndividual extends Individual {
         }
     }
 
-    getPhenotype() {
+    /** What visualize() draws: the resolved drawing (see drawing). */
+    getPhenotype() { return this.drawing(); }
+
+    summary() {
         const { strokes, crosses } = this.drawing();
         let ends = 0, attached = 0;
         for (const s of strokes) {

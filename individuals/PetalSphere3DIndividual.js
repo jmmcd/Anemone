@@ -41,11 +41,7 @@ const petalSphereGenerator = (rnd) => {
 const petalSphereRepresentation = new PTORepresentation(petalSphereGenerator);
 
 class PetalSphere3DIndividual extends RadialSurface3DIndividual {
-    constructor(genome = null) {
-        super();
-        this.representation = petalSphereRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = petalSphereRepresentation;
 
     // The interesting knob is the grammar; expose it first, then the generator.
     editableSections() {

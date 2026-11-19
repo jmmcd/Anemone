@@ -115,7 +115,7 @@ for (let i = 0; i < n; i++) {
     let ind = new Type();
     for (let attempt = 0; attempt < 100 && !ind.validate(); attempt++) ind = new Type();
     const ox = (i % cols) * size, oy = Math.floor(i / cols) * size;
-    console.log(`#${i}  ${ind.getPhenotype()}`);
+    console.log(`#${i}  ${ind.summary()}`);
     if (mode === 'solid') {
         drawSolid(raster, ind.generate3DPoints(), ox, oy, size);
         for (let x = 0; x < size; x++) { raster.setPixel(ox + x, oy, [220, 220, 220]); raster.setPixel(ox + x, oy + size - 1, [220, 220, 220]); }

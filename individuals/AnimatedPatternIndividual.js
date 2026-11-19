@@ -70,21 +70,19 @@ const animatedPatternRepresentation = new PTORepresentation(animatedPatternGener
 // of it. Because the clock *accumulates* animation-seconds, pausing and speed
 // changes no longer make the tiles jump when they resume.
 class AnimatedPatternIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = animatedPatternRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
+    static representation = animatedPatternRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+        animatesContinuously: true,
+    };
+    // The static pattern grammar's pipeline, one variable wider (time).
+    static expression = { vars: ['x', 'y', 't'], preset: 'PATTERN' };
 
     static adjustPeriodScale(factor) { Individual.AnimationClock.adjustScale(factor); }
     static get periodScale() { return Individual.AnimationClock.scale; }
 
     static togglePause() { Individual.AnimationClock.togglePause(); }
     static get paused() { return Individual.AnimationClock.paused; }
-
-    usesColorPalette() { return true; }
-
-    animatesContinuously() { return true; }
 
     editableSections() {
         return [
@@ -101,24 +99,8 @@ class AnimatedPatternIndividual extends Individual {
         return hasSpatial && hasTime;
     }
 
-    getPhenotype() {
-        return this.phenotype;
-    }
-
     evaluateExpression(x, y, t) {
-        const expression = this.phenotype.expression;
-        if (this._compiledExpression == null || this._compiledKey !== expression) {
-            this._compiledExpression = this._compileExpression(expression);
-            this._compiledKey = expression;
-        }
-        return this._compiledExpression(x, y, t);
-    }
-
-    // Same rewrite pipeline as the static pattern grammar, one variable wider
-    // (time) — see services/ExpressionCompiler.js.
-    _compileExpression(expression) {
-        return ExpressionCompiler.compile(expression, ['x', 'y', 't'],
-            ExpressionCompiler.PRESETS.PATTERN);
+        return this.expressionFn(this.phenotype.expression)(x, y, t);
     }
 
     _renderFrame(canvas, t) {

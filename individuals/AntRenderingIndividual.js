@@ -52,19 +52,11 @@ const antRenderingGenerator = (rnd) => {
 const antRenderingRepresentation = new PTORepresentation(antRenderingGenerator);
 
 class AntRenderingIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = antRenderingRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; } // 'palette' colour mode maps luminance → palette
-    usesPhoto() { return true; }        // attaches the Photo panel; walks the shared photo
-
-    renderKey() {
-        return JSON.stringify(this.phenotype) + '|photo' + window.Photo.version()
-            + '|' + window.Palette.name();
-    }
+    static representation = antRenderingRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // 'palette' colour mode maps luminance → palette
+        usesPhoto: true, // attaches the Photo panel; walks the shared photo
+    };
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
@@ -75,7 +67,7 @@ class AntRenderingIndividual extends Individual {
             // size AND pen width by res makes each ant traverse the same *fraction*
             // of the image over its fixed step count, so a 768px zoom is a faithful
             // magnification of the tile rather than a sparser/thinner version.
-            const res = Math.min(width, height) / 128;
+            const res = Canvas2DModality.pixelScale(width, height);
 
             // Precompute luminance + Sobel gradient of the source.
             const { lum, gx, gy } = this._computeFields(src, width, height);

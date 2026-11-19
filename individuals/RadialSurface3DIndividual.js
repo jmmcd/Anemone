@@ -27,37 +27,23 @@
  * generate3DPoints()/is3D(), so every subclass gets both for free.
  */
 class RadialSurface3DIndividual extends Individual {
-    constructor() {
-        super();
-        this.threeDModality = new ThreeDModality();
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+    // The SURFACE preset qualifies `pow` and leaves `theta` alone — here it is a
+    // variable, not a derived quantity as in the x,y pattern grammars. Separable
+    // expressions are over the raw angle `a`; a bivariate one passes theta,phi.
+    static expression = { vars: ['a'], preset: 'SURFACE' };
+
+    constructor(genome = null) {
+        super(genome);
         this.thetaPoints = 50;
         this.phiPoints = 100;
         // |f| + radiusEps keeps the surface a proper radial one (no folds through
         // the origin) and avoids a fully collapsed radius. Subclasses may override
         // after super() (SuperShape3D sets 0).
         this.radiusEps = 0.05;
-        // Subclasses set this.representation and this.genome after super().
-    }
-
-    is3D() { return true; }
-    usesColorPalette() { return true; }
-
-    // --- Expression → numeric function ------------------------------------
-    // Compile an expression over the given variable names to a numeric function,
-    // caching by the expression string (auto-invalidates when the genome
-    // changes, since a new genome yields a new expression string).
-    compileExpr(expr, varNames) {
-        this._compiled = this._compiled || {};
-        if (!this._compiled[expr]) this._compiled[expr] = this._buildFn(expr, varNames);
-        return this._compiled[expr];
-    }
-
-    // The SURFACE preset (services/ExpressionCompiler.js) qualifies `pow` and
-    // leaves `theta` alone — here it is a variable, not a derived quantity as
-    // in the x,y pattern grammars.
-    _buildFn(expr, varNames) {
-        return ExpressionCompiler.compile(expr, varNames,
-            ExpressionCompiler.PRESETS.SURFACE);
     }
 
     _clampR(v) { return Math.max(0, Math.min(5000, v)); }
@@ -68,11 +54,11 @@ class RadialSurface3DIndividual extends Individual {
         const p = this.phenotype;
         const eps = this.radiusEps;
         if (p.biExpr !== undefined) {                       // bivariate
-            const f = this.compileExpr(p.biExpr, ['theta', 'phi']);
+            const f = this.expressionFn(p.biExpr, ['theta', 'phi']);
             return (theta, phi) => this._clampR(Math.abs(f(theta, phi)) + eps);
         }
-        const f1 = this.compileExpr(p.meridianExpr, ['a']); // separable r₁(θ)·r₂(φ)
-        const f2 = this.compileExpr(p.crossExpr, ['a']);
+        const f1 = this.expressionFn(p.meridianExpr); // separable r₁(θ)·r₂(φ)
+        const f2 = this.expressionFn(p.crossExpr);
         return (theta, phi) =>
             this._clampR((Math.abs(f1(theta)) + eps) * (Math.abs(f2(phi)) + eps));
     }
@@ -119,94 +105,13 @@ class RadialSurface3DIndividual extends Individual {
         return { vertices, indices, colors };
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const { vertices, indices, colors } = this.generate3DPoints();
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-        } else {
-            this.render2DProjection(canvas);
-        }
-    }
-
-    // 2D-canvas fallback when shared 3D isn't available (rotating point cloud).
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, width, height);
-
-        const { vertices, colors } = this.generate3DPoints();
-        const time = Date.now() * 0.001;
-        const projectedPoints = [];
-
-        for (let i = 0; i < vertices.length; i += 3) {
-            const x = vertices[i];
-            const y = vertices[i + 1];
-            const z = vertices[i + 2];
-
-            const rotY = time * 0.5;
-            const rotX = time * 0.3;
-            const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
-            const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
-
-            const x1 = x * cosY - z * sinY;
-            const z1 = x * sinY + z * cosY;
-            const y2 = y * cosX - z1 * sinX;
-            const z2 = y * sinX + z1 * cosX;
-
-            const distance = 15;
-            const focal = 500;
-            if (z2 + distance > 0.1) {
-                projectedPoints.push({
-                    x: (x1 * focal) / (z2 + distance) + width / 2,
-                    y: (y2 * focal) / (z2 + distance) + height / 2,
-                    z: z2 + distance,
-                    colorR: colors[i / 3 * 3] * 255,
-                    colorG: colors[i / 3 * 3 + 1] * 255,
-                    colorB: colors[i / 3 * 3 + 2] * 255
-                });
-            }
-        }
-
-        projectedPoints.sort((a, b) => b.z - a.z);
-        projectedPoints.forEach(point => {
-            if (point.x >= 0 && point.x < width && point.y >= 0 && point.y < height) {
-                const size = Math.max(1, 4 - point.z * 0.1);
-                ctx.fillStyle = `rgb(${Math.round(point.colorR)}, ${Math.round(point.colorG)}, ${Math.round(point.colorB)})`;
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-    }
-
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            framework.removeMeshFromScene(this.id);
-        }
-    }
-
     // Separable → { meridianExpr, crossExpr }; bivariate → { biExpr }. The
     // displayed phenotype is the expression(s). (Subclasses whose expressions
     // are unwieldy, e.g. SuperShape3D, override this for a readable summary.)
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         if (p.biExpr !== undefined) return `r(θ,φ) = ${p.biExpr}`;
         return `r₁(θ) = ${p.meridianExpr} | r₂(φ) = ${p.crossExpr}`;
-    }
-
-    // renderKey must fold in every input that changes the pixels; the base would
-    // return the phenotype object (→ "[object Object]") and collide, so build a
-    // string key by hand. The expression strings encode all parameters/ranges.
-    renderKey() {
-        const p = this.phenotype;
-        if (p.biExpr !== undefined) return `bi::${p.biExpr}`;
-        return `${p.meridianExpr}::${p.crossExpr}`;
     }
 
     describeExtra() {

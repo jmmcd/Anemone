@@ -91,17 +91,11 @@ const audioFilterGenerator = (rnd) => {
 const audioFilterRepresentation = new PTORepresentation(audioFilterGenerator);
 
 class AudioFilterIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = audioFilterRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-        // Shared buffer/graph playback modality (local fallback for tests).
-        this.audio = (typeof window !== 'undefined' && window.framework && window.framework.sharedAudio) || new AudioModality();
-        this.isPlaying = false;
-    }
-
-    usesColorPalette() { return true; } // the tile tint uses the palette
-    usesAudio() { return true; }        // attaches the Audio panel
+    static representation = audioFilterRepresentation;
+    static capabilities = {
+        usesColorPalette: true, // the tile tint uses the palette
+        usesAudio: true, // attaches the Audio panel
+    };
 
     // --- Tile visual: shared source waveform washed with a symbolic tint --------
     visualize(canvas) {

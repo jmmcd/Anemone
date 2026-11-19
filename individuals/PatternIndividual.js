@@ -13,11 +13,13 @@
 const patternTreeRepresentation = new PTORepresentation(treeGenerator);
 
 class PatternIndividual extends Individual {
-    constructor(genome = null) {
-        // Skip automatic genome generation
-        super();
+    static representation = patternTreeRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
-        this.representation = patternTreeRepresentation;
+    constructor(genome = null) {
+        super(genome);
 
         // Configure 2D canvas renderer
         this.canvasRenderer = new Canvas2DModality({
@@ -28,19 +30,12 @@ class PatternIndividual extends Individual {
             })
         });
 
-        this.genome = genome || this.representation.generateRandom();
     }
-
-    usesColorPalette() { return true; }
 
     // The evaluable node tree, built (and cached per trace) from the plain-data
     // phenotype. this.phenotype stays the raw plain-data tree PTO produced.
     get tree() {
-        if (this._treeKey !== this.phenotype) {
-            this._tree = buildTreeNode(this.phenotype);
-            this._treeKey = this.phenotype;
-        }
-        return this._tree;
+        return this.derive('tree', buildTreeNode);
     }
 
     validate() {
@@ -57,8 +52,11 @@ class PatternIndividual extends Individual {
     }
 
     // Interpreted phenotype: the expression string (this.phenotype is plain data).
-    getPhenotype() {
-        return this.tree.toString();
+    /** What visualize() evaluates: the built expression tree. */
+    getPhenotype() { return this.tree; }
+
+    summary() {
+        return `f(x, y) = ${this.tree.toString()}`;
     }
 
     describeExtra() {

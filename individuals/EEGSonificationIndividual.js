@@ -1,7 +1,7 @@
 /**
  * EEGSonificationIndividual
  *
- * Extends MouseMusicIndividual, overriding makeRepresentation() to use a DAG
+ * Extends MouseMusicIndividual, naming its own static `representation`, a DAG
  * generator with 5 EEG feature inputs and 2 output nodes (vs the mouse variant's
  * 3 inputs / 3 outputs). MIDI output (with Web Audio fallback), buildDAG/this.dag
  * and the PTO operators are inherited.
@@ -44,13 +44,12 @@ const eegSonificationGenerator = (rnd) => {
 const eegRepresentation = new PTORepresentation(eegSonificationGenerator);
 
 class EEGSonificationIndividual extends MouseMusicIndividual {
-    makeRepresentation() {
-        return eegRepresentation;
-    }
-
-    // Attaches the OSC Input drawer panel (OSCInputUI), through which the user connects
-    // window.OSCInput to an OSC-over-WebSocket sender feeding /eeg feature messages.
-    usesOSCInput() { return true; }
+    static representation = eegRepresentation;
+    static capabilities = {
+        // Attaches the OSC Input drawer panel (OSCInputUI), through which the user connects
+        // window.OSCInput to an OSC-over-WebSocket sender feeding /eeg feature messages.
+        usesOSCInput: true,
+    };
 
     evaluateEEGDAG() {
         try {

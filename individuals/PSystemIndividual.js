@@ -177,24 +177,13 @@ const pSystemGenerator = (rnd) => {
 const pSystemRepresentation = new PTORepresentation(pSystemGenerator);
 
 class PSystemIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = pSystemRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = pSystemRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     validate() {
         return this._simulate().list.length > 0;
-    }
-
-    // The base renderKey() returns this.phenotype, a plain object, which
-    // stringifies as "[object Object]" and would collide across every
-    // individual of this type (see PhotoFilterIndividual/PolarCurveIndividual
-    // for the same fix). Fold the whole spec into the cache key by hand.
-    renderKey() {
-        return JSON.stringify(this.phenotype);
     }
 
     /**
@@ -207,86 +196,84 @@ class PSystemIndividual extends Individual {
      * filled in later by _layout).
      */
     _simulate() {
-        const spec = this.phenotype;
-        if (this._simSpec === spec && this._sim) return this._sim;
+        return this.derive('simulate', (spec) => {
 
-        const K = spec.symbolCount;
-        const rand = psRandom(spec.seed);
+            const K = spec.symbolCount;
+            const rand = psRandom(spec.seed);
 
-        // Build a mutable tree with parent pointers from the (read-only) spec.
-        const makeNode = (node, parent) => {
-            const m = {
-                counts: node.objects.slice(0, K),
-                rules: node.rules, parent, children: [], alive: true, dissolve: false
+            // Build a mutable tree with parent pointers from the (read-only) spec.
+            const makeNode = (node, parent) => {
+                const m = {
+                    counts: node.objects.slice(0, K),
+                    rules: node.rules, parent, children: [], alive: true, dissolve: false
+                };
+                while (m.counts.length < K) m.counts.push(0);
+                for (const ch of node.children) m.children.push(makeNode(ch, m));
+                return m;
             };
-            while (m.counts.length < K) m.counts.push(0);
-            for (const ch of node.children) m.children.push(makeNode(ch, m));
-            return m;
-        };
-        const root = makeNode(spec.root, null);
+            const root = makeNode(spec.root, null);
 
-        const dfs = (m, list) => { if (m.alive) { list.push(m); m.children.forEach(c => dfs(c, list)); } };
+            const dfs = (m, list) => { if (m.alive) { list.push(m); m.children.forEach(c => dfs(c, list)); } };
 
-        for (let step = 0; step < spec.steps; step++) {
-            const membranes = []; dfs(root, membranes);
-            const adds = [];                 // {m, sym, n} scheduled for after the step
-            let applied = false;
+            for (let step = 0; step < spec.steps; step++) {
+                const membranes = []; dfs(root, membranes);
+                const adds = [];                 // {m, sym, n} scheduled for after the step
+                let applied = false;
 
-            for (const m of membranes) {
-                for (let s = 0; s < K; s++) {
-                    const n = m.counts[s];
-                    if (n <= 0) continue;
-                    const matching = m.rules.filter(r => r.lhs === s);
-                    if (matching.length === 0) continue;      // no rule -> objects persist
-                    applied = true;
-                    m.counts[s] = 0;                          // all n consumed (max parallelism)
+                for (const m of membranes) {
+                    for (let s = 0; s < K; s++) {
+                        const n = m.counts[s];
+                        if (n <= 0) continue;
+                        const matching = m.rules.filter(r => r.lhs === s);
+                        if (matching.length === 0) continue;      // no rule -> objects persist
+                        applied = true;
+                        m.counts[s] = 0;                          // all n consumed (max parallelism)
 
-                    // deterministic split of n across matching rules
-                    const base = Math.floor(n / matching.length);
-                    let rem = n - base * matching.length;
-                    for (const r of matching) {
-                        let k = base;
-                        if (rem > 0 && rand() < 0.5) { k++; rem--; }   // scatter remainder
-                        if (k === 0) continue;
-                        if (r.dissolve && m.parent) m.dissolve = true;
-                        for (const prod of r.rhs) {
-                            let dest = m;
-                            if (prod.target.kind === 'out') dest = m.parent || null;   // null = environment (discard)
-                            else if (prod.target.kind === 'in') {
-                                const c = m.children[prod.target.child];
-                                dest = (c && c.alive) ? c : m;
+                        // deterministic split of n across matching rules
+                        const base = Math.floor(n / matching.length);
+                        let rem = n - base * matching.length;
+                        for (const r of matching) {
+                            let k = base;
+                            if (rem > 0 && rand() < 0.5) { k++; rem--; }   // scatter remainder
+                            if (k === 0) continue;
+                            if (r.dissolve && m.parent) m.dissolve = true;
+                            for (const prod of r.rhs) {
+                                let dest = m;
+                                if (prod.target.kind === 'out') dest = m.parent || null;   // null = environment (discard)
+                                else if (prod.target.kind === 'in') {
+                                    const c = m.children[prod.target.child];
+                                    dest = (c && c.alive) ? c : m;
+                                }
+                                if (dest) adds.push({ m: dest, sym: prod.sym, n: k });
                             }
-                            if (dest) adds.push({ m: dest, sym: prod.sym, n: k });
                         }
+                        if (rem > 0) m.counts[s] += rem;   // hand leftover back so nothing is lost
                     }
-                    if (rem > 0) m.counts[s] += rem;   // hand leftover back so nothing is lost
                 }
+
+                // apply additions with caps
+                for (const a of adds) a.m.counts[a.sym] = Math.min(PS_CAP, a.m.counts[a.sym] + a.n);
+
+                // dissolve marked membranes (deepest-first): merge counts up, reparent children
+                const collectDeep = (m, out) => { m.children.forEach(c => collectDeep(c, out)); out.push(m); };
+                const order = []; collectDeep(root, order);
+                for (const m of order) {
+                    if (!m.dissolve || !m.parent) continue;
+                    for (let s = 0; s < K; s++)
+                        m.parent.counts[s] = Math.min(PS_CAP, m.parent.counts[s] + m.counts[s]);
+                    const p = m.parent, idx = p.children.indexOf(m);
+                    p.children.splice(idx, 1, ...m.children);
+                    m.children.forEach(c => c.parent = p);
+                    m.alive = false;
+                }
+
+                if (!applied) break;   // halted
             }
 
-            // apply additions with caps
-            for (const a of adds) a.m.counts[a.sym] = Math.min(PS_CAP, a.m.counts[a.sym] + a.n);
-
-            // dissolve marked membranes (deepest-first): merge counts up, reparent children
-            const collectDeep = (m, out) => { m.children.forEach(c => collectDeep(c, out)); out.push(m); };
-            const order = []; collectDeep(root, order);
-            for (const m of order) {
-                if (!m.dissolve || !m.parent) continue;
-                for (let s = 0; s < K; s++)
-                    m.parent.counts[s] = Math.min(PS_CAP, m.parent.counts[s] + m.counts[s]);
-                const p = m.parent, idx = p.children.indexOf(m);
-                p.children.splice(idx, 1, ...m.children);
-                m.children.forEach(c => c.parent = p);
-                m.alive = false;
-            }
-
-            if (!applied) break;   // halted
-        }
-
-        const list = []; dfs(root, list);
-        list.forEach(m => m.total = m.counts.reduce((a, b) => a + b, 0));
-        this._simSpec = spec;
-        this._sim = { root, list, totalObjects: list.reduce((a, m) => a + m.total, 0) };
-        return this._sim;
+            const list = []; dfs(root, list);
+            list.forEach(m => m.total = m.counts.reduce((a, b) => a + b, 0));
+            return { root, list, totalObjects: list.reduce((a, m) => a + m.total, 0) };
+        });
     }
 
     /**
@@ -512,11 +499,10 @@ class PSystemIndividual extends Individual {
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height);
             const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) { data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255; }
 
-            const res = Math.min(width, height) / 128;
+            const res = Canvas2DModality.pixelScale(width, height);
             const spec = this.phenotype;
             const K = spec.symbolCount;
             const sim = this._simulate();
@@ -583,7 +569,10 @@ class PSystemIndividual extends Individual {
 
     // Concise genome-panel phenotype (the raw spec is verbose and doubles as
     // trace context via _formatGenomeSection).
-    getPhenotype() {
+    /** What visualize() draws: the simulated membrane configuration (see _simulate). */
+    getPhenotype() { return this._simulate(); }
+
+    summary() {
         const s = this.phenotype, sim = this._simulate();
         return `${sim.list.length} membranes, ${s.symbolCount} symbols, `
              + `${sim.totalObjects} objects after ${s.steps} steps`;

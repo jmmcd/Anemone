@@ -7,6 +7,37 @@
  */
 
 class MIDIModality {
+    /**
+     * setInterval that keeps time in a background tab. A hidden tab's timers are
+     * throttled to about once a second, which turns a 25 ms MIDI scheduler into
+     * sparse, bunched notes (and stalls the clock a DAW follows); a dedicated
+     * worker's timers are not throttled that way, so the tick runs there and
+     * posts back. The worker is built from a Blob, which also works under
+     * file://. Falls back to a plain setInterval (tests, no Worker). Returns a
+     * function that stops the ticker.
+     */
+    static every(ms, fn) {
+        try {
+            if (typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined') {
+                const src = 'let t=null;onmessage=e=>{clearInterval(t);t=setInterval(()=>postMessage(0),e.data)}';
+                const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+                const w = new Worker(url);
+                URL.revokeObjectURL(url);
+                w.onmessage = () => fn();
+                w.postMessage(ms);
+                return () => w.terminate();
+            }
+        } catch (e) { /* fall through to a plain timer */ }
+        const id = setInterval(fn, ms);
+        return () => clearInterval(id);
+    }
+
+    /** Scientific pitch name of a MIDI note number (60 → "C4"). */
+    static noteName(midi) {
+        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        return names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+    }
+
     constructor() {
         this.midiOutput = null;
         this.audioContext = null;
@@ -123,8 +154,8 @@ class MIDIModality {
      * buffer loop is the fallback when no output is available).
      *
      * seq = { bpm, ppq, loopTicks, notes:[{ pitch, velocity, start, duration, channel }] }.
-     * Uses a lookahead scheduler: a short interval schedules note-on/off for every loop
-     * iteration entering a ~120 ms horizon via output.send(bytes, timestampMs). Web MIDI
+     * Uses a lookahead scheduler: a short interval schedules note-on/off for every note
+     * whose onset enters a ~120 ms horizon via output.send(bytes, timestampMs). Web MIDI
      * timestamps are in the performance.now() domain — the same clock the transport uses,
      * so loops stay phase-aligned. Returns false (a no-op) if there's no MIDI output, so
      * the caller can fall back to synthesised audio.
@@ -140,17 +171,32 @@ class MIDIModality {
         const now0 = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
         const phase = transport ? transport.phase(loopSec) : 0;
         const t0 = now0 - phase;   // virtual bar-0 start (seconds), so we enter at `phase`
-        let nextLoop = 0;
 
+        // Only notes whose note-on falls inside the lookahead window are sent,
+        // window by window. A message sent with a future timestamp can't be
+        // recalled (MIDIOutput.clear() is not reliably implemented), so handing
+        // the browser a whole loop at once meant that Stop let the rest of the
+        // bar play out on the receiving DAW. Now at most LOOKAHEAD of note-ons is
+        // in flight. (A note-off may be queued further ahead; a stray note-off
+        // after the all-notes-off on stop is harmless.)
+        let from = now0;           // everything before this is already scheduled
+        let first = true;
         const tick = () => {
             const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
             const horizon = now + LOOKAHEAD;
-            while (t0 + nextLoop * loopSec < horizon) {
-                const base = t0 + nextLoop * loopSec;
+            if (horizon <= from) return;
+            for (let k = Math.floor((from - t0) / loopSec); t0 + k * loopSec < horizon; k++) {
+                const base = t0 + k * loopSec;
                 for (const n of seq.notes) {
                     const on = base + n.start * tickSec;
                     const off = base + (n.start + n.duration) * tickSec;
-                    if (off <= now) continue;                       // already elapsed
+                    // A note whose onset has already passed (a late tick) is
+                    // dropped rather than played late in a bunch.
+                    const startsInWindow = on >= from && on < horizon && on >= now - 0.03;
+                    // Entering mid-loop: a note already sounding at the entry point
+                    // starts now, as the audio path would play it.
+                    const sounding = first && on < from && off > from;
+                    if (!startsInWindow && !sounding) continue;
                     const ch = (n.channel || 0) & 0x0f;
                     const pitch = Math.max(0, Math.min(127, Math.round(n.pitch)));
                     const vel = Math.max(1, Math.min(127, Math.round(n.velocity)));
@@ -159,18 +205,19 @@ class MIDIModality {
                         out.send([0x80 | ch, pitch, 0], off * 1000);
                     } catch (e) { /* send failed — skip this note */ }
                 }
-                nextLoop++;
             }
+            from = horizon;
+            first = false;
         };
         tick();
-        this._seqTimer = setInterval(tick, 25);
+        this._seqTimer = MIDIModality.every(25, tick);
         this.isRunning = true;
         return true;
     }
 
     /** Stop the looping note sequence and silence any held notes. */
     stopSequence() {
-        if (this._seqTimer) { clearInterval(this._seqTimer); this._seqTimer = null; }
+        if (this._seqTimer) { this._seqTimer(); this._seqTimer = null; }
         this.isRunning = false;
         this.allNotesOff();
     }
@@ -189,14 +236,14 @@ class MIDIModality {
         if (!this.midiOutput || !(bpm > 0)) return;
         try { this.midiOutput.send([0xFA]); } catch(e) {}
         const ms = 60000 / (bpm * 24);
-        this._clockTimer = setInterval(() => {
+        this._clockTimer = MIDIModality.every(ms, () => {
             try { if (this.midiOutput) this.midiOutput.send([0xF8]); } catch(e) {}
-        }, ms);
+        });
     }
 
     stopClock() {
         if (this._clockTimer) {
-            clearInterval(this._clockTimer);
+            this._clockTimer();
             this._clockTimer = null;
             try { if (this.midiOutput) this.midiOutput.send([0xFC]); } catch(e) {}
         }

@@ -142,7 +142,7 @@ class SITAnalysisUI {
         const lines = [];
         lines.push(`<span class="genome-label">${esc(result.title || 'Melody')}</span>`);
         lines.push(`${result.notes.length} notes · ${result.grains} grains`
-            + ` · ${esc(result.scaleName)} on ${this.noteName(result.tonic)}`);
+            + ` · ${esc(result.scaleName)} on ${MIDIModality.noteName(result.tonic)}`);
         lines.push('');
         lines.push('<span class="genome-label">Structural information load (I):</span>');
         lines.push(`  coded ${result.load} units, written out ${result.literalLoad}`
@@ -169,11 +169,6 @@ class SITAnalysisUI {
             lines.push('Exact: the code replays to this melody note for note.');
         }
         report.innerHTML = lines.join('\n');
-    }
-
-    noteName(midi) {
-        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        return names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
     }
 
     /**

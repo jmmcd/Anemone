@@ -67,13 +67,10 @@ const branchGenerator = (rnd) => {
 const branchRepresentation = new PTORepresentation(branchGenerator);
 
 class BranchIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = branchRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = branchRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     validate() {
         return this.buildPaths().length > 0;
@@ -84,111 +81,75 @@ class BranchIndividual extends Individual {
      * turtle, returning a flat list of line segments {x1,y1,x2,y2,width,colorIndex}.
      */
     buildPaths() {
-        const commands = this.phenotype;
-        if (!Array.isArray(commands)) return [];
+        return this.derive('paths', (commands) => {
+            if (!Array.isArray(commands)) return [];
 
-        const paths = [];
-        let state = { x: 0, y: 0, heading: 0, penWidth: 2, colorIndex: 0, step: 10 };
-        const stack = [];
-        const MAX_PATHS = 20000; // guard against a runaway generator
+            const paths = [];
+            let state = { x: 0, y: 0, heading: 0, penWidth: 2, colorIndex: 0, step: 10 };
+            const stack = [];
+            const MAX_PATHS = 20000; // guard against a runaway generator
 
-        for (const cmd of commands) {
-            if (!cmd || typeof cmd !== 'object') continue;
-            switch (cmd.op) {
-                case 'forward': {
-                    const d = (typeof cmd.step === 'number') ? cmd.step : state.step;
-                    const rad = (state.heading * Math.PI) / 180;
-                    const nx = state.x + Math.cos(rad) * d;
-                    const ny = state.y + Math.sin(rad) * d;
-                    paths.push({
-                        x1: state.x, y1: state.y, x2: nx, y2: ny,
-                        width: state.penWidth, colorIndex: state.colorIndex
-                    });
-                    state.x = nx;
-                    state.y = ny;
-                    break;
+            for (const cmd of commands) {
+                if (!cmd || typeof cmd !== 'object') continue;
+                switch (cmd.op) {
+                    case 'forward': {
+                        const d = (typeof cmd.step === 'number') ? cmd.step : state.step;
+                        const rad = (state.heading * Math.PI) / 180;
+                        const nx = state.x + Math.cos(rad) * d;
+                        const ny = state.y + Math.sin(rad) * d;
+                        paths.push({
+                            x1: state.x, y1: state.y, x2: nx, y2: ny,
+                            width: state.penWidth, colorIndex: state.colorIndex
+                        });
+                        state.x = nx;
+                        state.y = ny;
+                        break;
+                    }
+                    case 'turn':
+                        state.heading = (state.heading + (cmd.angle || 0)) % 360;
+                        break;
+                    case 'color':
+                        state.colorIndex = (typeof cmd.index === 'number')
+                            ? ((cmd.index % 8) + 8) % 8
+                            : (state.colorIndex + 1) % 8;
+                        break;
+                    case 'penWidth':
+                        state.penWidth = (typeof cmd.width === 'number')
+                            ? Math.max(1, Math.min(8, cmd.width))
+                            : Math.max(1, Math.min(8, state.penWidth + (cmd.delta || 0)));
+                        break;
+                    case 'step':
+                        state.step = (typeof cmd.size === 'number')
+                            ? Math.max(1, cmd.size)
+                            : Math.max(1, state.step + (cmd.delta || 0));
+                        break;
+                    case 'push':
+                        stack.push({ ...state });
+                        break;
+                    case 'pop':
+                        if (stack.length) state = stack.pop();
+                        break;
                 }
-                case 'turn':
-                    state.heading = (state.heading + (cmd.angle || 0)) % 360;
-                    break;
-                case 'color':
-                    state.colorIndex = (typeof cmd.index === 'number')
-                        ? ((cmd.index % 8) + 8) % 8
-                        : (state.colorIndex + 1) % 8;
-                    break;
-                case 'penWidth':
-                    state.penWidth = (typeof cmd.width === 'number')
-                        ? Math.max(1, Math.min(8, cmd.width))
-                        : Math.max(1, Math.min(8, state.penWidth + (cmd.delta || 0)));
-                    break;
-                case 'step':
-                    state.step = (typeof cmd.size === 'number')
-                        ? Math.max(1, cmd.size)
-                        : Math.max(1, state.step + (cmd.delta || 0));
-                    break;
-                case 'push':
-                    stack.push({ ...state });
-                    break;
-                case 'pop':
-                    if (stack.length) state = stack.pop();
-                    break;
+                if (paths.length > MAX_PATHS) break;
             }
-            if (paths.length > MAX_PATHS) break;
-        }
-        return paths;
+            return paths;
+        });
     }
 
     visualize(canvas) {
-        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
-            // Black background.
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
-
-            const paths = this.buildPaths();
-            if (paths.length === 0) return imageData;
-
-            // Bounding box → fit-to-canvas scale and offset.
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            paths.forEach(p => {
-                minX = Math.min(minX, p.x1, p.x2);
-                maxX = Math.max(maxX, p.x1, p.x2);
-                minY = Math.min(minY, p.y1, p.y2);
-                maxY = Math.max(maxY, p.y1, p.y2);
-            });
-
-            const margin = 20;
-            const drawWidth = maxX - minX;
-            const drawHeight = maxY - minY;
-            let scale = 1;
-            if (drawWidth > 0 && drawHeight > 0) {
-                scale = Math.min(
-                    (width - 2 * margin) / drawWidth,
-                    (height - 2 * margin) / drawHeight
-                );
-            }
-            const offsetX = (width - drawWidth * scale) / 2 - minX * scale;
-            const offsetY = (height - drawHeight * scale) / 2 - minY * scale;
-
-            paths.forEach(p => {
-                const color = window.Palette.color(p.colorIndex / 7);
-                const x1 = p.x1 * scale + offsetX;
-                const y1 = p.y1 * scale + offsetY;
-                const x2 = p.x2 * scale + offsetX;
-                const y2 = p.y2 * scale + offsetY;
-                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, p.width);
-            });
-
-            return imageData;
+        Canvas2DModality.renderSegments(canvas, this, {
+            segments: () => this.buildPaths(),
+            color: (p) => window.Palette.color(p.colorIndex / 7),
+            width: (p) => p.width,
         });
     }
 
     // Concise, readable phenotype for the genome panel (the raw command array is
     // verbose and is also the genotype trace, so we summarise instead).
-    getPhenotype() {
+    /** What visualize() draws: the line segments (see buildPaths). */
+    getPhenotype() { return this.buildPaths(); }
+
+    summary() {
         const commands = Array.isArray(this.phenotype) ? this.phenotype : [];
         return `${commands.length} drawing commands, ${this.buildPaths().length} line segments`;
     }

@@ -101,9 +101,11 @@
     // what makes load trustworthy despite the upstream PTO trace-serialisation
     // limitation (see pto-trace-roundtrip-bug.js) that stops grammar individuals
     // — and Sheep's per-instance random network — from round-tripping.
+    // Hashes the generator's output (individual.phenotype), not getPhenotype(),
+    // which is a rendering intermediate.
     function phenotypeSignature(individual) {
         let pheno;
-        try { pheno = individual.getPhenotype ? individual.getPhenotype() : individual.phenotype; }
+        try { pheno = individual.phenotype; }
         catch (e) { return null; }
         let str;
         try { str = JSON.stringify(pheno); } catch (e) { str = undefined; }
@@ -121,11 +123,11 @@
     // the genome. The genome is a PTO trace, and can lose its meaning if a
     // generator/grammar changes later; the phenotype (an expression string, note
     // list, plain-data tree/DAG, param array…) stays informative to future code.
-    // Uses the same getPhenotype→phenotype fallback as the signature; anything
-    // that doesn't survive JSON is simply omitted.
+    // The generator's output, as the signature uses; anything that doesn't
+    // survive JSON is simply omitted.
     function phenotypeOf(individual) {
         let pheno;
-        try { pheno = individual.getPhenotype ? individual.getPhenotype() : individual.phenotype; }
+        try { pheno = individual.phenotype; }
         catch (e) { return undefined; }
         try { JSON.stringify(pheno); } catch (e) { return undefined; } // must round-trip through JSON
         return pheno;

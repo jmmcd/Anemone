@@ -73,13 +73,83 @@ const AnimationClock = {
 /**
  * Individual — base class for all individual types.
  *
- * Holds a representation strategy object (this.representation) and delegates the
- * genetic operators to it. A typical subclass only needs to construct its
- * representation, set this.genome, and implement visualize(); mutate/crossover/
- * clone are inherited. Subclasses with non-standard genome semantics (variable
- * length, mixed int/float, MIDI re-wiring on clone, etc.) override as needed.
+ * A subclass is mostly declarative. It names its shared representation and its
+ * capabilities as static fields, and implements visualize():
+ *
+ *     class FooIndividual extends Individual {
+ *         static representation = fooRepresentation;      // a PTORepresentation
+ *         static capabilities = { usesColorPalette: true };
+ *         visualize(canvas) { ... this.phenotype ... }
+ *     }
+ *
+ * The base constructor installs the representation and draws a random genome
+ * when none is given; mutate/crossover/clone delegate to the representation.
+ * A subclass writes a constructor only for genuinely per-instance state, and
+ * calls super(genome) first.
  */
 class Individual {
+    // The type's shared, stateless representation (a PTORepresentation). One
+    // per type, assigned by reference, so a generator edit in the code editor
+    // reaches every individual of the type. Inherited down a subclass chain
+    // unless the subclass names its own.
+    static representation = null;
+
+    // Capability declarations, read by the framework through the flag methods
+    // below. A class lists only what it changes from DEFAULT_CAPABILITIES, and
+    // declarations merge down the class chain (SITCode3D inherits SITCode's
+    // palette and adds is3D). Keys are the flag-method names, so there is one
+    // vocabulary: grepping for `usesPhoto` finds both declarations and readers.
+    static capabilities = {};
+
+    static DEFAULT_CAPABILITIES = Object.freeze({
+        // The shared Three.js render path.
+        is3D: false,
+        // Framework-attached panels: palette, photo, audio clip, Performance
+        // dials (and which ones), MIDI clock sync, OSC input, SIT analysis.
+        usesColorPalette: false,
+        usesPhoto: false,
+        usesAudio: false,
+        usesPerformanceControls: false,
+        performanceDials: ['bpm', 'swing', 'humanize', 'drive'],
+        usesMIDISync: false,
+        usesOSCInput: false,
+        usesSITAnalysis: false,
+        // Draws from window.RoboParts; that service re-renders a type with this
+        // flag when a late batch of parts arrives.
+        usesRoboParts: false,
+        // Whether the lightbox offers a PNG "Save". A type whose artefact is
+        // really the sound can opt out so the lightbox shows only what matters.
+        usesImageSave: true,
+        // The zoom canvas is a step grid edited by the default grid session.
+        isGridEditable: false,
+        // The type supports direct manipulation (see beginEditSession). null
+        // means "same as isGridEditable".
+        isEditable: null,
+        // The tile redraws every frame off Individual.AnimationClock, which is
+        // what makes [ / ] mean animation speed and . mean play/pause.
+        animatesContinuously: false,
+        // A 3D type whose geometry (not just the camera) changes over time; the
+        // zoom loop rebuilds its mesh each frame via setAnimationTime().
+        animatesGeometry: false,
+        // Playback enters at the shared Transport phase (a loop) rather than
+        // at its own start (a piece). See usesSharedPhase() below.
+        usesSharedPhase: true,
+    });
+
+    /** The merged capabilities of this class (cached per class). */
+    static caps() {
+        if (Object.prototype.hasOwnProperty.call(this, '_caps')) return this._caps;
+        const parent = Object.getPrototypeOf(this);
+        const inherited = (parent && typeof parent.caps === 'function')
+            ? parent.caps() : Individual.DEFAULT_CAPABILITIES;
+        const own = Object.prototype.hasOwnProperty.call(this, 'capabilities') ? this.capabilities : {};
+        for (const k of Object.keys(own)) {
+            if (!(k in Individual.DEFAULT_CAPABILITIES)) throw new Error(`${this.name}: unknown capability "${k}"`);
+        }
+        this._caps = Object.freeze({ ...inherited, ...own });
+        return this._caps;
+    }
+
     constructor(genome = null) {
         this.fitness = 0;
         this.selected = false;
@@ -87,44 +157,35 @@ class Individual {
         this._cachedImageData = null;
         this._cacheKey = null;
 
-        if (genome !== null) {
+        const rep = this.constructor.representation;
+        if (rep) {
+            this.representation = rep;
+            this.genome = genome || rep.generateRandom();
+        } else if (genome !== null) {
             this.genome = genome;
         }
     }
 
     // --- Capability flags (read by the framework) ---
-    is3D()             { return false; }
-    usesColorPalette() { return false; }
-    usesPhoto()        { return false; }
-    usesAudio()        { return false; }
-    // Whether the type draws from the shared identikit part library
-    // (window.RoboParts). Those parts arrive asynchronously, so the service uses
-    // this to decide whether a late-arriving batch is worth a re-render.
-    usesRoboParts()    { return false; }
-    // Whether the lightbox offers a PNG "Save" of the tile. Default true; a type
-    // whose artefact is really the sound (e.g. MelodyIndividual → MIDI only) can
-    // opt out so its lightbox shows just the relevant export.
-    usesImageSave()    { return true; }
-    // A type whose tile visual is a directly-editable grid (e.g. a step sequencer).
-    // When true, the framework wires click/drag on the zoom lightbox canvas to
-    // editCellAtXY(); the type maps pixels→cell and folds the edit into its genome.
-    isGridEditable()   { return false; }
-    // Whether the framework attaches the global Performance panel (tempo/swing/…).
-    usesPerformanceControls() { return false; }
-    // Which Performance dials this type exposes (a subset of PerformanceControls.dials).
-    // Step sequencers override: drum → all four, melody → tempo + swing.
-    performanceDials() { return ['bpm', 'swing', 'humanize', 'drive']; }
-    // Whether the framework attaches the MIDI Clock Sync panel — a type whose sound
-    // has a tempo (step sequencers) or a tempo-paced evaluation loop (mouse/EEG DAGs)
-    // can lock it to an external MIDI clock (e.g. GarageBand) instead of free-running.
-    usesMIDISync() { return false; }
-    // A type whose tile redraws every frame off `Individual.AnimationClock`
-    // (AnimatedPattern, Cat) rather than rendering once and caching. The
-    // framework reads this to decide what `[` / `]` / `.` mean for the current
-    // type — animation speed and play/pause, rather than loop length or camera
-    // zoom — so the hotkeys and the ? overlay follow the capability, not a
-    // hard-coded list of classes.
-    animatesContinuously() { return false; }
+    // Declared via static `capabilities`; these are the readers.
+    is3D()                    { return this.constructor.caps().is3D; }
+    usesColorPalette()        { return this.constructor.caps().usesColorPalette; }
+    usesPhoto()               { return this.constructor.caps().usesPhoto; }
+    usesAudio()               { return this.constructor.caps().usesAudio; }
+    usesRoboParts()           { return this.constructor.caps().usesRoboParts; }
+    usesImageSave()           { return this.constructor.caps().usesImageSave; }
+    usesPerformanceControls() { return this.constructor.caps().usesPerformanceControls; }
+    performanceDials()        { return this.constructor.caps().performanceDials; }
+    usesMIDISync()            { return this.constructor.caps().usesMIDISync; }
+    usesOSCInput()            { return this.constructor.caps().usesOSCInput; }
+    usesSITAnalysis()         { return this.constructor.caps().usesSITAnalysis; }
+    isGridEditable()          { return this.constructor.caps().isGridEditable; }
+    animatesContinuously()    { return this.constructor.caps().animatesContinuously; }
+    animatesGeometry()        { return this.constructor.caps().animatesGeometry; }
+    isEditable() {
+        const c = this.constructor.caps();
+        return c.isEditable === null ? c.isGridEditable : c.isEditable;
+    }
 
     // --- Active intervention (direct manipulation of the phenotype) --------------
     // A type can let the user edit its rendered phenotype *directly* — by pointer,
@@ -145,8 +206,6 @@ class Individual {
     // The genome-writeback contract is the individual's: an edit must go through
     // the representation (setCellHit → representation.setGene), not just mutate a
     // cached phenotype, or the change is lost at the next mutate/clone.
-    isEditable() { return this.isGridEditable(); }
-
     beginEditSession(canvas, session = {}) {
         return this._gridEditSession(canvas, session);
     }
@@ -259,15 +318,29 @@ class Individual {
         };
     }
 
+    // --- Sound output ---------------------------------------------------------
+    // The framework owns one output modality per medium — sharedMIDI for notes,
+    // sharedAudio for buffers/graphs — so only one individual sounds at a time
+    // and the app has one AudioContext. A sound type just reads these; outside
+    // the app (tests, headless scripts) each instance gets its own fallback,
+    // made on first use so a silent type never creates one.
+    get midiModality() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        return (fw && fw.sharedMIDI) || this._midiFallback || (this._midiFallback = new MIDIModality());
+    }
+
+    get audio() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        return (fw && fw.sharedAudio) || this._audioFallback || (this._audioFallback = new AudioModality());
+    }
+
     // --- Unified step-sequencer playback (shared by DrumMachine + Melody) ---------
     // Play this individual's loop LIVE over MIDI when an output is available, else
     // fall back to a synthesised AudioBuffer through the shared AudioModality. Both
     // paths enter at the shared Transport phase so switching/editing resumes in time.
     // The type only supplies toMIDISequence() (with a loopTicks) and renderToAudioBuffer().
     playSequenced() {
-        const fw = (typeof window !== 'undefined') && window.framework;
-        const midi = (fw && fw.sharedMIDI) || this.midiModality;
-        const audio = (fw && fw.sharedAudio) || this.audio;
+        const midi = this.midiModality, audio = this.audio;
         // A LOOP enters at the shared Transport phase, so switching between
         // tiles keeps the beat. A PIECE starts at its beginning — see
         // usesSharedPhase(). Both paths (MIDI and synth) read the same decision,
@@ -304,7 +377,7 @@ class Individual {
      * starts from the beginning each time, and its playhead is measured from
      * `_playStart` rather than from the global clock.
      */
-    usesSharedPhase() { return true; }
+    usesSharedPhase() { return this.constructor.caps().usesSharedPhase; }
 
     /**
      * How long one time round lasts, in seconds — derived from the note
@@ -353,7 +426,109 @@ class Individual {
 
     // --- Required / overridable behaviour ---
     visualize(canvas) {
+        if (this.is3D()) return this.visualize3D(canvas);
         throw new Error("visualize() must be implemented by subclass");
+    }
+
+    // --- 3D (types declaring is3D) ----------------------------------------------
+    // A 3D type supplies generate3DPoints(lod) → { vertices, indices, colors }
+    // (flat arrays; also what STL export reads) and inherits the rest: the mesh
+    // goes into the framework's shared Three.js scene and is rebuilt only when
+    // meshKey(lod) changes, the scene entry is freed by cleanup(), and without
+    // WebGL (tests, a lost context) render2DProjection draws a fixed-view 2D
+    // projection instead. Hooks, all optional:
+    //   meshLOD(canvas)  detail level for this canvas (tiles may use less)
+    //   meshKey(lod)     what the mesh depends on (add animation state here)
+    //   buildMesh(lod)   a THREE object, when one flat mesh is not enough
+    //   wireframe()      [{ pts: [[x,y,z]…], ts: [t…] }] lines for the 2D fallback
+
+    visualize3D(canvas) {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        if (!(fw && fw.shared3D)) return this.render2DProjection(canvas);
+        const lod = this.meshLOD(canvas);
+        const key = this.meshKey(lod);
+        const cached = fw.shared3D.meshes.get(this.id);
+        if (cached && key === this._meshKey) {
+            fw.renderMeshToCanvas(canvas, this.id, cached);
+            return;
+        }
+        const mesh = this.buildMesh(lod);
+        if (!mesh) return;
+        this._meshKey = key;
+        fw.addMeshToScene(this.id, mesh);
+        fw.renderMeshToCanvas(canvas, this.id, mesh);
+    }
+
+    meshLOD(canvas) { return 1; }
+
+    meshKey(lod) { return `${lod}|${this.renderKey()}`; }
+
+    buildMesh(lod) {
+        const { vertices, indices, colors } = this.generate3DPoints(lod);
+        if (!indices.length) return null;
+        return ThreeDModality.createMesh(vertices, indices, colors);
+    }
+
+    wireframe() { return null; }
+
+    // Free this individual's entry in the shared 3D scene (the framework calls
+    // it when an individual leaves the grid).
+    cleanup() {
+        const fw = (typeof window !== 'undefined') && window.framework;
+        if (this.is3D() && fw && fw.shared3D) fw.removeMeshFromScene(this.id);
+        this._meshKey = null;
+    }
+
+    render2DProjection(canvas) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+        const cy = Math.cos(0.6), sy = Math.sin(0.6), cx = Math.cos(0.4), sx = Math.sin(0.4);
+        const project = (x, y, z) => {
+            const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+            return [x1, y * cx - z1 * sx, y * sx + z1 * cx];
+        };
+        const lines = this.wireframe();
+        let items;                                   // projected [x, y, depth] + colour
+        if (lines) {
+            items = lines.map(l => ({ pts: l.pts.map(p => project(p[0], p[1], p[2])), ts: l.ts }));
+        } else {
+            const { vertices, colors } = this.generate3DPoints();
+            items = [];
+            for (let i = 0; i < vertices.length; i += 3) {
+                items.push({ p: project(vertices[i], vertices[i + 1], vertices[i + 2]),
+                    rgb: [colors[i], colors[i + 1], colors[i + 2]] });
+            }
+        }
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        const grow = (p) => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); };
+        for (const it of items) (it.pts || [it.p]).forEach(grow);
+        if (!(x1 >= x0)) return;
+        const scale = 0.85 * Math.min(w, h) / (Math.max(x1 - x0, y1 - y0) || 1);
+        const X = (p) => w / 2 + (p[0] - (x0 + x1) / 2) * scale;
+        const Y = (p) => h / 2 - (p[1] - (y0 + y1) / 2) * scale;   // scene y is up
+        const px = Canvas2DModality.pixelScale(w, h);
+        if (lines) {
+            ctx.lineWidth = Math.max(1, 1.4 * px);
+            for (const { pts, ts } of items) {
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const c = window.Palette.color(ts[Math.min(i, ts.length - 1)]);
+                    ctx.strokeStyle = `rgb(${c.r},${c.g},${c.b})`;
+                    ctx.beginPath();
+                    ctx.moveTo(X(pts[i]), Y(pts[i]));
+                    ctx.lineTo(X(pts[i + 1]), Y(pts[i + 1]));
+                    ctx.stroke();
+                }
+            }
+        } else {
+            items.sort((a, b) => b.p[2] - a.p[2]);   // far first
+            const r = Math.max(1, 2 * px);
+            for (const { p, rgb } of items) {
+                ctx.fillStyle = `rgb(${Math.round(rgb[0] * 255)},${Math.round(rgb[1] * 255)},${Math.round(rgb[2] * 255)})`;
+                ctx.fillRect(X(p) - r / 2, Y(p) - r / 2, r, r);
+            }
+        }
     }
 
     // --- Editable code sections (for the live code editor, CodeEditorUI) ---
@@ -463,17 +638,81 @@ class Individual {
         return this.genome;
     }
 
+    // Three views of an individual, kept distinct:
+    //   this.phenotype   the generator's output (what the representation
+    //                    expresses; what saved files and dedupe key on)
+    //   getPhenotype()   the phenotype as the renderer/synth consumes it —
+    //                    decoded parameters, a path list, a note list, a tree.
+    //                    Override only when visualize()/playback reads an
+    //                    interpreted form; never to return a description.
+    //   summary()        one plain-text line for people (genome panel, logs,
+    //                    the headless preview scripts)
     getPhenotype() {
         return this.phenotype;
     }
 
-    // Cache key for Canvas2DModality.renderCached: keyed on the phenotype, since
-    // that is what gets drawn. For direct representations phenotype === genome,
-    // so this matches the previous behaviour; for PTO ones it keys on the
-    // expressed output rather than the trace object (which would not stringify
-    // usefully).
+    summary() {
+        return '';
+    }
+
+    /**
+     * Compile an evolved expression string to a total numeric function, using
+     * the type's `static expression = { vars, preset }` (preset names one of
+     * ExpressionCompiler.PRESETS — the presets differ deliberately; see that
+     * file). Pure and uncached; `expressionFn` is the cached form.
+     */
+    compileExpression(expr, vars) {
+        const spec = this.constructor.expression;
+        return ExpressionCompiler.compile(expr, vars || spec.vars, ExpressionCompiler.PRESETS[spec.preset]);
+    }
+
+    /**
+     * The compiled function for an expression in this phenotype, cached per
+     * phenotype (so a new genome drops the old functions, and the cache can't
+     * grow without bound as evolution mints new expressions).
+     */
+    expressionFn(expr, vars) {
+        const cache = this.derive('expressionFns', () => new Map());
+        const key = vars ? `${expr}|${vars}` : expr;
+        let f = cache.get(key);
+        if (!f) { f = this.compileExpression(expr, vars); cache.set(key, f); }
+        return f;
+    }
+
+    /**
+     * Memoise a value derived purely from the phenotype (a graph, a path list,
+     * an evaluated stream). Phenotypes are cached per trace by the
+     * representation, so identity is a sound key: a new genome — mutation, a
+     * setGene edit, a generator swap in the code editor — misses automatically,
+     * and there is nothing to invalidate by hand. Per instance, not per
+     * phenotype, so a derived value that carries runtime state (MouseMusic's
+     * DAG) is never shared between clones. `fn` receives the phenotype.
+     */
+    derive(name, fn) {
+        const p = this.phenotype;
+        const memo = this._derived || (this._derived = Object.create(null));
+        const hit = memo[name];
+        if (hit && hit.key === p) return hit.value;
+        const value = fn(p);
+        memo[name] = { key: p, value };
+        return value;
+    }
+
+    // Cache key for Canvas2DModality.renderCached: everything that changes the
+    // pixels. That is the phenotype, serialised (a bare object would key as
+    // "[object Object]" and collide), plus the version of each shared service
+    // the type declares it uses. Override only to key on less than the whole
+    // phenotype, or to add an input no capability describes.
     renderKey() {
-        return this.phenotype;
+        const c = this.constructor.caps();
+        let key = this.derive('phenotypeJSON', (p) => JSON.stringify(p));
+        // Shared services a type draws from are part of what it draws.
+        if (typeof window !== 'undefined') {
+            if (c.usesColorPalette && window.Palette) key += '|' + window.Palette.name();
+            if (c.usesPhoto && window.Photo) key += '|photo' + window.Photo.version();
+            if (c.usesRoboParts && window.RoboParts) key += '|parts' + window.RoboParts.version();
+        }
+        return key;
     }
 
     validate() {
@@ -487,11 +726,10 @@ class Individual {
     // to add type-specific detail (e.g. a formula) to the default layout.
 
     toString() {
-        const p = this.getPhenotype();
-        const summary = (typeof p === 'string' && p !== this.genome)
-            ? ` — ${p.length > 60 ? p.slice(0, 60) + '…' : p}`
-            : '';
-        return `${this.constructor.name} #${this.id} (fitness ${this.fitness})${summary}`;
+        const p = this.phenotype;
+        const text = this.summary() || (typeof p === 'string' ? p : '');
+        const tail = text ? ` — ${text.length > 60 ? text.slice(0, 60) + '…' : text}` : '';
+        return `${this.constructor.name} #${this.id} (fitness ${this.fitness})${tail}`;
     }
 
     /** Type-specific extra section inserted after the phenotype; '' by default. */
@@ -510,13 +748,16 @@ class Individual {
         out += `<span class="genome-label">ID:</span> ${this.id}\n`;
         out += `<span class="genome-label">Fitness:</span> ${this.fitness}\n\n`;
 
-        const phenotype = this.getPhenotype();
+        const summary = this.summary();
+        if (summary) out += `<span class="genome-label">Summary:</span> ${this._escapeHtml(summary)}\n\n`;
+
+        const phenotype = this.phenotype;
         const phenotypeString = this._formatPhenotype(phenotype);
         if (phenotypeString && this._isPhenotypeInformative(phenotype)) {
-            out += `<span class="genome-label">Phenotype:</span>\n${phenotypeString}\n`;
-            out += this.describeExtra();
-            out += '\n';
+            out += `<span class="genome-label">Phenotype:</span>\n${this._escapeHtml(phenotypeString)}\n`;
         }
+        const extra = this.describeExtra();
+        if (extra) out += extra + '\n';
 
         out += this._formatGenomeSection();
         return out;

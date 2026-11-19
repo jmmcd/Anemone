@@ -128,7 +128,7 @@ function drawForm(ind, ox, oy) {
             }
         }
     }
-    console.log(`  cell: ${ind.getPhenotype()}`);
+    console.log(`  cell: ${ind.summary()}`);
 }
 
 forms.forEach((ind, i) => {

@@ -102,82 +102,81 @@ function waterTowerExprString(e) {
 }
 
 class WaterTowerIndividual extends Individual {
+    static representation = waterTowerRepresentation;
+    static capabilities = {
+        is3D: true,
+        usesColorPalette: true,
+    };
+
     constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = waterTowerRepresentation;
-        this.genome = genome || this.representation.generateRandom();
+        super(genome);
         this.tubeSides = 6;
     }
-
-    is3D() { return true; }
-    usesColorPalette() { return true; }
 
     // The graph: { nodes: [{ xyz, layer, idx }], edges: [[a, b]], layers: [[ids]] }.
     // A pure function of the phenotype, memoised on it (phenotypes are cached
     // per trace, so identity is a sound key).
     graph() {
-        const p = this.phenotype;
-        if (this._graphFor === p) return this._graph;
-        const nodes = [], layers = [], edges = [], seen = new Set();
-        const addEdge = (a, b) => {
-            if (a === b) return;
-            const key = a < b ? `${a},${b}` : `${b},${a}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            edges.push([a, b]);
-        };
-        const toSelf = p.connections.includes('self');
-        const toPrev = p.connections.includes('prev');
-        const toNext = p.connections.includes('next');
-        const n = p.nnodes;
+        return this.derive('graph', (p) => {
+            const nodes = [], layers = [], edges = [], seen = new Set();
+            const addEdge = (a, b) => {
+                if (a === b) return;
+                const key = a < b ? `${a},${b}` : `${b},${a}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                edges.push([a, b]);
+            };
+            const toSelf = p.connections.includes('self');
+            const toPrev = p.connections.includes('prev');
+            const toNext = p.connections.includes('next');
+            const n = p.nnodes;
 
-        // add_layer()
-        for (let j = 0; j < p.nlayers; j++) {
-            const lenLayer = p.doublep === 2 ? (j % 2 === 0 ? n : 2 * n) : n;
-            const lenPrev = p.doublep === 2 ? (j % 2 === 0 ? 2 * n : n) : n;
-            const start = nodes.length;
-            const layer = [];
-            for (let i = 0; i < lenLayer; i++) layer.push(start + i);
-            const prev = j > 0 ? layers[j - 1] : null;
-            layers.push(layer);
-            for (let i = 0; i < lenLayer; i++) {
-                nodes.push({ layer: j, idx: i, xyz: null });
-                addEdge(layer[i], layer[(i + 1) % lenLayer]);
-                if (!prev) continue;
-                if (p.doublep === 1) {
-                    if (toSelf) addEdge(layer[i], prev[i]);
-                    if (toPrev) addEdge(layer[i], prev[(i - 1 + n) % n]);
-                    if (toNext) addEdge(layer[i], prev[(i + 1) % n]);
-                } else if (j % 2 === 0) {
-                    if (toSelf) addEdge(layer[i], prev[(2 * i) % lenPrev]);
-                    if (toPrev) addEdge(layer[i], prev[(lenPrev + 2 * i - 1) % lenPrev]);
-                    if (toNext) addEdge(layer[i], prev[(2 * i + 1) % lenPrev]);
-                } else {
-                    const h = Math.floor(i / 2);
-                    if (toSelf) addEdge(layer[i], prev[h]);
-                    if (toPrev) addEdge(layer[i], prev[(lenPrev + h - 1) % lenPrev]);
-                    if (toNext) addEdge(layer[i], prev[(h + 1) % lenPrev]);
+            // add_layer()
+            for (let j = 0; j < p.nlayers; j++) {
+                const lenLayer = p.doublep === 2 ? (j % 2 === 0 ? n : 2 * n) : n;
+                const lenPrev = p.doublep === 2 ? (j % 2 === 0 ? 2 * n : n) : n;
+                const start = nodes.length;
+                const layer = [];
+                for (let i = 0; i < lenLayer; i++) layer.push(start + i);
+                const prev = j > 0 ? layers[j - 1] : null;
+                layers.push(layer);
+                for (let i = 0; i < lenLayer; i++) {
+                    nodes.push({ layer: j, idx: i, xyz: null });
+                    addEdge(layer[i], layer[(i + 1) % lenLayer]);
+                    if (!prev) continue;
+                    if (p.doublep === 1) {
+                        if (toSelf) addEdge(layer[i], prev[i]);
+                        if (toPrev) addEdge(layer[i], prev[(i - 1 + n) % n]);
+                        if (toNext) addEdge(layer[i], prev[(i + 1) % n]);
+                    } else if (j % 2 === 0) {
+                        if (toSelf) addEdge(layer[i], prev[(2 * i) % lenPrev]);
+                        if (toPrev) addEdge(layer[i], prev[(lenPrev + 2 * i - 1) % lenPrev]);
+                        if (toNext) addEdge(layer[i], prev[(2 * i + 1) % lenPrev]);
+                    } else {
+                        const h = Math.floor(i / 2);
+                        if (toSelf) addEdge(layer[i], prev[h]);
+                        if (toPrev) addEdge(layer[i], prev[(lenPrev + h - 1) % lenPrev]);
+                        if (toNext) addEdge(layer[i], prev[(h + 1) % lenPrev]);
+                    }
                 }
             }
-        }
 
-        // run(): place the nodes.
-        let phi = p.phi;
-        for (let i = 0; i < p.nlayers; i++) {
-            phi += p.offsets[i % p.offsets.length];
-            const r = waterTowerEval(p.radius, i / p.nlayers);
-            const L = layers[i].length;
-            for (const id of layers[i]) {
-                const idx = nodes[id].idx;
-                const theta = (phi + idx) / L;
-                let z = p.height * i + p.constant + p.rad * Math.sin(p.freq * i);
-                if (L % 2 === 0 && p.varyHeightWithinLayer && idx % 2 === 1) z += p.varyHeightAmount;
-                nodes[id].xyz = [r * Math.cos(2 * Math.PI * theta), r * Math.sin(2 * Math.PI * theta), z];
+            // run(): place the nodes.
+            let phi = p.phi;
+            for (let i = 0; i < p.nlayers; i++) {
+                phi += p.offsets[i % p.offsets.length];
+                const r = waterTowerEval(p.radius, i / p.nlayers);
+                const L = layers[i].length;
+                for (const id of layers[i]) {
+                    const idx = nodes[id].idx;
+                    const theta = (phi + idx) / L;
+                    let z = p.height * i + p.constant + p.rad * Math.sin(p.freq * i);
+                    if (L % 2 === 0 && p.varyHeightWithinLayer && idx % 2 === 1) z += p.varyHeightAmount;
+                    nodes[id].xyz = [r * Math.cos(2 * Math.PI * theta), r * Math.sin(2 * Math.PI * theta), z];
+                }
             }
-        }
-        this._graphFor = p;
-        this._graph = { nodes, edges, layers };
-        return this._graph;
+            return { nodes, edges, layers };
+        });
     }
 
     // Layer radii r(i / nlayers), the one place the arithmetic function shows.
@@ -224,57 +223,17 @@ class WaterTowerIndividual extends Individual {
         return out;
     }
 
-    visualize(canvas) {
-        const framework = window.framework;
-        if (framework && framework.shared3D) {
-            const key = JSON.stringify(this.renderKey());
-            const cached = framework.shared3D.meshes.get(this.id);
-            if (cached && key === this._lastBuiltKey) {
-                framework.renderMeshToCanvas(canvas, this.id, cached);
-                return;
-            }
-            this._lastBuiltKey = key;
-            const { vertices, indices, colors } = this.generate3DPoints();
-            if (!this.threeDModality) this.threeDModality = new ThreeDModality();
-            this.threeDModality.render(canvas, this.id, vertices, indices, colors, framework);
-            return;
-        }
-        this.render2DProjection(canvas);
-    }
-
-    // 2D fallback (no shared 3D / headless tests): the graph seen from slightly
-    // above, as lines coloured by height.
-    render2DProjection(canvas) {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, w, h);
+    // 2D fallback: the graph's edges, coloured by height.
+    wireframe() {
         const { edges } = this.graph();
         const { pts, ts } = this._sceneNodes();
-        const tilt = 0.35, c = Math.cos(tilt), s = Math.sin(tilt);
-        const proj = pts.map(q => [q[0], q[1] * c + q[2] * s]);
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        for (const [x, y] of proj) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-        const scale = 0.85 * Math.min(w, h) / (Math.max(x1 - x0, y1 - y0) || 1);
-        const sx = x => w / 2 + (x - (x0 + x1) / 2) * scale;
-        const sy = y => h / 2 - (y - (y0 + y1) / 2) * scale;
-        ctx.lineWidth = Math.max(1, Math.min(w, h) / 128);
-        for (const [a, b] of edges) {
-            const col = window.Palette.color((ts[a] + ts[b]) / 2);
-            ctx.strokeStyle = `rgb(${col.r},${col.g},${col.b})`;
-            ctx.beginPath();
-            ctx.moveTo(sx(proj[a][0]), sy(proj[a][1]));
-            ctx.lineTo(sx(proj[b][0]), sy(proj[b][1]));
-            ctx.stroke();
-        }
+        return edges.map(([a, b]) => ({ pts: [pts[a], pts[b]], ts: [(ts[a] + ts[b]) / 2] }));
     }
 
-    cleanup() {
-        const framework = window.framework;
-        if (framework && framework.shared3D) framework.removeMeshFromScene(this.id);
-    }
+    /** What visualize() draws: the ring graph (see graph). */
+    getPhenotype() { return this.graph(); }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         return `${p.nlayers} rings of ${p.doublep === 2 ? `${p.nnodes}/${2 * p.nnodes}` : p.nnodes}, r(t) = ${waterTowerExprString(p.radius)}`;
     }

@@ -47,9 +47,9 @@ const { classes, makeCanvas, SITLanguage, SITAnalysis, ExpressionCompiler, Indiv
 console.log('\nIndividual-type registry:');
 {
     const ROOT = path.join(__dirname, '..');
-    // Concrete individual classes only; these two are abstract base classes that
+    // Concrete individual classes only; these are abstract base classes that
     // match *Individual.js but are intentionally not registered.
-    const ABSTRACT_BASES = new Set(['Individual', 'RadialSurface3DIndividual']);
+    const ABSTRACT_BASES = new Set(['Individual', 'RadialSurface3DIndividual', 'StepSequencerIndividual']);
 
     check('every registry entry resolves to an Individual subclass', () => {
         for (const t of INDIVIDUAL_TYPES) {
@@ -193,6 +193,95 @@ console.log('\nFramework hotkey table + partial-class split:');
     });
 }
 
+// --- Declarative subclasses (static representation + capabilities) ---
+console.log('\nDeclarative subclasses (static representation / capabilities):');
+{
+    const FLAG_METHODS = Object.keys(Individual.DEFAULT_CAPABILITIES);
+
+    check('every type names a representation and the constructor installs it', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const C = classes[name];
+            assert(C.representation, `${name} has no static representation`);
+            const ind = new C();
+            assert(ind.representation === C.representation, `${name}: instance representation is not the shared one`);
+            const again = new C(ind.genome);
+            assert(again.genome === ind.genome, `${name}: a given genome must be kept, not redrawn`);
+        }
+    });
+
+    check('capability flags are declared, not overridden as methods', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            for (let P = classes[name].prototype; P && P !== Individual.prototype; P = Object.getPrototypeOf(P)) {
+                for (const f of FLAG_METHODS) {
+                    assert(!Object.prototype.hasOwnProperty.call(P, f),
+                        `${P.constructor.name} overrides ${f}(); declare it in static capabilities instead`);
+                }
+            }
+        }
+    });
+
+    check('capabilities merge down the class chain', () => {
+        const c2 = classes.SITCodeIndividual, c3 = classes.SITCode3DIndividual;
+        assert(new c2().usesColorPalette() && !new c2().is3D(), 'SITCode: palette, 2D');
+        assert(new c3().usesColorPalette() && new c3().is3D(), 'SITCode3D inherits palette and adds is3D');
+        assert(new classes.EEGSonificationIndividual().usesMIDISync(), 'EEG inherits MIDI sync from MouseMusic');
+        assert(new classes.CatIndividual().isEditable(), 'explicit isEditable');
+        assert(new classes.DrumMachineIndividual().isEditable(), 'isEditable defaults to isGridEditable');
+        assert(!new classes.GridIndividual().isEditable(), 'not editable by default');
+    });
+
+    check('renderKey is a string that tells different individuals apart', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const C = classes[name];
+            const a = new C();
+            let b = new C();
+            for (let i = 0; i < 20 && JSON.stringify(b.phenotype) === JSON.stringify(a.phenotype); i++) b = new C();
+            assert(typeof a.renderKey() === 'string', `${name}: renderKey must be a string`);
+            if (JSON.stringify(b.phenotype) !== JSON.stringify(a.phenotype)) {
+                assert(a.renderKey() !== b.renderKey(), `${name}: two different phenotypes share a render key`);
+            }
+        }
+    });
+
+    check('derive() memoises on the phenotype and misses after a genome change', () => {
+        const ind = new classes.BranchIndividual();
+        let calls = 0;
+        const f = () => { calls++; return {}; };
+        const v1 = ind.derive('probe', f), v2 = ind.derive('probe', f);
+        assert(v1 === v2 && calls === 1, 'second call must hit');
+        ind.mutate(1.0);
+        const v3 = ind.derive('probe', f);
+        assert(v3 !== v1 && calls === 2, 'a new phenotype must recompute');
+        assert(ind.clone()._derived === undefined, 'a clone starts with no derived state');
+    });
+
+    check('expressionFn caches per phenotype and uses the type\'s preset', () => {
+        const pc = new classes.PolarCurveIndividual();
+        const f = pc.expressionFn(pc.phenotype.expr);
+        assert(f === pc.expressionFn(pc.phenotype.expr), 'same phenotype, same function');
+        assert(classes.PolarCurveIndividual.expression.preset === 'POLAR', 'polar keeps its preset');
+    });
+
+    check('getPhenotype() is data, not a description; summary() is the description', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const ind = new classes[name]();
+            const g = ind.getPhenotype();
+            assert(typeof g !== 'string' || g === ind.phenotype,
+                `${name}: getPhenotype() returns a string that is not the phenotype — a description belongs in summary()`);
+            assert(typeof ind.summary() === 'string', `${name}: summary() must be a string`);
+            const html = ind.describe();
+            assert(typeof html === 'string' && html.includes(name), `${name}: describe() must render`);
+        }
+    });
+
+    check('an unknown capability key is an error, not silently ignored', () => {
+        class Typo extends Individual { static capabilities = { usesColourPalette: true }; }
+        let threw = false;
+        try { Typo.caps(); } catch (e) { threw = /unknown capability/.test(e.message); }
+        assert(threw, 'a misspelt capability must throw');
+    });
+}
+
 // --- Genetic operators ---
 console.log('\nGenetic operators (construct / mutate / crossover / clone):');
 for (const name of INDIVIDUAL_CLASSES) {
@@ -254,7 +343,7 @@ check('PatternGrammarIndividual.validate() rejects constant expressions', () => 
 });
 check('PolarCurveIndividual.validate() rejects expressions without t', () => {
     const ind = new classes.PolarCurveIndividual();
-    ind.getPhenotype = () => '2.0';
+    Object.defineProperty(ind, 'phenotype', { value: { expr: '2.0', turns: 1 }, configurable: true });
     assert(ind.validate() === false, 'polar expression without t should be rejected');
 });
 check('EvolutionaryAlgorithm fills the population with valid individuals', () => {
@@ -1451,7 +1540,7 @@ console.log('\nParametric sprite animation (Cat):');
     check('planted feet sit exactly on the ground line (no sinking)', () => {
         for (let i = 0; i < 40; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 24; k++) {
                 const pose = ind.poseAt(k / 24 / P.stride);
                 for (const leg of pose.legs) {
@@ -1470,7 +1559,7 @@ console.log('\nParametric sprite animation (Cat):');
         // The foot path and the ground scroll are driven by the same numbers, so
         // a planted foot must move back by exactly `step` over its stance phase.
         const ind = plainCat();
-        const P = ind.getParameters();
+        const P = ind.getPhenotype();
         const at = (u) => ind.poseAt(u / P.stride).legs[0].foot[0];
         const travel = at(0) - at(P.duty - 1e-9);
         assert(Math.abs(travel - P.step) < 1e-6,
@@ -1483,7 +1572,7 @@ console.log('\nParametric sprite animation (Cat):');
         // including the top of the bounce where the hip is highest.
         for (let i = 0; i < 60; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 16; k++) {
                 for (const leg of ind.poseAt(k / 16 / P.stride).legs) {
                     assert(leg.reached, `${P.gait} cat could not reach its foot target`);
@@ -1494,7 +1583,7 @@ console.log('\nParametric sprite animation (Cat):');
     });
 
     check('gait is nothing but four phase offsets', () => {
-        const phasesOf = (gait) => plainCat({ gait }).getParameters().phases;
+        const phasesOf = (gait) => plainCat({ gait }).getPhenotype().phases;
         const walk = phasesOf('walk'), trot = phasesOf('trot');
         const bound = phasesOf('bound'), pace = phasesOf('pace');
         assert(new Set(walk).size === 4, 'a walk lands each foot separately');
@@ -1530,7 +1619,7 @@ console.log('\nParametric sprite animation (Cat):');
             }
             return d;
         };
-        const P = ind.getParameters();
+        const P = ind.getPhenotype();
         const t0 = 1.0;
         const here = incs(t0);
         for (let i = 1; i < here.length; i++) {
@@ -1553,7 +1642,7 @@ console.log('\nParametric sprite animation (Cat):');
         // centre, which is what made a naive fixed offset unsafe.
         for (let i = 0; i < 60; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 12; k++) {
                 const pose = ind.poseAt(k / 12 / P.stride);
                 const half = P.bodyLen / 2;
@@ -1578,7 +1667,7 @@ console.log('\nParametric sprite animation (Cat):');
             const ind = new classes.CatIndividual();
             if (ind.phenotype.gait !== 'bound') continue;
             checked++;
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             assert(P.duty < 0.5, 'a bound must have a sub-50% duty cycle');
             assert(P.hop > 0, 'a bound must have a flight arc');
 
@@ -2352,16 +2441,16 @@ console.log('\nShared expression compiler:');
     });
 
     check('the four call sites route through the shared compiler', () => {
-        // Each type keeps its own thin wrapper; these are the contracts the
-        // wrappers must preserve (variables and fallback value).
+        // Each type declares its variables and preset (static expression); these
+        // are the contracts that declaration must preserve.
         const pg = new classes.PatternGrammarIndividual();
         assert(Math.abs(pg.compileExpression('x+y')(2, 3) - 5) < 1e-12, 'PatternGrammar compiles over x,y');
         const ap = new classes.AnimatedPatternIndividual();
-        assert(Math.abs(ap._compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
+        assert(Math.abs(ap.compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
         const pc = new classes.PolarCurveIndividual();
-        assert(Math.abs(pc.compileExpressionForT('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
+        assert(Math.abs(pc.compileExpression('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
         const s3 = new classes.WarpedSurface3DIndividual();
-        assert(Math.abs(s3.compileExpr('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
+        assert(Math.abs(s3.compileExpression('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
     });
 }
 
@@ -2372,13 +2461,13 @@ console.log('\nShared expression compiler:');
 console.log('\nGE Radius expression compilation:');
 check('division/modulo expressions compile and vary with t (not constant 1.0)', () => {
     const ind = new classes.PolarCurveIndividual();
-    const f = ind.compileExpressionForT('5.0*(t/2)');
+    const f = ind.compileExpression('5.0*(t/2)');
     assert(Math.abs(f(2) - 5.0) < 1e-9 && Math.abs(f(4) - 10.0) < 1e-9, 'division expr did not evaluate correctly');
 
-    const g = ind.compileExpressionForT('(t*3)/tan((t*2)+log((t*2))-(t/2))');
+    const g = ind.compileExpression('(t*3)/tan((t*2)+log((t*2))-(t/2))');
     assert(g(1) !== 1.0 || g(5) !== 1.0, 'complex expr collapsed to the 1.0 fallback');
 
-    const c = ind.compileExpressionForT('6.28318');
+    const c = ind.compileExpression('6.28318');
     assert(Math.abs(c(0) - c(9)) < 1e-9 && Math.abs(c(0) - 2 * Math.PI) < 1e-6, 'constant should compile to a constant');
 });
 
@@ -2658,6 +2747,61 @@ check('describe() names the parts and credits the artist (CC-BY)', () => {
     const text = new classes.RoboHashCatIndividual().describe();
     assert(/body/.test(text) && /accessories/.test(text), 'part slots should be listed');
     assert(/David Revoy/.test(text), 'CC-BY artwork must carry attribution in the app');
+});
+
+// --- Live MIDI sequence scheduling ---
+// Messages sent with a future timestamp cannot be recalled, so the scheduler
+// must only ever have the lookahead window's note-ons in flight: otherwise Stop
+// lets the rest of the bar play out on the receiving DAW.
+console.log('\nLive MIDI sequence scheduling:');
+check('playSequence sends each note-on once, only within the lookahead, and nothing after stop', () => {
+    const env = load();
+    let T = 0, timer = null;
+    env.sandbox.performance.now = () => T * 1000;
+    env.sandbox.setInterval = (fn) => { timer = fn; return 1; };
+    env.sandbox.clearInterval = () => { timer = null; };
+    const sent = [];
+    const m = new env.MIDIModality();
+    m.midiOutput = { send: (bytes, ts) => sent.push({ bytes, ts: ts === undefined ? T * 1000 : ts, at: T }) };
+    // 120 bpm, ppq 4: a tick is 0.125 s; a 16-tick (2 s) loop with 8 notes.
+    const notes = [];
+    for (let i = 0; i < 8; i++) notes.push({ pitch: 60 + i, velocity: 100, start: i * 2, duration: 1 });
+    m.playSequence({ bpm: 120, ppq: 4, loopTicks: 16, notes }, null);
+    const ons = () => sent.filter(e => (e.bytes[0] & 0xf0) === 0x90);
+    for (const e of ons()) assert(e.ts / 1000 - e.at <= 0.12 + 1e-9, `a note-on was queued ${e.ts / 1000 - e.at}s ahead`);
+    for (T = 0.025; T < 4.0; T += 0.025) timer();            // two full loops, 25 ms ticks
+    const times = ons().map(e => Math.round(e.ts) / 1000);
+    for (const e of ons()) assert(e.ts / 1000 - e.at <= 0.12 + 1e-9, 'every note-on stays inside the lookahead');
+    assert(new Set(times).size === times.length, 'no note-on is sent twice');
+    for (let k = 0; k < 2; k++) for (let i = 0; i < 8; i++) {
+        const t = k * 2 + i * 0.25;
+        assert(times.some(x => Math.abs(x - t) < 1e-6), `missing note-on at ${t}s`);
+    }
+    m.stopSequence();
+    const before = ons().length;
+    assert(timer === null, 'stop clears the scheduler');
+    assert(!ons().some(e => e.ts / 1000 > T + 0.12 + 1e-9), 'nothing beyond the lookahead was queued before stop');
+    assert(ons().length === before, 'nothing is sent after stop');
+});
+
+check('a late scheduler tick drops the notes it missed instead of bunching them', () => {
+    const env = load();
+    let T = 0, timer = null;
+    env.sandbox.performance.now = () => T * 1000;
+    env.sandbox.setInterval = (fn) => { timer = fn; return 1; };
+    env.sandbox.clearInterval = () => { timer = null; };
+    const sent = [];
+    const m = new env.MIDIModality();
+    m.midiOutput = { send: (bytes, ts) => sent.push({ bytes, ts }) };
+    const notes = [];
+    for (let i = 0; i < 8; i++) notes.push({ pitch: 60 + i, velocity: 100, start: i * 2, duration: 1 });
+    m.playSequence({ bpm: 120, ppq: 4, loopTicks: 16, notes }, null);
+    const before = sent.length;
+    T = 1.0; timer();                       // a throttled tab: one tick a second late
+    const ons = sent.slice(before).filter(e => (e.bytes[0] & 0xf0) === 0x90);
+    assert(!ons.some(e => e.ts / 1000 < 1.0 - 1e-9), 'a missed note-on was sent late');
+    assert(ons.length === 1 && Math.abs(ons[0].ts / 1000 - 1.0) < 1e-9, 'only the note at the tick time is sent');
+    m.stopSequence();
 });
 
 // --- Shared MIDI modality ---
@@ -2983,8 +3127,13 @@ check('metaFor embeds the expressed phenotype alongside the genome', () => {
     const meta = ImageSave.metaFor(ind);
     assert(meta.genome != null && meta.phenoSig != null, 'genome + phenoSig present');
     assert(meta.phenotype !== undefined, 'phenotype present');
-    assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.getPhenotype()),
+    assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.phenotype),
         'phenotype must be the expressed value');
+});
+check('reconstruct: a signature mismatch is unfaithful', () => {
+    const C = classes.CatIndividual, meta = ImageSave.metaFor(new C());
+    assert(ImageSave.reconstruct(meta, C).faithful === true, 'a fresh save reproduces');
+    assert(ImageSave.reconstruct({ ...meta, phenoSig: 'deadbeef' }, C).faithful === false, 'mismatch → false');
 });
 check('WAV carries provenance in an anmn chunk and still frames as RIFF', () => {
     const buf = { numberOfChannels: 1, sampleRate: 44100, length: 3,

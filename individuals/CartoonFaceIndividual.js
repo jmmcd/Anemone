@@ -300,7 +300,7 @@ const cartoonFaceRepresentation = new PTORepresentation(cartoonFaceGenerator);
 // faceline, skin texture, features, front hair, glasses.
 // ---------------------------------------------------------------------------
 const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
-    const p = self.getParameters();
+    const p = self.getPhenotype();
     const S = Math.min(width, height);
 
     // Head frame. `height` shifts the whole figure, `build` widens the shoulders.
@@ -912,15 +912,12 @@ const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
 });
 
 class CartoonFaceIndividual extends Individual {
-    constructor(genome = null) {
-        super('SKIP_GENOME_GENERATION');
-        this.representation = cartoonFaceRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    // Colours are semantic here (skin is skin), so the app palette would only
-    // wreck them — this type opts out and carries its own tables.
-    usesColorPalette() { return false; }
+    static representation = cartoonFaceRepresentation;
+    static capabilities = {
+        // Colours are semantic here (skin is skin), so the app palette would only
+        // wreck them — this type opts out and carries its own tables.
+        usesColorPalette: false,
+    };
 
     // The generator is the prior; the draw is the artwork. Both are worth editing,
     // artwork first (a draw edit keeps the evolved population, see CodeEditorUI).
@@ -937,7 +934,7 @@ class CartoonFaceIndividual extends Individual {
      * means the draw function reads like drawing code and the genome stays a
      * compact set of bounded ints that PTO can creep.
      */
-    getParameters() {
+    getPhenotype() {
         const p = this.phenotype;
         const unit = (v, n) => (v || 0) / n;                 // 0..n → 0..1
         return Object.assign({}, p, {
@@ -967,7 +964,7 @@ class CartoonFaceIndividual extends Individual {
         cartoonFaceDraw.value(this, canvas.getContext('2d'), canvas.width, canvas.height);
     }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const sex = p.sex === 'm' ? 'male' : 'female';
         const age = p.age === 'c' ? 'child' : p.age === 'e' ? 'elder' : 'adult';

@@ -63,15 +63,15 @@ const superShape3DGenerator = (rnd) => {
 const superShape3DRepresentation = new PTORepresentation(superShape3DGenerator);
 
 class SuperShape3DIndividual extends RadialSurface3DIndividual {
+    static representation = superShape3DRepresentation;
+
     constructor(genome = null) {
-        super();
-        this.representation = superShape3DRepresentation;
+        super(genome);
         this.radiusEps = 0; // Gielis formula is already positive/bounded
-        this.genome = genome || this.representation.generateRandom();
     }
 
     // Readable summary instead of the raw superformula strings.
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const fmt = (b) =>
             `m=${b.mNum}/${b.mDen}, n=[${b.n1.toFixed(2)}, ${b.n2.toFixed(2)}, ${b.n3.toFixed(2)}], a=${b.A.toFixed(2)}, b=${b.B.toFixed(2)}`;

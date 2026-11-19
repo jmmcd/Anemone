@@ -42,17 +42,15 @@ const mouseMusicGenerator = (rnd) => {
 const mouseMusicRepresentation = new PTORepresentation(mouseMusicGenerator);
 
 class MouseMusicIndividual extends Individual {
+    static capabilities = {
+        // Attaches the MIDI Clock Sync panel: an active external clock (e.g. GarageBand)
+        // paces this DAG's evaluation loop to the DAW's tempo (see MIDIModality.start()),
+        // inherited by EEGSonificationIndividual too.
+        usesMIDISync: true,
+    };
+
     constructor(genome = null) {
-        super();
-
-        this.representation = this.makeRepresentation();
-
-        // Use the framework's single shared MIDIModality (falls back to a local
-        // one outside the app, e.g. in tests).
-        this.midiModality = (typeof window !== 'undefined' && window.framework && window.framework.sharedMIDI) || new MIDIModality();
-
-        this.genome = genome || this.representation.generateRandom();
-
+        super(genome);
         this.timeStep = 100;
 
         // Mouse tracking
@@ -62,21 +60,14 @@ class MouseMusicIndividual extends Individual {
         this.canvas = null;
     }
 
-    // Which PTO representation this individual uses; overridden by subclasses
-    // (e.g. EEG uses 5 inputs / 2 outputs). Called from the constructor.
-    makeRepresentation() {
-        return mouseMusicRepresentation;
-    }
+    // EEGSonificationIndividual names its own (5 inputs / 2 outputs).
+    static representation = mouseMusicRepresentation;
 
     // The runnable DAG, built once per trace from the plain-data phenotype and
     // cached (it carries runtime state: energy, mouse/EEG/time-driven values).
     // this.phenotype stays the plain-data description PTO produced.
     get dag() {
-        if (this._dagKey !== this.phenotype) {
-            this._dag = buildDAG(this.phenotype);
-            this._dagKey = this.phenotype;
-        }
-        return this._dag;
+        return this.derive('dag', buildDAG);
     }
 
     // The built DAG with this individual's MIDI modality wired into its output
@@ -90,11 +81,6 @@ class MouseMusicIndividual extends Individual {
     setMidiOutput(midiOutput) {
         this.midiModality.setMidiOutput(midiOutput);
     }
-
-    // Attaches the MIDI Clock Sync panel: an active external clock (e.g. GarageBand)
-    // paces this DAG's evaluation loop to the DAW's tempo (see MIDIModality.start()),
-    // inherited by EEGSonificationIndividual too.
-    usesMIDISync() { return true; }
 
     setupMouseTracking(canvas) {
         const dag = this.dag;

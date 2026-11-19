@@ -85,13 +85,10 @@ const HOX_INK = '#141414'; // cartoon black for every outline
 const hoxLerp = (a, b, t) => a + (b - a) * t;
 
 class HoxCreatureIndividual extends Individual {
-    constructor(genome = null) {
-        super();
-        this.representation = hoxCreatureRepresentation;
-        this.genome = genome || this.representation.generateRandom();
-    }
-
-    usesColorPalette() { return true; }
+    static representation = hoxCreatureRepresentation;
+    static capabilities = {
+        usesColorPalette: true,
+    };
 
     // Genome panel: the Hox array (segment → expressed archetype → strength),
     // so a homeotic mutation is visible in the data, not just the picture.
@@ -441,7 +438,7 @@ class HoxCreatureIndividual extends Individual {
         ctx.fillRect(0, 0, width, height);
 
         const p = this.phenotype;
-        const s = Math.min(width, height) / 128; // resolution-independent pixel-unit scale
+        const s = Canvas2DModality.pixelScale(width, height); // resolution-independent pixel-unit scale
 
         // Measure the creature at unit scale, then fit its bounding box into
         // the tile (with a margin for stroke widths) so nothing overflows.
