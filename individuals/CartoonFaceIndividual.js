@@ -300,7 +300,7 @@ const cartoonFaceRepresentation = new PTORepresentation(cartoonFaceGenerator);
 // faceline, skin texture, features, front hair, glasses.
 // ---------------------------------------------------------------------------
 const cartoonFaceDraw = new Editable(function (self, ctx, width, height) {
-    const p = self.getParameters();
+    const p = self.getPhenotype();
     const S = Math.min(width, height);
 
     // Head frame. `height` shifts the whole figure, `build` widens the shoulders.
@@ -934,7 +934,7 @@ class CartoonFaceIndividual extends Individual {
      * means the draw function reads like drawing code and the genome stays a
      * compact set of bounded ints that PTO can creep.
      */
-    getParameters() {
+    getPhenotype() {
         const p = this.phenotype;
         const unit = (v, n) => (v || 0) / n;                 // 0..n → 0..1
         return Object.assign({}, p, {
@@ -964,7 +964,7 @@ class CartoonFaceIndividual extends Individual {
         cartoonFaceDraw.value(this, canvas.getContext('2d'), canvas.width, canvas.height);
     }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const sex = p.sex === 'm' ? 'male' : 'female';
         const age = p.age === 'c' ? 'child' : p.age === 'e' ? 'elder' : 'adult';

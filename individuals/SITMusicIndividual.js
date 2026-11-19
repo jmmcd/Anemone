@@ -828,6 +828,13 @@ class SITMusicIndividual extends SITCodeIndividual {
         }[(p && p.family)] || 'diatonic';
     }
 
+    summary() {
+        const p = this.phenotype;
+        const { values, ops } = SITLanguage.load(p && p.root);
+        return `Leeuwenberg music code — I = ${values + ops}, ${this.getPhenotype().length} notes, `
+            + `${this.scaleName()} on ${MIDIModality.noteName((p && p.tonic) || 60)}`;
+    }
+
     describeExtra() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);

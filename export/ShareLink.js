@@ -9,7 +9,7 @@
  * character followed by the body; format '1' is base64url(deflate-raw(UTF-8
  * JSON)) of
  *
- *     { app, type, phenoSig, genome, settings }
+ *     { app, type, phenoSig, sigVersion, genome, settings }
  *
  * — the same provenance a saved PNG embeds (ImageSave.metaFor), minus the
  * phenotype snapshot, id and timestamp, which a link has no use for. Compression
@@ -126,6 +126,7 @@
             app: 'Anemone',
             type: individual.constructor.name,
             phenoSig: window.ImageSave.phenotypeSignature(individual),
+            sigVersion: window.ImageSave.SIG_VERSION,
             genome: individual.genome,
             settings: settingsFor(individual, framework),
         };

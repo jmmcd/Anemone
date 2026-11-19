@@ -71,7 +71,7 @@ class SuperShape3DIndividual extends RadialSurface3DIndividual {
     }
 
     // Readable summary instead of the raw superformula strings.
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const fmt = (b) =>
             `m=${b.mNum}/${b.mDen}, n=[${b.n1.toFixed(2)}, ${b.n2.toFixed(2)}, ${b.n3.toFixed(2)}], a=${b.A.toFixed(2)}, b=${b.B.toFixed(2)}`;

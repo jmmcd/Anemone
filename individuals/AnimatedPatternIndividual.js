@@ -99,10 +99,6 @@ class AnimatedPatternIndividual extends Individual {
         return hasSpatial && hasTime;
     }
 
-    getPhenotype() {
-        return this.phenotype;
-    }
-
     evaluateExpression(x, y, t) {
         return this.expressionFn(this.phenotype.expression)(x, y, t);
     }

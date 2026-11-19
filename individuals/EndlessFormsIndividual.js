@@ -444,7 +444,10 @@ class EndlessFormsIndividual extends Individual {
         return { vertices, indices, colors };
     }
 
-    getPhenotype() {
+    /** What visualize() draws: the voxel field (see _field). */
+    getPhenotype() { return this._field(); }
+
+    summary() {
         const p = this.phenotype;
         const frac = (this._field().count / (this.gx * this.gy * this.gz) * 100).toFixed(1);
         const style = EF_SMOOTH ? 'smooth' : 'voxels';

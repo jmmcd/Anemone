@@ -82,8 +82,8 @@ class PolarCurveIndividual extends Individual {
 
     // The phenotype is { turns, expr }; the meaningful "phenotype" for display,
     // validation and evaluation is the r(t) expression string.
-    getPhenotype() {
-        return this.phenotype.expr;
+    summary() {
+        return `r(t) = ${this.phenotype.expr}`;
     }
 
     // Surface the evolved turn count next to the expression in the genome panel.
@@ -92,12 +92,9 @@ class PolarCurveIndividual extends Individual {
     }
 
     validate() {
-        const phenotype = this.getPhenotype();
-        if (typeof phenotype !== 'string' || phenotype.trim() === '') {
-            return false;
-        }
-
-        return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(phenotype);
+        const expr = this.phenotype && this.phenotype.expr;
+        if (typeof expr !== 'string' || expr.trim() === '') return false;
+        return /(?:^|[^A-Za-z])t(?:$|[^A-Za-z])/.test(expr);
     }
 
     // The interesting knob here is the grammar (the generator is boilerplate

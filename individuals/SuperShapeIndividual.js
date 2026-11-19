@@ -32,7 +32,7 @@ class SuperShapeIndividual extends Individual {
         this.phiRange = 2 * Math.PI;
     }
 
-    getParameters() {
+    getPhenotype() {
         // Extract parameters from genome: [m_numerator, m_denominator, n1, n2, n3, a, b]
         const [m_numerator, m_denominator, n1, n2, n3, a, b] = this.phenotype;
         
@@ -123,7 +123,7 @@ class SuperShapeIndividual extends Individual {
     
     generatePolarPoints() {
         return this.derive('points', (p) => {
-            const params = this.getParameters();
+            const params = this.getPhenotype();
             const points = [];
         
             // Calculate proper φ range using the separate denominator value
@@ -146,7 +146,7 @@ class SuperShapeIndividual extends Individual {
     }
     
     calculatePhiRange(denominator) {
-        const params = this.getParameters();
+        const params = this.getPhenotype();
         const p = Math.round(params.m_numerator);
         const q = Math.round(denominator);
         
@@ -189,14 +189,14 @@ class SuperShapeIndividual extends Individual {
         });
     }
     
-    getPhenotype() {
-        const params = this.getParameters();
+    summary() {
+        const params = this.getPhenotype();
         return `m=${params.m_numerator}/${params.m_denominator} (${params.m.toFixed(2)}), φRange=${(this.phiRange /
            + Math.PI).toFixed(1)}π, n1=${params.n1.toFixed(3)}, n2=${params.n2.toFixed(3)}, n3=${params.n3.toFixed(3)}, a=${params.a.toFixed(3)}, b=${params.b.toFixed(3)}`;
     }
     
     describeExtra() {
-        const p = this.getParameters();
+        const p = this.getPhenotype();
         return `\n<span class="genome-label">Formula:</span>\n${this._formulaLine(p, 'r(φ)')}\n`;
     }
 
@@ -205,7 +205,7 @@ class SuperShapeIndividual extends Individual {
     }
 
     getParameterInfo() {
-        const params = this.getParameters();
+        const params = this.getPhenotype();
         return {
             genome: this.phenotype,
             parameters: params,

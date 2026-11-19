@@ -78,11 +78,6 @@ class PatternGrammarIndividual extends Individual {
         return hasVariable;
     }
 
-    // this.phenotype is already the expression string the generator produced.
-    getPhenotype() {
-        return this.phenotype;
-    }
-
     evaluateExpression(x, y) {
         return this.expressionFn(this.phenotype)(x, y);
     }

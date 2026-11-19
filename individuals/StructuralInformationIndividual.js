@@ -392,7 +392,10 @@ class StructuralInformationIndividual extends Individual {
         return acc;
     }
 
-    getPhenotype() {
+    /** What visualize() draws: the contour marks (see buildPaths). */
+    getPhenotype() { return this.buildPaths(); }
+
+    summary() {
         const { prims, ops } = StructuralInformationIndividual.countLoad(this.phenotype);
         const expanded = this.expandCode().length;
         return `SIT code — load ${prims + ops} (${prims} primitives + ${ops} operators) → ${expanded} contour steps`;

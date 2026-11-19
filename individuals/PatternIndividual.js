@@ -52,8 +52,11 @@ class PatternIndividual extends Individual {
     }
 
     // Interpreted phenotype: the expression string (this.phenotype is plain data).
-    getPhenotype() {
-        return this.tree.toString();
+    /** What visualize() evaluates: the built expression tree. */
+    getPhenotype() { return this.tree; }
+
+    summary() {
+        return `f(x, y) = ${this.tree.toString()}`;
     }
 
     describeExtra() {

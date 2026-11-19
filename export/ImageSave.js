@@ -101,9 +101,13 @@
     // what makes load trustworthy despite the upstream PTO trace-serialisation
     // limitation (see pto-trace-roundtrip-bug.js) that stops grammar individuals
     // — and Sheep's per-instance random network — from round-tripping.
+    // Version 2 hashes the generator's output (individual.phenotype); version 1
+    // (files saved before it) hashed getPhenotype(), which for many types was a
+    // description string — see reconstruct() for how an old file is treated.
+    const SIG_VERSION = 2;
     function phenotypeSignature(individual) {
         let pheno;
-        try { pheno = individual.getPhenotype ? individual.getPhenotype() : individual.phenotype; }
+        try { pheno = individual.phenotype; }
         catch (e) { return null; }
         let str;
         try { str = JSON.stringify(pheno); } catch (e) { str = undefined; }
@@ -121,11 +125,11 @@
     // the genome. The genome is a PTO trace, and can lose its meaning if a
     // generator/grammar changes later; the phenotype (an expression string, note
     // list, plain-data tree/DAG, param array…) stays informative to future code.
-    // Uses the same getPhenotype→phenotype fallback as the signature; anything
-    // that doesn't survive JSON is simply omitted.
+    // The generator's output, as the signature uses; anything that doesn't
+    // survive JSON is simply omitted.
     function phenotypeOf(individual) {
         let pheno;
-        try { pheno = individual.getPhenotype ? individual.getPhenotype() : individual.phenotype; }
+        try { pheno = individual.phenotype; }
         catch (e) { return undefined; }
         try { JSON.stringify(pheno); } catch (e) { return undefined; } // must round-trip through JSON
         return pheno;
@@ -141,6 +145,7 @@
             id: individual && individual.id,
             timestamp: new Date().toISOString(),
             phenoSig: phenotypeSignature(individual),
+            sigVersion: SIG_VERSION,
             phenotype: phenotypeOf(individual),
             genome: individual && individual.genome,
         };
@@ -344,6 +349,9 @@
     // false means the generator (or a table it reads) has changed since the
     // genome was saved, so this is not quite the individual that was saved. The
     // caller decides what that means: file load refuses, a share link warns.
+    // null means "can't tell": a version-1 signature (saved before the
+    // signature moved to the generator output) that doesn't match the new one.
+    // Callers treat it as a warning, so old files still load.
     // Throws if the genome cannot be replayed at all.
     function reconstruct(meta, cls, midiOutput) {
         const individual = new cls(meta.genome);
@@ -352,13 +360,14 @@
             individual.invalidateImageCache();
         }
         if (individual.setMidiOutput && midiOutput) individual.setMidiOutput(midiOutput);
-        const faithful = meta.phenoSig == null || phenotypeSignature(individual) === meta.phenoSig;
+        let faithful = meta.phenoSig == null || phenotypeSignature(individual) === meta.phenoSig;
+        if (!faithful && (meta.sigVersion || 1) < SIG_VERSION) faithful = null;
         return { individual, faithful };
     }
 
     window.ImageSave = {
         saveCanvas, buildPngBytes, composeMontage, buildZip, download: triggerDownload,
-        readMetadata, readMetadataFromFile, phenotypeSignature, metaFor, reconstruct,
+        readMetadata, readMetadataFromFile, phenotypeSignature, metaFor, reconstruct, SIG_VERSION,
         buildITxtChunk, insertChunk, crc32,
     };
 })();

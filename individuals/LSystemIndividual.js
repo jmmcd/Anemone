@@ -322,7 +322,10 @@ class LSystemIndividual extends Individual {
 
     // Readable phenotype for the genome panel: the axiom, rules, and the size of
     // the expanded string (the actual thing drawn).
-    getPhenotype() {
+    /** What visualize() draws: the drawing primitives (see buildPrimitives). */
+    getPhenotype() { return this.buildPrimitives(); }
+
+    summary() {
         const spec = this.phenotype;
         if (!spec) return '';
         const rules = (spec.rules || []).map(r => `${r.lhs}→${r.rhs}`).join('  ');

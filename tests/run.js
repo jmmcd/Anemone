@@ -262,6 +262,18 @@ console.log('\nDeclarative subclasses (static representation / capabilities):');
         assert(classes.PolarCurveIndividual.expression.preset === 'POLAR', 'polar keeps its preset');
     });
 
+    check('getPhenotype() is data, not a description; summary() is the description', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const ind = new classes[name]();
+            const g = ind.getPhenotype();
+            assert(typeof g !== 'string' || g === ind.phenotype,
+                `${name}: getPhenotype() returns a string that is not the phenotype — a description belongs in summary()`);
+            assert(typeof ind.summary() === 'string', `${name}: summary() must be a string`);
+            const html = ind.describe();
+            assert(typeof html === 'string' && html.includes(name), `${name}: describe() must render`);
+        }
+    });
+
     check('an unknown capability key is an error, not silently ignored', () => {
         class Typo extends Individual { static capabilities = { usesColourPalette: true }; }
         let threw = false;
@@ -331,7 +343,7 @@ check('PatternGrammarIndividual.validate() rejects constant expressions', () => 
 });
 check('PolarCurveIndividual.validate() rejects expressions without t', () => {
     const ind = new classes.PolarCurveIndividual();
-    ind.getPhenotype = () => '2.0';
+    Object.defineProperty(ind, 'phenotype', { value: { expr: '2.0', turns: 1 }, configurable: true });
     assert(ind.validate() === false, 'polar expression without t should be rejected');
 });
 check('EvolutionaryAlgorithm fills the population with valid individuals', () => {
@@ -1528,7 +1540,7 @@ console.log('\nParametric sprite animation (Cat):');
     check('planted feet sit exactly on the ground line (no sinking)', () => {
         for (let i = 0; i < 40; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 24; k++) {
                 const pose = ind.poseAt(k / 24 / P.stride);
                 for (const leg of pose.legs) {
@@ -1547,7 +1559,7 @@ console.log('\nParametric sprite animation (Cat):');
         // The foot path and the ground scroll are driven by the same numbers, so
         // a planted foot must move back by exactly `step` over its stance phase.
         const ind = plainCat();
-        const P = ind.getParameters();
+        const P = ind.getPhenotype();
         const at = (u) => ind.poseAt(u / P.stride).legs[0].foot[0];
         const travel = at(0) - at(P.duty - 1e-9);
         assert(Math.abs(travel - P.step) < 1e-6,
@@ -1560,7 +1572,7 @@ console.log('\nParametric sprite animation (Cat):');
         // including the top of the bounce where the hip is highest.
         for (let i = 0; i < 60; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 16; k++) {
                 for (const leg of ind.poseAt(k / 16 / P.stride).legs) {
                     assert(leg.reached, `${P.gait} cat could not reach its foot target`);
@@ -1571,7 +1583,7 @@ console.log('\nParametric sprite animation (Cat):');
     });
 
     check('gait is nothing but four phase offsets', () => {
-        const phasesOf = (gait) => plainCat({ gait }).getParameters().phases;
+        const phasesOf = (gait) => plainCat({ gait }).getPhenotype().phases;
         const walk = phasesOf('walk'), trot = phasesOf('trot');
         const bound = phasesOf('bound'), pace = phasesOf('pace');
         assert(new Set(walk).size === 4, 'a walk lands each foot separately');
@@ -1607,7 +1619,7 @@ console.log('\nParametric sprite animation (Cat):');
             }
             return d;
         };
-        const P = ind.getParameters();
+        const P = ind.getPhenotype();
         const t0 = 1.0;
         const here = incs(t0);
         for (let i = 1; i < here.length; i++) {
@@ -1630,7 +1642,7 @@ console.log('\nParametric sprite animation (Cat):');
         // centre, which is what made a naive fixed offset unsafe.
         for (let i = 0; i < 60; i++) {
             const ind = new classes.CatIndividual();
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             for (let k = 0; k < 12; k++) {
                 const pose = ind.poseAt(k / 12 / P.stride);
                 const half = P.bodyLen / 2;
@@ -1655,7 +1667,7 @@ console.log('\nParametric sprite animation (Cat):');
             const ind = new classes.CatIndividual();
             if (ind.phenotype.gait !== 'bound') continue;
             checked++;
-            const P = ind.getParameters();
+            const P = ind.getPhenotype();
             assert(P.duty < 0.5, 'a bound must have a sub-50% duty cycle');
             assert(P.hop > 0, 'a bound must have a flight arc');
 
@@ -3060,8 +3072,17 @@ check('metaFor embeds the expressed phenotype alongside the genome', () => {
     const meta = ImageSave.metaFor(ind);
     assert(meta.genome != null && meta.phenoSig != null, 'genome + phenoSig present');
     assert(meta.phenotype !== undefined, 'phenotype present');
-    assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.getPhenotype()),
+    assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.phenotype),
         'phenotype must be the expressed value');
+    assert(meta.sigVersion === ImageSave.SIG_VERSION, 'signature version recorded');
+});
+check('reconstruct: a v2 mismatch is unfaithful, an old (v1) mismatch is merely unverifiable', () => {
+    const C = classes.CatIndividual, ind = new C();
+    const meta = ImageSave.metaFor(ind);
+    assert(ImageSave.reconstruct(meta, C).faithful === true, 'a fresh save reproduces');
+    assert(ImageSave.reconstruct({ ...meta, phenoSig: 'deadbeef' }, C).faithful === false, 'v2 mismatch → false');
+    const v1 = { ...meta, phenoSig: 'deadbeef' }; delete v1.sigVersion;
+    assert(ImageSave.reconstruct(v1, C).faithful === null, 'v1 mismatch → null (load with a warning)');
 });
 check('WAV carries provenance in an anmn chunk and still frames as RIFF', () => {
     const buf = { numberOfChannels: 1, sampleRate: 44100, length: 3,

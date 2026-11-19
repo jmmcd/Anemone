@@ -63,7 +63,7 @@ const wonkyRepresentation = new PTORepresentation(wonkyGenerator);
 // thing to edit for this type. It is held in an Editable slot so the code editor
 // can swap it live (see editableSections / Individual.functionSection). Signature
 // is (individual, ctx, width, height); it reads the decoded parameters via
-// individual.getParameters().
+// individual.getPhenotype().
 const wonkyDraw = new Editable(function (self, ctx, width, height) {
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
@@ -74,7 +74,7 @@ const wonkyDraw = new Editable(function (self, ctx, width, height) {
     ctx.scale(scale, scale);
     ctx.imageSmoothingEnabled = false; // Crisp pixel art
 
-    const params = self.getParameters();
+    const params = self.getPhenotype();
 
     // Helper function to draw filled circle
     const drawCircle = (x, y, radius, color) => {
@@ -265,7 +265,7 @@ class WonkyGuysIndividual extends Individual {
         ];
     }
 
-    getParameters() {
+    getPhenotype() {
         return {
             // Head
             headSize: this.phenotype[0],
@@ -340,8 +340,8 @@ class WonkyGuysIndividual extends Individual {
         wonkyDraw.value(this, canvas.getContext('2d'), canvas.width, canvas.height);
     }
 
-    getPhenotype() {
-        const params = this.getParameters();
+    summary() {
+        const params = this.getPhenotype();
         const features = [];
 
         if (params.hasHair) features.push("hair");

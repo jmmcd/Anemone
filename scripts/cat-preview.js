@@ -88,7 +88,7 @@ while (cats.length < ROWS) {
 }
 
 cats.forEach((ind, row) => {
-    const P = ind.getParameters();
+    const P = ind.getPhenotype();
     const period = 1 / P.stride;                 // seconds for one full stride
 
     // The near fore foot's path over the whole cycle, drawn faintly behind every

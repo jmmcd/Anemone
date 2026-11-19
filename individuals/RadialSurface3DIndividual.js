@@ -108,7 +108,7 @@ class RadialSurface3DIndividual extends Individual {
     // Separable → { meridianExpr, crossExpr }; bivariate → { biExpr }. The
     // displayed phenotype is the expression(s). (Subclasses whose expressions
     // are unwieldy, e.g. SuperShape3D, override this for a readable summary.)
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         if (p.biExpr !== undefined) return `r(θ,φ) = ${p.biExpr}`;
         return `r₁(θ) = ${p.meridianExpr} | r₂(φ) = ${p.crossExpr}`;

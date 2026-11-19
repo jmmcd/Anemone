@@ -27,7 +27,7 @@ class PenroseIndividual extends Individual {
         this.tileSize = 1.0;
     }
 
-    getParameters() {
+    getPhenotype() {
         return {
             rotation: this.phenotype[0],
             offsetX: this.phenotype[1],
@@ -232,7 +232,7 @@ class PenroseIndividual extends Individual {
         
         ctx.clearRect(0, 0, width, height);
         
-        const params = this.getParameters();
+        const params = this.getPhenotype();
         const tiles = this.generateTiling(params);
         
         // Setup transform
@@ -281,8 +281,8 @@ class PenroseIndividual extends Individual {
         ctx.fillText(`Tiles: ${tiles.length}/${params.numTiles}`, 5, height - 5);
     }
     
-    getPhenotype() {
-        const params = this.getParameters();
+    summary() {
+        const params = this.getPhenotype();
         return `Penrose: ${params.numTiles} tiles, rot=${(params.rotation * 180 / Math.PI).toFixed(0)}°`;
     }
 }

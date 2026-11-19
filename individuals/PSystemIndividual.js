@@ -569,7 +569,10 @@ class PSystemIndividual extends Individual {
 
     // Concise genome-panel phenotype (the raw spec is verbose and doubles as
     // trace context via _formatGenomeSection).
-    getPhenotype() {
+    /** What visualize() draws: the simulated membrane configuration (see _simulate). */
+    getPhenotype() { return this._simulate(); }
+
+    summary() {
         const s = this.phenotype, sim = this._simulate();
         return `${sim.list.length} membranes, ${s.symbolCount} symbols, `
              + `${sim.totalObjects} objects after ${s.steps} steps`;

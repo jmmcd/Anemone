@@ -246,7 +246,10 @@ class AnemoneIndividual extends Individual {
     // The decoded turtle program: the meaningful phenotype, shown by the base
     // describe() as "Phenotype:". (this.phenotype is the raw byte array — the same
     // values as the genotype trace — so it isn't shown separately.)
-    getPhenotype() {
+    /** What visualize() draws: the turtle paths (see executeGenome). */
+    getPhenotype() { return this.executeGenome(); }
+
+    summary() {
         return this.phenotype.map(val => this.integerToCharacter(val)).join('');
     }
 }

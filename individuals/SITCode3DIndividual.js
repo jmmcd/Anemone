@@ -491,7 +491,10 @@ class SITCode3DIndividual extends SITCodeIndividual {
     // meridian wires (polylines(true) keeps them) rather than lost.
     wireframe() { return this.polylines(true); }
 
-    getPhenotype() {
+    /** What visualize() draws: the interpreted 3D figure (see figure). */
+    getPhenotype() { return this.figure(); }
+
+    summary() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);
         const skins = this.skins().length;

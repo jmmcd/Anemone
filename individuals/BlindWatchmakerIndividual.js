@@ -139,7 +139,10 @@ class BlindWatchmakerIndividual extends Individual {
 
     // Concise phenotype for the base describe() (the raw gene object is also the
     // genotype trace, so we summarise the drawn result instead).
-    getPhenotype() {
+    /** What visualize() draws: the line segments (see buildPaths). */
+    getPhenotype() { return this.buildPaths(); }
+
+    summary() {
         const p = this.phenotype;
         if (!p) return 'invalid biomorph';
         return `biomorph: order ${p.depth}, ${this.buildPaths().length} segments`;

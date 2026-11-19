@@ -42,7 +42,7 @@ for (let i = 0; i < n; i++) {
             raster.buf[d] = img.data[s]; raster.buf[d + 1] = img.data[s + 1]; raster.buf[d + 2] = img.data[s + 2];
         }
     }
-    console.log(`${String(i + 1).padStart(2)}. ${ind.getPhenotype()}`);
+    console.log(`${String(i + 1).padStart(2)}. ${ind.summary()}`);
 }
 raster.save(out);
 console.log(`wrote ${out}`);

@@ -897,7 +897,7 @@ class JennPolytopeIndividual extends Individual {
         });
     }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         if (p.shape === 'the_duoprism') return `${p.duoP}×${p.duoQ} duoprism`;
         const names = {
@@ -916,7 +916,7 @@ class JennPolytopeIndividual extends Individual {
     describeExtra() {
         const p = this.phenotype;
         const { verts, edges, faces } = this._geom();
-        let s = `\n<span class="genome-label">Polytope:</span> ${this.getPhenotype()}\n`;
+        let s = `\n<span class="genome-label">Polytope:</span> ${this.summary()}\n`;
         s += `  ${verts.length} vertices, ${edges.length} edges, ${faces.length} faces on S³\n`;
         s += `  stereographic projection to R³ (curved edges/surfaces)\n`;
         s += `  render style: ${p.renderStyle}\n`;

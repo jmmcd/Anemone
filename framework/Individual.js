@@ -638,8 +638,21 @@ class Individual {
         return this.genome;
     }
 
+    // Three views of an individual, kept distinct:
+    //   this.phenotype   the generator's output (what the representation
+    //                    expresses; what saved files and dedupe key on)
+    //   getPhenotype()   the phenotype as the renderer/synth consumes it —
+    //                    decoded parameters, a path list, a note list, a tree.
+    //                    Override only when visualize()/playback reads an
+    //                    interpreted form; never to return a description.
+    //   summary()        one plain-text line for people (genome panel, logs,
+    //                    the headless preview scripts)
     getPhenotype() {
         return this.phenotype;
+    }
+
+    summary() {
+        return '';
     }
 
     /**
@@ -713,11 +726,10 @@ class Individual {
     // to add type-specific detail (e.g. a formula) to the default layout.
 
     toString() {
-        const p = this.getPhenotype();
-        const summary = (typeof p === 'string' && p !== this.genome)
-            ? ` — ${p.length > 60 ? p.slice(0, 60) + '…' : p}`
-            : '';
-        return `${this.constructor.name} #${this.id} (fitness ${this.fitness})${summary}`;
+        const p = this.phenotype;
+        const text = this.summary() || (typeof p === 'string' ? p : '');
+        const tail = text ? ` — ${text.length > 60 ? text.slice(0, 60) + '…' : text}` : '';
+        return `${this.constructor.name} #${this.id} (fitness ${this.fitness})${tail}`;
     }
 
     /** Type-specific extra section inserted after the phenotype; '' by default. */
@@ -736,13 +748,16 @@ class Individual {
         out += `<span class="genome-label">ID:</span> ${this.id}\n`;
         out += `<span class="genome-label">Fitness:</span> ${this.fitness}\n\n`;
 
-        const phenotype = this.getPhenotype();
+        const summary = this.summary();
+        if (summary) out += `<span class="genome-label">Summary:</span> ${this._escapeHtml(summary)}\n\n`;
+
+        const phenotype = this.phenotype;
         const phenotypeString = this._formatPhenotype(phenotype);
         if (phenotypeString && this._isPhenotypeInformative(phenotype)) {
-            out += `<span class="genome-label">Phenotype:</span>\n${phenotypeString}\n`;
-            out += this.describeExtra();
-            out += '\n';
+            out += `<span class="genome-label">Phenotype:</span>\n${this._escapeHtml(phenotypeString)}\n`;
         }
+        const extra = this.describeExtra();
+        if (extra) out += extra + '\n';
 
         out += this._formatGenomeSection();
         return out;

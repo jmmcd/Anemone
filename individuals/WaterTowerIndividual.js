@@ -230,7 +230,10 @@ class WaterTowerIndividual extends Individual {
         return edges.map(([a, b]) => ({ pts: [pts[a], pts[b]], ts: [(ts[a] + ts[b]) / 2] }));
     }
 
-    getPhenotype() {
+    /** What visualize() draws: the ring graph (see graph). */
+    getPhenotype() { return this.graph(); }
+
+    summary() {
         const p = this.phenotype;
         return `${p.nlayers} rings of ${p.doublep === 2 ? `${p.nnodes}/${2 * p.nnodes}` : p.nnodes}, r(t) = ${waterTowerExprString(p.radius)}`;
     }

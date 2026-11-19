@@ -502,7 +502,10 @@ class ReflectiveSketchIndividual extends Individual {
         }
     }
 
-    getPhenotype() {
+    /** What visualize() draws: the resolved drawing (see drawing). */
+    getPhenotype() { return this.drawing(); }
+
+    summary() {
         const { strokes, crosses } = this.drawing();
         let ends = 0, attached = 0;
         for (const s of strokes) {

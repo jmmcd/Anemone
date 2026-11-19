@@ -696,7 +696,7 @@ class CatIndividual extends Individual {
      * bend left in the knee. The constraint lives in the map, so the search
      * never spends a generation rediscovering it.
      */
-    getParameters() {
+    getPhenotype() {
         const p = this.phenotype;
         const bodyDepth = p.bodyLen * p.depthFrac;
         const standH = p.bodyLen * p.standFrac;
@@ -776,7 +776,7 @@ class CatIndividual extends Individual {
             const rect = canvas.getBoundingClientRect();
             const v = ((e.clientY - rect.top) * (canvas.height / rect.height)) / canvas.height;
             const pose = self.poseAt(0);
-            const top = 0.5 + pose.body.y + self.getParameters().bodyDepth * 0.25;
+            const top = 0.5 + pose.body.y + self.getPhenotype().bodyDepth * 0.25;
             return v >= top;
         };
 
@@ -834,13 +834,13 @@ class CatIndividual extends Individual {
 
     /** The pose at a given time, in normalised units. Pure — same t, same pose. */
     poseAt(t) {
-        return catPose.value(this.getParameters(), t);
+        return catPose.value(this.getPhenotype(), t);
     }
 
     /** Render one frame. Split out so tests and the RAF loop share a path. */
     renderFrame(canvas, t) {
         catDraw.value(this, canvas.getContext('2d'), canvas.width, canvas.height,
-                      this.poseAt(t), this.getParameters());
+                      this.poseAt(t), this.getPhenotype());
     }
 
     visualize(canvas) {
@@ -887,7 +887,7 @@ class CatIndividual extends Individual {
      * targets, and the animation must actually move.
      */
     validate() {
-        const P = this.getParameters();
+        const P = this.getPhenotype();
         if (!(P.upper > 0) || !(P.lower > 0)) return false;
         if (!(P.stride > 0.05) || !(P.step > 0.02)) return false;   // must read as walking
         for (const t of [0, 0.13, 0.29, 0.53, 0.71, 0.97]) {
@@ -900,16 +900,16 @@ class CatIndividual extends Individual {
         return true;
     }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
-        const P = this.getParameters();
+        const P = this.getPhenotype();
         const air = P.duty < 0.5 ? `, airborne ${Math.round((1 - 2 * P.duty) * 100)}% of the stride` : '';
         return `Cat: ${p.gait} at ${p.stride.toFixed(2)} Hz, ${p.earType} ears, ` +
                `${p.tailSegs}-segment tail${air}`;
     }
 
     describeExtra() {
-        const P = this.getParameters();
+        const P = this.getPhenotype();
         const clock = Individual.AnimationClock;
         const row = (label, value) => `<div><b>${label}:</b> ${value}</div>`;
         const f = (n, d = 2) => n.toFixed(d);

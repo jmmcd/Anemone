@@ -96,4 +96,4 @@ for (let r = 1; r < rows; r++) {
 
 img.save(out);
 console.log(`${out}  (${faces.length} x ${TYPE}${LOOKALIKE ? `, look-alike of #1 at rate ${RATE}` : ''})`);
-faces.forEach((f, i) => console.log(`  ${i + 1}. ${f.getPhenotype()}`));
+faces.forEach((f, i) => console.log(`  ${i + 1}. ${f.summary()}`));

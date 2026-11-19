@@ -275,7 +275,10 @@ class SITCodeIndividual extends Individual {
 
     // --- Self-description ---------------------------------------------------
 
-    getPhenotype() {
+    /** What visualize() draws: the contour marks (see marks). */
+    getPhenotype() { return this.marks(); }
+
+    summary() {
         const p = this.phenotype;
         const { values, ops } = SITLanguage.load(p && p.root);
         return `Leeuwenberg code — I = ${values + ops} (${values} values + ${ops} operators)`

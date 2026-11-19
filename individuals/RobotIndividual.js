@@ -123,11 +123,11 @@ const robotRepresentation = new PTORepresentation(robotGenerator);
 // type. It is held in an Editable slot so the code editor can swap it live (see
 // editableSections / Individual.functionSection). Signature is
 // (individual, ctx, width, height); it reads the decoded parameters via
-// individual.getParameters().
+// individual.getPhenotype().
 const robotDraw = new Editable(function (self, ctx, width, height) {
     ctx.clearRect(0, 0, width, height);
 
-    const params = self.getParameters();
+    const params = self.getPhenotype();
     const scale = Math.min(width, height);
 
     const rgb = (c) => `rgb(${c.r}, ${c.g}, ${c.b})`;
@@ -821,7 +821,7 @@ class RobotIndividual extends Individual {
 
     // Decode layer: the phenotype object with colours scaled to 0-255 and hues
     // to degrees, ready for the draw function.
-    getParameters() {
+    getPhenotype() {
         const p = this.phenotype;
         const c255 = (col) => ({
             r: Math.floor(col.r * 255),
@@ -843,7 +843,7 @@ class RobotIndividual extends Individual {
         robotDraw.value(this, canvas.getContext('2d'), canvas.width, canvas.height);
     }
 
-    getPhenotype() {
+    summary() {
         const p = this.phenotype;
         const accs = [p.headAcc, p.faceAcc, p.bodyAcc, p.handAcc].filter(a => a !== 'none');
         return `Robot: ${p.bodyShape} body on ${p.locomotion}, ${p.headShape} head, ` +

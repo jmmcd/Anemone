@@ -253,9 +253,12 @@
 
         // Refuse rather than silently load a different-looking individual into a
         // run the user is curating (a share link, arriving fresh, warns instead).
-        if (!result.faithful) {
+        if (result.faithful === false) {
             this.showToast(`This ${meta.type} can't be faithfully reproduced (saved by a different version?)`);
             return;
+        }
+        if (result.faithful === null) {
+            this.showToast(`Saved by an older version of Anemone, so this ${meta.type} can't be checked — it may differ slightly`);
         }
 
         this.enterPlacementMode(result.individual);

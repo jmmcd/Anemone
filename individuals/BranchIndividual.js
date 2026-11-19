@@ -146,7 +146,10 @@ class BranchIndividual extends Individual {
 
     // Concise, readable phenotype for the genome panel (the raw command array is
     // verbose and is also the genotype trace, so we summarise instead).
-    getPhenotype() {
+    /** What visualize() draws: the line segments (see buildPaths). */
+    getPhenotype() { return this.buildPaths(); }
+
+    summary() {
         const commands = Array.isArray(this.phenotype) ? this.phenotype : [];
         return `${commands.length} drawing commands, ${this.buildPaths().length} line segments`;
     }

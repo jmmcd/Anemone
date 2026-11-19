@@ -149,11 +149,11 @@ FIGURES.forEach((fig, i) => {
 
     if (fig.mode === 'solid') {
         const mesh = ind.generate3DPoints();
-        console.log(`${fig.label.padEnd(14)} ${ind.getPhenotype()}`);
+        console.log(`${fig.label.padEnd(14)} ${ind.summary()}`);
         drawSolid(raster, mesh, ox, oy, size, TOP);
     } else {
         const marks = ind.marks();
-        console.log(`${fig.label.padEnd(14)} ${ind.getPhenotype()}`);
+        console.log(`${fig.label.padEnd(14)} ${ind.summary()}`);
         const pts = [];
         for (const m of marks) { pts.push([m.x1, -m.y1]); pts.push([m.x2, -m.y2]); }
         if (!pts.length) return;
