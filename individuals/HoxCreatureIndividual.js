@@ -438,7 +438,7 @@ class HoxCreatureIndividual extends Individual {
         ctx.fillRect(0, 0, width, height);
 
         const p = this.phenotype;
-        const s = Math.min(width, height) / 128; // resolution-independent pixel-unit scale
+        const s = Canvas2DModality.pixelScale(width, height); // resolution-independent pixel-unit scale
 
         // Measure the creature at unit scale, then fit its bounding box into
         // the tile (with a margin for stroke widths) so nothing overflows.

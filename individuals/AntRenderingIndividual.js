@@ -67,7 +67,7 @@ class AntRenderingIndividual extends Individual {
             // size AND pen width by res makes each ant traverse the same *fraction*
             // of the image over its fixed step count, so a 768px zoom is a faithful
             // magnification of the tile rather than a sparser/thinner version.
-            const res = Math.min(width, height) / 128;
+            const res = Canvas2DModality.pixelScale(width, height);
 
             // Precompute luminance + Sobel gradient of the source.
             const { lum, gx, gy } = this._computeFields(src, width, height);

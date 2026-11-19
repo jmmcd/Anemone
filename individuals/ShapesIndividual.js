@@ -100,19 +100,10 @@ class ShapesIndividual extends Individual {
     
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-            
             // Background color (first color in palette)
             const backgroundColor = window.Palette.color(0);
-            
-            // Fill background
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = backgroundColor.r;     // Red
-                data[i + 1] = backgroundColor.g; // Green
-                data[i + 2] = backgroundColor.b; // Blue
-                data[i + 3] = 255;              // Alpha
-            }
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height, backgroundColor);
+            const data = imageData.data;
             
             const commands = this.getPhenotype();
             

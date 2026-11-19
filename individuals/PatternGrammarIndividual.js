@@ -88,8 +88,6 @@ class PatternGrammarIndividual extends Individual {
     }
 
     visualize(canvas) {
-        console.time(`visualize-${this.id}`);
-        
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
             const imageData = ctx.createImageData(width, height);
             const data = imageData.data;
@@ -120,7 +118,6 @@ class PatternGrammarIndividual extends Individual {
             return imageData;
         });
         
-        console.timeEnd(`visualize-${this.id}`);
     }
     
     

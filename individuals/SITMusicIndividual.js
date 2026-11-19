@@ -712,7 +712,7 @@ class SITMusicIndividual extends SITCodeIndividual {
         const notes = this.getPhenotype();
         if (!notes.length) return;
         const grains = this.grains();
-        const s = Math.min(W, H) / 128;           // resolution-independent pixel unit
+        const s = Canvas2DModality.pixelScale(W, H);           // resolution-independent pixel unit
         const pad = Math.max(2, Math.round(3 * s));
 
         let lo = Infinity, hi = -Infinity;

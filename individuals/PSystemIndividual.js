@@ -499,11 +499,10 @@ class PSystemIndividual extends Individual {
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height);
             const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) { data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255; }
 
-            const res = Math.min(width, height) / 128;
+            const res = Canvas2DModality.pixelScale(width, height);
             const spec = this.phenotype;
             const K = spec.symbolCount;
             const sim = this._simulate();

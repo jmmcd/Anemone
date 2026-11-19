@@ -252,46 +252,26 @@ class LSystemIndividual extends Individual {
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
             // Black background (the plant/curve glows against it, like Branch).
             const background = { r: 0, g: 0, b: 0 };
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height, background);
+            const data = imageData.data;
 
             const primitives = this.buildPrimitives();
             if (primitives.length === 0) return imageData;
 
             // Bounding box over every point → fit-to-canvas scale + offset.
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            const acc = (x, y) => {
-                if (x < minX) minX = x; if (x > maxX) maxX = x;
-                if (y < minY) minY = y; if (y > maxY) maxY = y;
-            };
+            const b = Canvas2DModality.bounds();
             for (const p of primitives) {
-                if (p.type === 'line') { acc(p.x1, p.y1); acc(p.x2, p.y2); }
-                else if (p.type === 'dot') { acc(p.x, p.y); }
-                else if (p.type === 'polygon') { for (const pt of p.points) acc(pt.x, pt.y); }
+                if (p.type === 'line') b.addSegment(p);
+                else if (p.type === 'dot') b.add(p.x, p.y);
+                else if (p.type === 'polygon') for (const pt of p.points) b.add(pt.x, pt.y);
             }
-            if (!isFinite(minX)) return imageData;
+            if (b.empty) return imageData;
+            const { x: tx, y: ty } = Canvas2DModality.fitTransform(b, width, height, 16);
 
-            const margin = 16;
-            const drawW = maxX - minX, drawH = maxY - minY;
-            let scale = 1;
-            if (drawW > 0 && drawH > 0) {
-                scale = Math.min((width - 2 * margin) / drawW, (height - 2 * margin) / drawH);
-            }
-            const offX = (width - drawW * scale) / 2 - minX * scale;
-            const offY = (height - drawH * scale) / 2 - minY * scale;
-            const tx = (x) => x * scale + offX;
-            const ty = (y) => y * scale + offY;
-
-            // Resolution scale: absolute-pixel quantities (pen width, dot radius,
-            // glow) are relative to the 128px tile, so scale up at zoom (768px)
-            // for a faithful magnification. See CLAUDE.md > resolution-independent.
-            const res = Math.min(width, height) / 128;
+            // Pen width, dot radius and glow are in tile pixels.
+            const res = Canvas2DModality.pixelScale(width, height);
 
             for (const p of primitives) {
                 if (p.type === 'line') {

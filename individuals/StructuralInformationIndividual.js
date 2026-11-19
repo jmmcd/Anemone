@@ -298,41 +298,19 @@ class StructuralInformationIndividual extends Individual {
 
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height);
             const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
 
             const marks = this.buildPaths();
             if (marks.length === 0) return imageData;
 
             // Resolution-independent pixel units (tiles 128px, zoom 768px).
-            const s = Math.min(width, height) / 128;
+            const s = Canvas2DModality.pixelScale(width, height);
 
             // Fit the visible marks (line endpoints + dot centres) to the canvas.
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            marks.forEach(p => {
-                if (p.type === 'dot') {
-                    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-                    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-                } else {
-                    minX = Math.min(minX, p.x1, p.x2); maxX = Math.max(maxX, p.x1, p.x2);
-                    minY = Math.min(minY, p.y1, p.y2); maxY = Math.max(maxY, p.y1, p.y2);
-                }
-            });
-            const margin = 12 * s;
-            const drawW = maxX - minX, drawH = maxY - minY;
-            let scale = 1;
-            if (drawW > 0 && drawH > 0) {
-                scale = Math.min((width - 2 * margin) / drawW, (height - 2 * margin) / drawH);
-            } else if (drawW > 0) {
-                scale = (width - 2 * margin) / drawW;
-            } else if (drawH > 0) {
-                scale = (height - 2 * margin) / drawH;
-            }
-            const offsetX = (width - drawW * scale) / 2 - minX * scale;
-            const offsetY = (height - drawH * scale) / 2 - minY * scale;
+            const b = Canvas2DModality.bounds();
+            for (const p of marks) { if (p.type === 'dot') b.add(p.x, p.y); else b.addSegment(p); }
+            const { scale, ox: offsetX, oy: offsetY } = Canvas2DModality.fitTransform(b, width, height, 12 * s);
 
             const lineWidth = Math.max(1, 1.6 * s);
             const dotRadius = Math.max(1.5, 2.2 * s);

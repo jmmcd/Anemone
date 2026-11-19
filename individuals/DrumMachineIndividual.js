@@ -283,7 +283,7 @@ class DrumMachineIndividual extends StepSequencerIndividual {
         // individual currently sounding.
         const at = this.playheadFraction();
         if (at !== null) {
-            Canvas2DModality.drawPlayhead(ctx, pad + at * L * cw, yTop, gridH, Math.min(W, H) / 128);
+            Canvas2DModality.drawPlayhead(ctx, pad + at * L * cw, yTop, gridH, Canvas2DModality.pixelScale(W, H));
         }
     }
 

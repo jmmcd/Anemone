@@ -137,50 +137,10 @@ class BranchIndividual extends Individual {
     }
 
     visualize(canvas) {
-        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
-            // Black background.
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
-
-            const paths = this.buildPaths();
-            if (paths.length === 0) return imageData;
-
-            // Bounding box → fit-to-canvas scale and offset.
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            paths.forEach(p => {
-                minX = Math.min(minX, p.x1, p.x2);
-                maxX = Math.max(maxX, p.x1, p.x2);
-                minY = Math.min(minY, p.y1, p.y2);
-                maxY = Math.max(maxY, p.y1, p.y2);
-            });
-
-            const margin = 20;
-            const drawWidth = maxX - minX;
-            const drawHeight = maxY - minY;
-            let scale = 1;
-            if (drawWidth > 0 && drawHeight > 0) {
-                scale = Math.min(
-                    (width - 2 * margin) / drawWidth,
-                    (height - 2 * margin) / drawHeight
-                );
-            }
-            const offsetX = (width - drawWidth * scale) / 2 - minX * scale;
-            const offsetY = (height - drawHeight * scale) / 2 - minY * scale;
-
-            paths.forEach(p => {
-                const color = window.Palette.color(p.colorIndex / 7);
-                const x1 = p.x1 * scale + offsetX;
-                const y1 = p.y1 * scale + offsetY;
-                const x2 = p.x2 * scale + offsetX;
-                const y2 = p.y2 * scale + offsetY;
-                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, p.width);
-            });
-
-            return imageData;
+        Canvas2DModality.renderSegments(canvas, this, {
+            segments: () => this.buildPaths(),
+            color: (p) => window.Palette.color(p.colorIndex / 7),
+            width: (p) => p.width,
         });
     }
 

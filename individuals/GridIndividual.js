@@ -37,7 +37,7 @@ class GridIndividual extends Individual {
         // Border width in absolute pixels, scaled so it stays a visible line at
         // the 768px zoom instead of a 1px hairline (reference is the 128px tile).
         ctx.strokeStyle = rgb(0.5);
-        ctx.lineWidth = Math.max(1, Math.round(Math.min(width, height) / 128));
+        ctx.lineWidth = Math.max(1, Math.round(Canvas2DModality.pixelScale(width, height)));
 
         for (let i = 0; i < gridSize; i++) {
             for (let j = 0; j < gridSize; j++) {

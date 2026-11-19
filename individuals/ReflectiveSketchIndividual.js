@@ -440,7 +440,7 @@ class ReflectiveSketchIndividual extends Individual {
         const strokes = drawing.strokes;
         if (!strokes.length) return;
 
-        const sc = Math.min(width, height) / 128;               // resolution independence
+        const sc = Canvas2DModality.pixelScale(width, height);               // resolution independence
         const weight = (spec && spec.weight) || 1, taper = (spec && spec.taper) || 0;
         const halfW = (s, t) => {
             const profile = (1 - taper) + taper * Math.pow(Math.sin(Math.PI * t), 0.5);

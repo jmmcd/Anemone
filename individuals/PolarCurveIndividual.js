@@ -111,29 +111,18 @@ class PolarCurveIndividual extends Individual {
 
     // Override visualization for polar coordinate drawing
     visualize(canvas) {
-        console.time(`visualize-${this.id}`);
-
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
             // Background color (first color in palette)
             const backgroundColor = window.Palette.color(0);
-
-            // Fill background
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = backgroundColor.r;     // Red
-                data[i + 1] = backgroundColor.g; // Green
-                data[i + 2] = backgroundColor.b; // Blue
-                data[i + 3] = 255;              // Alpha
-            }
+            const imageData = Canvas2DModality.filledImageData(ctx, width, height, backgroundColor);
+            const data = imageData.data;
 
             // Resolution scale: everything in absolute pixels (line thickness,
             // glow radius) is multiplied by this so a zoomed render (768px) is a
             // faithful magnification of the 128px tile rather than the same
             // absolute marks on a 6× larger canvas (which made the glow look weak
             // and the curve a hairline). Reference is the 128px grid tile.
-            const s = Math.min(width, height) / 128;
+            const s = Canvas2DModality.pixelScale(width, height);
 
             // Generate polar coordinates
             const polarPoints = this.generatePolarPoints();
@@ -149,7 +138,6 @@ class PolarCurveIndividual extends Individual {
             return imageData;
         });
         
-        console.timeEnd(`visualize-${this.id}`);
     }
     
     generatePolarPoints() {

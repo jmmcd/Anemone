@@ -114,62 +114,16 @@ class BlindWatchmakerIndividual extends Individual {
         });
     }
 
+    // Biomorphs read as glowing creatures against black (the same bloom as
+    // AnemoneIndividual's underwater style).
     visualize(canvas) {
-        Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
-            const imageData = ctx.createImageData(width, height);
-            const data = imageData.data;
-
-            // Black background (biomorphs read as glowing creatures against it).
-            const backgroundColor = { r: 0, g: 0, b: 0 };
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-            }
-
-            const paths = this.buildPaths();
-            if (paths.length === 0) return imageData;
-
-            // Bounding box → fit-to-canvas scale and offset.
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            paths.forEach(p => {
-                minX = Math.min(minX, p.x1, p.x2);
-                maxX = Math.max(maxX, p.x1, p.x2);
-                minY = Math.min(minY, p.y1, p.y2);
-                maxY = Math.max(maxY, p.y1, p.y2);
-            });
-
-            const margin = 16;
-            const drawWidth = maxX - minX;
-            const drawHeight = maxY - minY;
-            let scale = 1;
-            if (drawWidth > 0 && drawHeight > 0) {
-                scale = Math.min(
-                    (width - 2 * margin) / drawWidth,
-                    (height - 2 * margin) / drawHeight
-                );
-            }
-            const offsetX = (width - drawWidth * scale) / 2 - minX * scale;
-            const offsetY = (height - drawHeight * scale) / 2 - minY * scale;
-
-            // Resolution scale (reference is the 128px tile): pen widths and the
-            // glow radius are in absolute pixels, so scale them up so a zoomed
-            // render is a faithful magnification. See CLAUDE.md.
-            const res = Math.min(width, height) / 128;
-
-            paths.forEach(p => {
-                const color = window.Palette.color(p.depthT);
-                const x1 = p.x1 * scale + offsetX;
-                const y1 = p.y1 * scale + offsetY;
-                const x2 = p.x2 * scale + offsetX;
-                const y2 = p.y2 * scale + offsetY;
-                // Thicker toward the trunk (more remaining depth), thinner twigs.
-                const w = Math.max(1, Math.round((0.6 + 0.5 * p.remaining) * res));
-                Canvas2DModality.drawThickLine(data, width, height, x1, y1, x2, y2, color, w);
-            });
-
-            // Bioluminescent glow, matching AnemoneIndividual's underwater style.
-            Canvas2DModality.bloom(imageData, { radius: 2 * res, strength: 1.4, background: backgroundColor });
-
-            return imageData;
+        Canvas2DModality.renderSegments(canvas, this, {
+            segments: () => this.buildPaths(),
+            margin: 16,
+            color: (p) => window.Palette.color(p.depthT),
+            // Thicker toward the trunk (more remaining depth), thinner twigs.
+            width: (p, px) => Math.max(1, Math.round((0.6 + 0.5 * p.remaining) * px)),
+            bloom: { radius: 2, strength: 1.4 },
         });
     }
 
