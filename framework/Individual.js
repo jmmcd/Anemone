@@ -526,13 +526,64 @@ class Individual {
         return this.phenotype;
     }
 
-    // Cache key for Canvas2DModality.renderCached: keyed on the phenotype, since
-    // that is what gets drawn. For direct representations phenotype === genome,
-    // so this matches the previous behaviour; for PTO ones it keys on the
-    // expressed output rather than the trace object (which would not stringify
-    // usefully).
+    /**
+     * Compile an evolved expression string to a total numeric function, using
+     * the type's `static expression = { vars, preset }` (preset names one of
+     * ExpressionCompiler.PRESETS — the presets differ deliberately; see that
+     * file). Pure and uncached; `expressionFn` is the cached form.
+     */
+    compileExpression(expr, vars) {
+        const spec = this.constructor.expression;
+        return ExpressionCompiler.compile(expr, vars || spec.vars, ExpressionCompiler.PRESETS[spec.preset]);
+    }
+
+    /**
+     * The compiled function for an expression in this phenotype, cached per
+     * phenotype (so a new genome drops the old functions, and the cache can't
+     * grow without bound as evolution mints new expressions).
+     */
+    expressionFn(expr, vars) {
+        const cache = this.derive('expressionFns', () => new Map());
+        const key = vars ? `${expr}|${vars}` : expr;
+        let f = cache.get(key);
+        if (!f) { f = this.compileExpression(expr, vars); cache.set(key, f); }
+        return f;
+    }
+
+    /**
+     * Memoise a value derived purely from the phenotype (a graph, a path list,
+     * an evaluated stream). Phenotypes are cached per trace by the
+     * representation, so identity is a sound key: a new genome — mutation, a
+     * setGene edit, a generator swap in the code editor — misses automatically,
+     * and there is nothing to invalidate by hand. Per instance, not per
+     * phenotype, so a derived value that carries runtime state (MouseMusic's
+     * DAG) is never shared between clones. `fn` receives the phenotype.
+     */
+    derive(name, fn) {
+        const p = this.phenotype;
+        const memo = this._derived || (this._derived = Object.create(null));
+        const hit = memo[name];
+        if (hit && hit.key === p) return hit.value;
+        const value = fn(p);
+        memo[name] = { key: p, value };
+        return value;
+    }
+
+    // Cache key for Canvas2DModality.renderCached: everything that changes the
+    // pixels. That is the phenotype, serialised (a bare object would key as
+    // "[object Object]" and collide), plus the version of each shared service
+    // the type declares it uses. Override only to key on less than the whole
+    // phenotype, or to add an input no capability describes.
     renderKey() {
-        return this.phenotype;
+        const c = this.constructor.caps();
+        let key = this.derive('phenotypeJSON', (p) => JSON.stringify(p));
+        // Shared services a type draws from are part of what it draws.
+        if (typeof window !== 'undefined') {
+            if (c.usesColorPalette && window.Palette) key += '|' + window.Palette.name();
+            if (c.usesPhoto && window.Photo) key += '|photo' + window.Photo.version();
+            if (c.usesRoboParts && window.RoboParts) key += '|parts' + window.RoboParts.version();
+        }
+        return key;
     }
 
     validate() {

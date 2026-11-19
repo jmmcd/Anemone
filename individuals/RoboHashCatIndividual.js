@@ -137,15 +137,6 @@ class RoboHashCatIndividual extends Individual {
         }
     }
 
-    // The phenotype is an object, so the base renderKey() would stringify to
-    // "[object Object]" and never invalidate. Include the parts service version
-    // so a tile drawn while images were still arriving is redrawn once they land.
-    renderKey() {
-        const v = (typeof window !== 'undefined' && window.RoboParts)
-            ? window.RoboParts.version() : 0;
-        return JSON.stringify(this.phenotype) + '|v' + v;
-    }
-
     visualize(canvas) {
         const ctx = canvas.getContext('2d');
         const w = canvas.width, h = canvas.height;

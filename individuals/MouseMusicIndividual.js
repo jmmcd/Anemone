@@ -72,11 +72,7 @@ class MouseMusicIndividual extends Individual {
     // cached (it carries runtime state: energy, mouse/EEG/time-driven values).
     // this.phenotype stays the plain-data description PTO produced.
     get dag() {
-        if (this._dagKey !== this.phenotype) {
-            this._dag = buildDAG(this.phenotype);
-            this._dagKey = this.phenotype;
-        }
-        return this._dag;
+        return this.derive('dag', buildDAG);
     }
 
     // The built DAG with this individual's MIDI modality wired into its output

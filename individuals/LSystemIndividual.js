@@ -120,12 +120,6 @@ class LSystemIndividual extends Individual {
     // this.genome is the PTO trace; this.phenotype (inherited) is the L-system
     // spec the generator produced. mutate/crossover/clone are inherited.
 
-    // The spec stringifies to "[object Object]" (base renderKey would collide
-    // across individuals), so fold the whole spec into a string key by hand.
-    renderKey() {
-        return JSON.stringify(this.phenotype);
-    }
-
     validate() {
         // Reject "null drawings" (nothing that actually paints), mirroring
         // ponyge's null_drawing check.
@@ -163,90 +157,88 @@ class LSystemIndividual extends Individual {
     //   { type:'dot',  x,y, r, pen }
     //   { type:'polygon', points:[{x,y}...], fill }
     // where `pen`/`fill` are colour-walk counters resolved to palette colours at
-    // draw time. Memoised per expanded string.
+    // draw time. Memoised on the phenotype (see Individual.derive).
     buildPrimitives() {
-        const commands = this.expand();
-        if (this._primCacheKey === commands && this._primCache) return this._primCache;
+        return this.derive('primitives', (spec) => {
+            const commands = this.expand();
 
-        const spec = this.phenotype;
-        const primitives = [];
-        const stack = [];
-        const angleTable = LSYS_SET_ANGLES;
+            const primitives = [];
+            const stack = [];
+            const angleTable = LSYS_SET_ANGLES;
 
-        let st = {
-            x: 0, y: 0, heading: 0,
-            step: clampNum(spec.step, LSYS_STEP_MIN, LSYS_STEP_MAX, 10),
-            angleIndex: ((spec.angleIndex | 0) % angleTable.length + angleTable.length) % angleTable.length,
-            penWidth: 2,
-            pen: 0, fill: 0,
-        };
-        const stepDelta = clampNum(spec.stepDelta, 0.25, 5, 1);
-        const circleAngle = clampNum(spec.circleAngle, 5, 180, 20);
+            let st = {
+                x: 0, y: 0, heading: 0,
+                step: clampNum(spec.step, LSYS_STEP_MIN, LSYS_STEP_MAX, 10),
+                angleIndex: ((spec.angleIndex | 0) % angleTable.length + angleTable.length) % angleTable.length,
+                penWidth: 2,
+                pen: 0, fill: 0,
+            };
+            const stepDelta = clampNum(spec.stepDelta, 0.25, 5, 1);
+            const circleAngle = clampNum(spec.circleAngle, 5, 180, 20);
 
-        let polygon = null; // vertices being collected between { and }
+            let polygon = null; // vertices being collected between { and }
 
-        const angleOf = () => angleTable[st.angleIndex];
-        const forward = (draw) => {
-            const rad = st.heading * Math.PI / 180;
-            const nx = st.x + Math.cos(rad) * st.step;
-            const ny = st.y + Math.sin(rad) * st.step;
-            if (draw) {
-                primitives.push({ type: 'line', x1: st.x, y1: st.y, x2: nx, y2: ny, width: st.penWidth, pen: st.pen });
-            }
-            st.x = nx; st.y = ny;
-            if (polygon) polygon.points.push({ x: nx, y: ny });
-        };
-        // Arc as a chain of short forward+turn steps (turtle.circle in drawing.py).
-        const arc = () => {
-            const sub = Math.max(2, Math.ceil(Math.abs(circleAngle) / 12));
-            const dTurn = circleAngle / sub;               // degrees per sub-step
-            const chord = st.step * (Math.PI / 180) * Math.abs(dTurn); // ~arc length per step
-            for (let i = 0; i < sub; i++) {
+            const angleOf = () => angleTable[st.angleIndex];
+            const forward = (draw) => {
                 const rad = st.heading * Math.PI / 180;
-                const nx = st.x + Math.cos(rad) * chord;
-                const ny = st.y + Math.sin(rad) * chord;
-                primitives.push({ type: 'line', x1: st.x, y1: st.y, x2: nx, y2: ny, width: st.penWidth, pen: st.pen });
+                const nx = st.x + Math.cos(rad) * st.step;
+                const ny = st.y + Math.sin(rad) * st.step;
+                if (draw) {
+                    primitives.push({ type: 'line', x1: st.x, y1: st.y, x2: nx, y2: ny, width: st.penWidth, pen: st.pen });
+                }
                 st.x = nx; st.y = ny;
                 if (polygon) polygon.points.push({ x: nx, y: ny });
-                st.heading += dTurn;
-            }
-        };
+            };
+            // Arc as a chain of short forward+turn steps (turtle.circle in drawing.py).
+            const arc = () => {
+                const sub = Math.max(2, Math.ceil(Math.abs(circleAngle) / 12));
+                const dTurn = circleAngle / sub;               // degrees per sub-step
+                const chord = st.step * (Math.PI / 180) * Math.abs(dTurn); // ~arc length per step
+                for (let i = 0; i < sub; i++) {
+                    const rad = st.heading * Math.PI / 180;
+                    const nx = st.x + Math.cos(rad) * chord;
+                    const ny = st.y + Math.sin(rad) * chord;
+                    primitives.push({ type: 'line', x1: st.x, y1: st.y, x2: nx, y2: ny, width: st.penWidth, pen: st.pen });
+                    st.x = nx; st.y = ny;
+                    if (polygon) polygon.points.push({ x: nx, y: ny });
+                    st.heading += dTurn;
+                }
+            };
 
-        for (const ch of commands) {
-            switch (ch) {
-                case 'F': forward(true); break;
-                case 'f': forward(false); break;
-                case '+': st.heading += angleOf(); break;
-                case '-': st.heading -= angleOf(); break;
-                case '[': stack.push({ ...st }); break;
-                case ']': if (stack.length) st = stack.pop(); break;
-                case 'C': arc(); break;
-                case 'D': primitives.push({ type: 'dot', x: st.x, y: st.y, r: Math.max(1, st.penWidth * 1.5), pen: st.pen }); break;
-                case 'S': st.step = Math.min(LSYS_STEP_MAX, st.step + stepDelta); break;
-                case 's': st.step = Math.max(LSYS_STEP_MIN, st.step - stepDelta); break;
-                case 'A': st.angleIndex = (st.angleIndex + 1) % angleTable.length; break;
-                case 'a': st.angleIndex = (st.angleIndex - 1 + angleTable.length) % angleTable.length; break;
-                case 'n': st.pen += 1; break;
-                case 'm': st.pen -= 1; break;
-                case 'N': st.fill += 1; break;
-                case 'M': st.fill -= 1; break;
-                case 'w': st.penWidth = Math.max(LSYS_WIDTH_MIN, st.penWidth / 1.05); break;
-                case 'W': st.penWidth = Math.min(LSYS_WIDTH_MAX, st.penWidth * 1.05); break;
-                case '{': polygon = { points: [{ x: st.x, y: st.y }], fill: st.fill }; break;
-                case '}':
-                    if (polygon) {
-                        if (polygon.points.length >= 3) primitives.push({ type: 'polygon', points: polygon.points, fill: polygon.fill });
-                        polygon = null;
-                    }
-                    break;
-                // X, Y and any stray symbol: no-op.
+            for (const ch of commands) {
+                switch (ch) {
+                    case 'F': forward(true); break;
+                    case 'f': forward(false); break;
+                    case '+': st.heading += angleOf(); break;
+                    case '-': st.heading -= angleOf(); break;
+                    case '[': stack.push({ ...st }); break;
+                    case ']': if (stack.length) st = stack.pop(); break;
+                    case 'C': arc(); break;
+                    case 'D': primitives.push({ type: 'dot', x: st.x, y: st.y, r: Math.max(1, st.penWidth * 1.5), pen: st.pen }); break;
+                    case 'S': st.step = Math.min(LSYS_STEP_MAX, st.step + stepDelta); break;
+                    case 's': st.step = Math.max(LSYS_STEP_MIN, st.step - stepDelta); break;
+                    case 'A': st.angleIndex = (st.angleIndex + 1) % angleTable.length; break;
+                    case 'a': st.angleIndex = (st.angleIndex - 1 + angleTable.length) % angleTable.length; break;
+                    case 'n': st.pen += 1; break;
+                    case 'm': st.pen -= 1; break;
+                    case 'N': st.fill += 1; break;
+                    case 'M': st.fill -= 1; break;
+                    case 'w': st.penWidth = Math.max(LSYS_WIDTH_MIN, st.penWidth / 1.05); break;
+                    case 'W': st.penWidth = Math.min(LSYS_WIDTH_MAX, st.penWidth * 1.05); break;
+                    case '{': polygon = { points: [{ x: st.x, y: st.y }], fill: st.fill }; break;
+                    case '}':
+                        if (polygon) {
+                            if (polygon.points.length >= 3) primitives.push({ type: 'polygon', points: polygon.points, fill: polygon.fill });
+                            polygon = null;
+                        }
+                        break;
+                    // X, Y and any stray symbol: no-op.
+                }
+                if (primitives.length > LSYS_MAX_PRIMITIVES) break;
             }
-            if (primitives.length > LSYS_MAX_PRIMITIVES) break;
-        }
 
-        this._primCacheKey = commands;
-        this._primCache = primitives;
-        return primitives;
+            return primitives;
+        });
     }
 
     // Resolve a colour-walk counter to a palette colour. The counter walks around

@@ -658,12 +658,7 @@ class SITMusicIndividual extends SITCodeIndividual {
 
     /** The interpreted piece (cached per phenotype — evaluation is not cheap). */
     music() {
-        const p = this.phenotype;
-        if (this._musicFor !== p) {
-            this._musicFor = p;
-            this._music = SITLanguage.interpretMusic(this.items());
-        }
-        return this._music;
+        return this.derive('music', () => SITLanguage.interpretMusic(this.items()));
     }
 
     /**

@@ -235,17 +235,15 @@ class SITCode3DIndividual extends SITCodeIndividual {
 
     /** The interpreted figure: drawn segments plus the branch grids. Cached. */
     figure() {
-        const items = this.items();
-        if (this._figFor !== items) {
-            this._figFor = items;
-            this._fig = SITLanguage.interpret3D(items, this.unitDegrees());
+        return this.derive('figure', () => {
+            const fig = SITLanguage.interpret3D(this.items(), this.unitDegrees());
             // A family can only be lofted if it has at least two strands of at
             // least two points; anything thinner falls back to rods.
-            for (const f of this._fig.families) {
+            for (const f of fig.families) {
                 if (f.skin && !(f.strands.length >= 2 && f.strands[0].length >= 2)) f.skin = false;
             }
-        }
-        return this._fig;
+            return fig;
+        });
     }
 
     /** The families that become skin — the surfaces of revolution / sweeps. */

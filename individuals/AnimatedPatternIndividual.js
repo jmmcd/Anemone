@@ -75,6 +75,8 @@ class AnimatedPatternIndividual extends Individual {
         usesColorPalette: true,
         animatesContinuously: true,
     };
+    // The static pattern grammar's pipeline, one variable wider (time).
+    static expression = { vars: ['x', 'y', 't'], preset: 'PATTERN' };
 
     static adjustPeriodScale(factor) { Individual.AnimationClock.adjustScale(factor); }
     static get periodScale() { return Individual.AnimationClock.scale; }
@@ -102,19 +104,7 @@ class AnimatedPatternIndividual extends Individual {
     }
 
     evaluateExpression(x, y, t) {
-        const expression = this.phenotype.expression;
-        if (this._compiledExpression == null || this._compiledKey !== expression) {
-            this._compiledExpression = this._compileExpression(expression);
-            this._compiledKey = expression;
-        }
-        return this._compiledExpression(x, y, t);
-    }
-
-    // Same rewrite pipeline as the static pattern grammar, one variable wider
-    // (time) — see services/ExpressionCompiler.js.
-    _compileExpression(expression) {
-        return ExpressionCompiler.compile(expression, ['x', 'y', 't'],
-            ExpressionCompiler.PRESETS.PATTERN);
+        return this.expressionFn(this.phenotype.expression)(x, y, t);
     }
 
     _renderFrame(canvas, t) {

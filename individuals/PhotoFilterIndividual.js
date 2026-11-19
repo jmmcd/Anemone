@@ -75,11 +75,6 @@ class PhotoFilterIndividual extends Individual {
         usesPhoto: true, // attaches the Photo panel
     };
 
-    renderKey() {
-        return JSON.stringify(this.phenotype) + '|photo' + window.Photo.version()
-            + '|' + window.Palette.name();
-    }
-
     visualize(canvas) {
         Canvas2DModality.renderCached(canvas, this, (ctx, width, height) => {
             const src = this.toFloat(window.Photo.sourceImageData(width, height));

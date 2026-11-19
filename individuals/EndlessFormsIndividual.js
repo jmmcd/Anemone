@@ -223,29 +223,28 @@ class EndlessFormsIndividual extends Individual {
     // centres over the query domain: x,z ∈ [-1,1], y ∈ [-yspan,yspan]; symX folds x→|x|.
     // Finally _keepLargestBody prunes everything but the largest connected mass.
     _field() {
-        const p = this.phenotype;
-        if (this._fieldCache && this._fieldCache.key === p) return this._fieldCache;
+        return this.derive('field', (p) => {
 
-        const { gx, gy, gz, yspan } = this;
-        const data = new Float32Array(gx * gy * gz);
-        const thr = p.threshold;
-        let count = 0;
-        for (let k = 0; k < gz; k++) {
-            const z = ((k + 0.5) / gz) * 2 - 1;
-            for (let j = 0; j < gy; j++) {
-                const y = (((j + 0.5) / gy) * 2 - 1) * yspan;
-                for (let i = 0; i < gx; i++) {
-                    let x = ((i + 0.5) / gx) * 2 - 1;
-                    if (p.symX) x = Math.abs(x);
-                    const v = this._query(x, y, z);
-                    data[i + gx * (j + gy * k)] = thr - v; // <0 ⇔ occupied
-                    if (v > thr) count++;
+            const { gx, gy, gz, yspan } = this;
+            const data = new Float32Array(gx * gy * gz);
+            const thr = p.threshold;
+            let count = 0;
+            for (let k = 0; k < gz; k++) {
+                const z = ((k + 0.5) / gz) * 2 - 1;
+                for (let j = 0; j < gy; j++) {
+                    const y = (((j + 0.5) / gy) * 2 - 1) * yspan;
+                    for (let i = 0; i < gx; i++) {
+                        let x = ((i + 0.5) / gx) * 2 - 1;
+                        if (p.symX) x = Math.abs(x);
+                        const v = this._query(x, y, z);
+                        data[i + gx * (j + gy * k)] = thr - v; // <0 ⇔ occupied
+                        if (v > thr) count++;
+                    }
                 }
             }
-        }
-        count = this._keepLargestBody(data);
-        this._fieldCache = { key: p, data, count };
-        return this._fieldCache;
+            count = this._keepLargestBody(data);
+            return { data, count };
+        });
     }
 
     // Keep only the largest connected body, discarding floating material —
@@ -492,10 +491,6 @@ class EndlessFormsIndividual extends Individual {
     cleanup() {
         const framework = window.framework;
         if (framework && framework.shared3D) framework.removeMeshFromScene(this.id);
-    }
-
-    renderKey() {
-        return JSON.stringify(this.phenotype) + '|' + window.Palette.name();
     }
 
     getPhenotype() {

@@ -117,68 +117,66 @@ class WaterTowerIndividual extends Individual {
     // A pure function of the phenotype, memoised on it (phenotypes are cached
     // per trace, so identity is a sound key).
     graph() {
-        const p = this.phenotype;
-        if (this._graphFor === p) return this._graph;
-        const nodes = [], layers = [], edges = [], seen = new Set();
-        const addEdge = (a, b) => {
-            if (a === b) return;
-            const key = a < b ? `${a},${b}` : `${b},${a}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            edges.push([a, b]);
-        };
-        const toSelf = p.connections.includes('self');
-        const toPrev = p.connections.includes('prev');
-        const toNext = p.connections.includes('next');
-        const n = p.nnodes;
+        return this.derive('graph', (p) => {
+            const nodes = [], layers = [], edges = [], seen = new Set();
+            const addEdge = (a, b) => {
+                if (a === b) return;
+                const key = a < b ? `${a},${b}` : `${b},${a}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                edges.push([a, b]);
+            };
+            const toSelf = p.connections.includes('self');
+            const toPrev = p.connections.includes('prev');
+            const toNext = p.connections.includes('next');
+            const n = p.nnodes;
 
-        // add_layer()
-        for (let j = 0; j < p.nlayers; j++) {
-            const lenLayer = p.doublep === 2 ? (j % 2 === 0 ? n : 2 * n) : n;
-            const lenPrev = p.doublep === 2 ? (j % 2 === 0 ? 2 * n : n) : n;
-            const start = nodes.length;
-            const layer = [];
-            for (let i = 0; i < lenLayer; i++) layer.push(start + i);
-            const prev = j > 0 ? layers[j - 1] : null;
-            layers.push(layer);
-            for (let i = 0; i < lenLayer; i++) {
-                nodes.push({ layer: j, idx: i, xyz: null });
-                addEdge(layer[i], layer[(i + 1) % lenLayer]);
-                if (!prev) continue;
-                if (p.doublep === 1) {
-                    if (toSelf) addEdge(layer[i], prev[i]);
-                    if (toPrev) addEdge(layer[i], prev[(i - 1 + n) % n]);
-                    if (toNext) addEdge(layer[i], prev[(i + 1) % n]);
-                } else if (j % 2 === 0) {
-                    if (toSelf) addEdge(layer[i], prev[(2 * i) % lenPrev]);
-                    if (toPrev) addEdge(layer[i], prev[(lenPrev + 2 * i - 1) % lenPrev]);
-                    if (toNext) addEdge(layer[i], prev[(2 * i + 1) % lenPrev]);
-                } else {
-                    const h = Math.floor(i / 2);
-                    if (toSelf) addEdge(layer[i], prev[h]);
-                    if (toPrev) addEdge(layer[i], prev[(lenPrev + h - 1) % lenPrev]);
-                    if (toNext) addEdge(layer[i], prev[(h + 1) % lenPrev]);
+            // add_layer()
+            for (let j = 0; j < p.nlayers; j++) {
+                const lenLayer = p.doublep === 2 ? (j % 2 === 0 ? n : 2 * n) : n;
+                const lenPrev = p.doublep === 2 ? (j % 2 === 0 ? 2 * n : n) : n;
+                const start = nodes.length;
+                const layer = [];
+                for (let i = 0; i < lenLayer; i++) layer.push(start + i);
+                const prev = j > 0 ? layers[j - 1] : null;
+                layers.push(layer);
+                for (let i = 0; i < lenLayer; i++) {
+                    nodes.push({ layer: j, idx: i, xyz: null });
+                    addEdge(layer[i], layer[(i + 1) % lenLayer]);
+                    if (!prev) continue;
+                    if (p.doublep === 1) {
+                        if (toSelf) addEdge(layer[i], prev[i]);
+                        if (toPrev) addEdge(layer[i], prev[(i - 1 + n) % n]);
+                        if (toNext) addEdge(layer[i], prev[(i + 1) % n]);
+                    } else if (j % 2 === 0) {
+                        if (toSelf) addEdge(layer[i], prev[(2 * i) % lenPrev]);
+                        if (toPrev) addEdge(layer[i], prev[(lenPrev + 2 * i - 1) % lenPrev]);
+                        if (toNext) addEdge(layer[i], prev[(2 * i + 1) % lenPrev]);
+                    } else {
+                        const h = Math.floor(i / 2);
+                        if (toSelf) addEdge(layer[i], prev[h]);
+                        if (toPrev) addEdge(layer[i], prev[(lenPrev + h - 1) % lenPrev]);
+                        if (toNext) addEdge(layer[i], prev[(h + 1) % lenPrev]);
+                    }
                 }
             }
-        }
 
-        // run(): place the nodes.
-        let phi = p.phi;
-        for (let i = 0; i < p.nlayers; i++) {
-            phi += p.offsets[i % p.offsets.length];
-            const r = waterTowerEval(p.radius, i / p.nlayers);
-            const L = layers[i].length;
-            for (const id of layers[i]) {
-                const idx = nodes[id].idx;
-                const theta = (phi + idx) / L;
-                let z = p.height * i + p.constant + p.rad * Math.sin(p.freq * i);
-                if (L % 2 === 0 && p.varyHeightWithinLayer && idx % 2 === 1) z += p.varyHeightAmount;
-                nodes[id].xyz = [r * Math.cos(2 * Math.PI * theta), r * Math.sin(2 * Math.PI * theta), z];
+            // run(): place the nodes.
+            let phi = p.phi;
+            for (let i = 0; i < p.nlayers; i++) {
+                phi += p.offsets[i % p.offsets.length];
+                const r = waterTowerEval(p.radius, i / p.nlayers);
+                const L = layers[i].length;
+                for (const id of layers[i]) {
+                    const idx = nodes[id].idx;
+                    const theta = (phi + idx) / L;
+                    let z = p.height * i + p.constant + p.rad * Math.sin(p.freq * i);
+                    if (L % 2 === 0 && p.varyHeightWithinLayer && idx % 2 === 1) z += p.varyHeightAmount;
+                    nodes[id].xyz = [r * Math.cos(2 * Math.PI * theta), r * Math.sin(2 * Math.PI * theta), z];
+                }
             }
-        }
-        this._graphFor = p;
-        this._graph = { nodes, edges, layers };
-        return this._graph;
+            return { nodes, edges, layers };
+        });
     }
 
     // Layer radii r(i / nlayers), the one place the arithmetic function shows.

@@ -186,21 +186,12 @@ class SITCodeIndividual extends Individual {
 
     /** The evaluated item stream (cached per phenotype — evaluation is not cheap). */
     items() {
-        const p = this.phenotype;
-        if (this._itemsFor !== p) {
-            this._itemsFor = p;
-            this._items = SITLanguage.evaluate(p && p.root, this.unitDegrees());
-        }
-        return this._items;
+        return this.derive('items', (p) => SITLanguage.evaluate(p && p.root, this.unitDegrees()));
     }
 
     marks() {
         return SITLanguage.interpret2D(this.items(), this.unitDegrees());
     }
-
-    // The object phenotype stringifies to "[object Object]" and would collide in
-    // renderCached's key, so key on a precise serialisation of the code.
-    renderKey() { return JSON.stringify(this.phenotype); }
 
     /**
      * Reject figures that are not worth a tile: too few marks, or a contour so

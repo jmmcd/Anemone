@@ -162,14 +162,6 @@ class StructuralInformationIndividual extends Individual {
         return this.buildPaths().length > 0;
     }
 
-    // The object phenotype would stringify to "[object Object]" and collide in
-    // Canvas2DModality.renderCached's key, so key on a precise serialisation of
-    // the code tree (precise, not the rounded display string, so a tiny
-    // continuous-gene creep still re-renders).
-    renderKey() {
-        return JSON.stringify(this.phenotype);
-    }
-
     // --- Decoding: code tree → flat list of contour commands {turn,len,draw} ---
     // Each operator expands its child ONCE and replicates the result, which is
     // what realises the reuse/regularity. A shared counter caps runaway nesting.

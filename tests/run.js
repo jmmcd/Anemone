@@ -230,6 +230,38 @@ console.log('\nDeclarative subclasses (static representation / capabilities):');
         assert(!new classes.GridIndividual().isEditable(), 'not editable by default');
     });
 
+    check('renderKey is a string that tells different individuals apart', () => {
+        for (const name of INDIVIDUAL_CLASSES) {
+            const C = classes[name];
+            const a = new C();
+            let b = new C();
+            for (let i = 0; i < 20 && JSON.stringify(b.phenotype) === JSON.stringify(a.phenotype); i++) b = new C();
+            assert(typeof a.renderKey() === 'string', `${name}: renderKey must be a string`);
+            if (JSON.stringify(b.phenotype) !== JSON.stringify(a.phenotype)) {
+                assert(a.renderKey() !== b.renderKey(), `${name}: two different phenotypes share a render key`);
+            }
+        }
+    });
+
+    check('derive() memoises on the phenotype and misses after a genome change', () => {
+        const ind = new classes.BranchIndividual();
+        let calls = 0;
+        const f = () => { calls++; return {}; };
+        const v1 = ind.derive('probe', f), v2 = ind.derive('probe', f);
+        assert(v1 === v2 && calls === 1, 'second call must hit');
+        ind.mutate(1.0);
+        const v3 = ind.derive('probe', f);
+        assert(v3 !== v1 && calls === 2, 'a new phenotype must recompute');
+        assert(ind.clone()._derived === undefined, 'a clone starts with no derived state');
+    });
+
+    check('expressionFn caches per phenotype and uses the type\'s preset', () => {
+        const pc = new classes.PolarCurveIndividual();
+        const f = pc.expressionFn(pc.phenotype.expr);
+        assert(f === pc.expressionFn(pc.phenotype.expr), 'same phenotype, same function');
+        assert(classes.PolarCurveIndividual.expression.preset === 'POLAR', 'polar keeps its preset');
+    });
+
     check('an unknown capability key is an error, not silently ignored', () => {
         class Typo extends Individual { static capabilities = { usesColourPalette: true }; }
         let threw = false;
@@ -2397,16 +2429,16 @@ console.log('\nShared expression compiler:');
     });
 
     check('the four call sites route through the shared compiler', () => {
-        // Each type keeps its own thin wrapper; these are the contracts the
-        // wrappers must preserve (variables and fallback value).
+        // Each type declares its variables and preset (static expression); these
+        // are the contracts that declaration must preserve.
         const pg = new classes.PatternGrammarIndividual();
         assert(Math.abs(pg.compileExpression('x+y')(2, 3) - 5) < 1e-12, 'PatternGrammar compiles over x,y');
         const ap = new classes.AnimatedPatternIndividual();
-        assert(Math.abs(ap._compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
+        assert(Math.abs(ap.compileExpression('x+y+t')(1, 2, 3) - 6) < 1e-12, 'AnimatedPattern compiles over x,y,t');
         const pc = new classes.PolarCurveIndividual();
-        assert(Math.abs(pc.compileExpressionForT('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
+        assert(Math.abs(pc.compileExpression('t*2')(4) - 8) < 1e-12, 'PolarCurve compiles over t');
         const s3 = new classes.WarpedSurface3DIndividual();
-        assert(Math.abs(s3.compileExpr('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
+        assert(Math.abs(s3.compileExpression('theta*phi', ['theta', 'phi'])(3, 4) - 12) < 1e-12, 'RadialSurface3D compiles over theta,phi');
     });
 }
 
@@ -2417,13 +2449,13 @@ console.log('\nShared expression compiler:');
 console.log('\nGE Radius expression compilation:');
 check('division/modulo expressions compile and vary with t (not constant 1.0)', () => {
     const ind = new classes.PolarCurveIndividual();
-    const f = ind.compileExpressionForT('5.0*(t/2)');
+    const f = ind.compileExpression('5.0*(t/2)');
     assert(Math.abs(f(2) - 5.0) < 1e-9 && Math.abs(f(4) - 10.0) < 1e-9, 'division expr did not evaluate correctly');
 
-    const g = ind.compileExpressionForT('(t*3)/tan((t*2)+log((t*2))-(t/2))');
+    const g = ind.compileExpression('(t*3)/tan((t*2)+log((t*2))-(t/2))');
     assert(g(1) !== 1.0 || g(5) !== 1.0, 'complex expr collapsed to the 1.0 fallback');
 
-    const c = ind.compileExpressionForT('6.28318');
+    const c = ind.compileExpression('6.28318');
     assert(Math.abs(c(0) - c(9)) < 1e-9 && Math.abs(c(0) - 2 * Math.PI) < 1e-6, 'constant should compile to a constant');
 });
 

@@ -124,16 +124,18 @@ class AnemoneIndividual extends Individual {
     }
 
     executeGenome() {
-        const turtle = new Turtle(0, 0, 0, 2, 0, 10);
-        const turtles = [turtle];
+        return this.derive('paths', (p) => {
+            const turtle = new Turtle(0, 0, 0, 2, 0, 10);
+            const turtles = [turtle];
 
-        this.executeGenomeOnTurtles(turtles, this.phenotype, 0);
+            this.executeGenomeOnTurtles(turtles, p, 0);
         
-        // Collect all paths from all turtles
-        const allPaths = [];
-        turtles.forEach(t => allPaths.push(...t.path));
+            // Collect all paths from all turtles
+            const allPaths = [];
+            turtles.forEach(t => allPaths.push(...t.path));
         
-        return allPaths;
+            return allPaths;
+        });
     }
     
     executeGenomeOnTurtles(turtles, genome, startIndex) {

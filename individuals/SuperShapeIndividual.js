@@ -122,26 +122,28 @@ class SuperShapeIndividual extends Individual {
     }
     
     generatePolarPoints() {
-        const params = this.getParameters();
-        const points = [];
+        return this.derive('points', (p) => {
+            const params = this.getParameters();
+            const points = [];
         
-        // Calculate proper φ range using the separate denominator value
-        this.phiRange = this.calculatePhiRange(params.m_denominator);
+            // Calculate proper φ range using the separate denominator value
+            this.phiRange = this.calculatePhiRange(params.m_denominator);
         
-        // Generate points from 0 to phiRange, ensuring proper closure
-        for (let i = 0; i < this.numPoints; i++) {
-            const phi = (i / this.numPoints) * this.phiRange;
-            const radius = this.calculateRadius(phi, params);
+            // Generate points from 0 to phiRange, ensuring proper closure
+            for (let i = 0; i < this.numPoints; i++) {
+                const phi = (i / this.numPoints) * this.phiRange;
+                const radius = this.calculateRadius(phi, params);
             
-            // Convert to Cartesian coordinates
-            const x = radius * Math.cos(phi);
-            const y = radius * Math.sin(phi);
+                // Convert to Cartesian coordinates
+                const x = radius * Math.cos(phi);
+                const y = radius * Math.sin(phi);
             
-            points.push({ x, y, phi, radius });
-        }
+                points.push({ x, y, phi, radius });
+            }
         
         
-        return points;
+            return points;
+        });
     }
     
     calculatePhiRange(denominator) {

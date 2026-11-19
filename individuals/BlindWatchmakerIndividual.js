@@ -84,33 +84,34 @@ class BlindWatchmakerIndividual extends Individual {
     // remaining recursion depth, so the trunk is longest and the twigs shortest
     // (a self-similar taper).
     buildPaths() {
-        const p = this.phenotype;
-        if (!p || !Array.isArray(p.genes) || p.genes.length < BW_NUM_GENES) return [];
+        return this.derive('paths', (p) => {
+            if (!p || !Array.isArray(p.genes) || p.genes.length < BW_NUM_GENES) return [];
 
-        const depth = Math.max(1, Math.min(BW_DEPTH_MAX, p.depth | 0));
-        const { dx, dy } = this._directionTable(p.genes);
-        const paths = [];
-        const MAX_SEGMENTS = 20000; // guard against a runaway edited generator
+            const depth = Math.max(1, Math.min(BW_DEPTH_MAX, p.depth | 0));
+            const { dx, dy } = this._directionTable(p.genes);
+            const paths = [];
+            const MAX_SEGMENTS = 20000; // guard against a runaway edited generator
 
-        // Iterative stack walk of the binary recursion (avoids deep call stacks
-        // and lets us cap the segment count). Screen y grows downward, so we
-        // subtract dy to make positive dy grow upward.
-        const stack = [{ x: 0, y: 0, dir: 2, remaining: depth }];
-        while (stack.length && paths.length < MAX_SEGMENTS) {
-            const s = stack.pop();
-            if (s.remaining <= 0) continue;
-            const d = ((s.dir % 8) + 8) % 8;
-            const nx = s.x + dx[d] * s.remaining;
-            const ny = s.y - dy[d] * s.remaining;
-            paths.push({
-                x1: s.x, y1: s.y, x2: nx, y2: ny,
-                depthT: (depth - s.remaining) / depth, // 0 at trunk → 1 at twigs
-                remaining: s.remaining,
-            });
-            stack.push({ x: nx, y: ny, dir: s.dir - 1, remaining: s.remaining - 1 });
-            stack.push({ x: nx, y: ny, dir: s.dir + 1, remaining: s.remaining - 1 });
-        }
-        return paths;
+            // Iterative stack walk of the binary recursion (avoids deep call stacks
+            // and lets us cap the segment count). Screen y grows downward, so we
+            // subtract dy to make positive dy grow upward.
+            const stack = [{ x: 0, y: 0, dir: 2, remaining: depth }];
+            while (stack.length && paths.length < MAX_SEGMENTS) {
+                const s = stack.pop();
+                if (s.remaining <= 0) continue;
+                const d = ((s.dir % 8) + 8) % 8;
+                const nx = s.x + dx[d] * s.remaining;
+                const ny = s.y - dy[d] * s.remaining;
+                paths.push({
+                    x1: s.x, y1: s.y, x2: nx, y2: ny,
+                    depthT: (depth - s.remaining) / depth, // 0 at trunk → 1 at twigs
+                    remaining: s.remaining,
+                });
+                stack.push({ x: nx, y: ny, dir: s.dir - 1, remaining: s.remaining - 1 });
+                stack.push({ x: nx, y: ny, dir: s.dir + 1, remaining: s.remaining - 1 });
+            }
+            return paths;
+        });
     }
 
     visualize(canvas) {

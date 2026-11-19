@@ -31,6 +31,10 @@ class RadialSurface3DIndividual extends Individual {
         is3D: true,
         usesColorPalette: true,
     };
+    // The SURFACE preset qualifies `pow` and leaves `theta` alone — here it is a
+    // variable, not a derived quantity as in the x,y pattern grammars. Separable
+    // expressions are over the raw angle `a`; a bivariate one passes theta,phi.
+    static expression = { vars: ['a'], preset: 'SURFACE' };
 
     constructor(genome = null) {
         super(genome);
@@ -43,24 +47,6 @@ class RadialSurface3DIndividual extends Individual {
         this.radiusEps = 0.05;
     }
 
-    // --- Expression → numeric function ------------------------------------
-    // Compile an expression over the given variable names to a numeric function,
-    // caching by the expression string (auto-invalidates when the genome
-    // changes, since a new genome yields a new expression string).
-    compileExpr(expr, varNames) {
-        this._compiled = this._compiled || {};
-        if (!this._compiled[expr]) this._compiled[expr] = this._buildFn(expr, varNames);
-        return this._compiled[expr];
-    }
-
-    // The SURFACE preset (services/ExpressionCompiler.js) qualifies `pow` and
-    // leaves `theta` alone — here it is a variable, not a derived quantity as
-    // in the x,y pattern grammars.
-    _buildFn(expr, varNames) {
-        return ExpressionCompiler.compile(expr, varNames,
-            ExpressionCompiler.PRESETS.SURFACE);
-    }
-
     _clampR(v) { return Math.max(0, Math.min(5000, v)); }
 
     // Build the radius function r(θ,φ) for whichever phenotype is active. The
@@ -69,11 +55,11 @@ class RadialSurface3DIndividual extends Individual {
         const p = this.phenotype;
         const eps = this.radiusEps;
         if (p.biExpr !== undefined) {                       // bivariate
-            const f = this.compileExpr(p.biExpr, ['theta', 'phi']);
+            const f = this.expressionFn(p.biExpr, ['theta', 'phi']);
             return (theta, phi) => this._clampR(Math.abs(f(theta, phi)) + eps);
         }
-        const f1 = this.compileExpr(p.meridianExpr, ['a']); // separable r₁(θ)·r₂(φ)
-        const f2 = this.compileExpr(p.crossExpr, ['a']);
+        const f1 = this.expressionFn(p.meridianExpr); // separable r₁(θ)·r₂(φ)
+        const f2 = this.expressionFn(p.crossExpr);
         return (theta, phi) =>
             this._clampR((Math.abs(f1(theta)) + eps) * (Math.abs(f2(phi)) + eps));
     }
@@ -199,15 +185,6 @@ class RadialSurface3DIndividual extends Individual {
         const p = this.phenotype;
         if (p.biExpr !== undefined) return `r(θ,φ) = ${p.biExpr}`;
         return `r₁(θ) = ${p.meridianExpr} | r₂(φ) = ${p.crossExpr}`;
-    }
-
-    // renderKey must fold in every input that changes the pixels; the base would
-    // return the phenotype object (→ "[object Object]") and collide, so build a
-    // string key by hand. The expression strings encode all parameters/ranges.
-    renderKey() {
-        const p = this.phenotype;
-        if (p.biExpr !== undefined) return `bi::${p.biExpr}`;
-        return `${p.meridianExpr}::${p.crossExpr}`;
     }
 
     describeExtra() {

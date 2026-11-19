@@ -56,6 +56,8 @@ class PatternGrammarIndividual extends Individual {
     static capabilities = {
         usesColorPalette: true,
     };
+    // The full PATTERN rewrite set over x,y (see services/ExpressionCompiler.js).
+    static expression = { vars: ['x', 'y'], preset: 'PATTERN' };
 
     // The interesting knob here is the grammar (the generator is boilerplate
     // derivation); expose both, grammar first.
@@ -82,22 +84,7 @@ class PatternGrammarIndividual extends Individual {
     }
 
     evaluateExpression(x, y) {
-        const expression = this.phenotype;
-        // Compile lazily; cache keyed by the expression so it auto-invalidates
-        // when the genome changes (mutation/crossover → new expression).
-        if (this._compiledExpression == null || this._compiledKey !== expression) {
-            this._compiledExpression = this.compileExpression(expression);
-            this._compiledKey = expression;
-        }
-        return this._compiledExpression(x, y);
-    }
-
-    // Compile a grammar-derived expression string into a JS function of (x, y),
-    // with protected division/modulo. The rewrite pipeline is shared with the
-    // other expression types — see services/ExpressionCompiler.js.
-    compileExpression(expression) {
-        return ExpressionCompiler.compile(expression, ['x', 'y'],
-            ExpressionCompiler.PRESETS.PATTERN);
+        return this.expressionFn(this.phenotype)(x, y);
     }
 
     visualize(canvas) {

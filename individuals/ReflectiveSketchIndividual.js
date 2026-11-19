@@ -401,24 +401,13 @@ function rsRefLabel(ref) {
     return ref.kind;
 }
 
-// Construction is pure in the phenotype, and the phenotype object is cached per
-// trace by PTORepresentation, so memoise on its identity.
-const rsDrawingCache = new WeakMap();
-
 class ReflectiveSketchIndividual extends Individual {
     static representation = reflectiveSketchRepresentation;
 
     /** The resolved drawing: strokes with control points + the crossings registry. */
     drawing() {
-        const p = this.phenotype;
-        if (!p || typeof p !== 'object') return { strokes: [], crosses: [] };
-        let d = rsDrawingCache.get(p);
-        if (!d) { d = rsConstruct(p); rsDrawingCache.set(p, d); }
-        return d;
-    }
-
-    renderKey() {
-        return JSON.stringify(this.phenotype);
+        return this.derive('drawing', (p) =>
+            (p && typeof p === 'object') ? rsConstruct(p) : { strokes: [], crosses: [] });
     }
 
     validate() {

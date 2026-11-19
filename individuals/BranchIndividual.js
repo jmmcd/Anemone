@@ -81,58 +81,59 @@ class BranchIndividual extends Individual {
      * turtle, returning a flat list of line segments {x1,y1,x2,y2,width,colorIndex}.
      */
     buildPaths() {
-        const commands = this.phenotype;
-        if (!Array.isArray(commands)) return [];
+        return this.derive('paths', (commands) => {
+            if (!Array.isArray(commands)) return [];
 
-        const paths = [];
-        let state = { x: 0, y: 0, heading: 0, penWidth: 2, colorIndex: 0, step: 10 };
-        const stack = [];
-        const MAX_PATHS = 20000; // guard against a runaway generator
+            const paths = [];
+            let state = { x: 0, y: 0, heading: 0, penWidth: 2, colorIndex: 0, step: 10 };
+            const stack = [];
+            const MAX_PATHS = 20000; // guard against a runaway generator
 
-        for (const cmd of commands) {
-            if (!cmd || typeof cmd !== 'object') continue;
-            switch (cmd.op) {
-                case 'forward': {
-                    const d = (typeof cmd.step === 'number') ? cmd.step : state.step;
-                    const rad = (state.heading * Math.PI) / 180;
-                    const nx = state.x + Math.cos(rad) * d;
-                    const ny = state.y + Math.sin(rad) * d;
-                    paths.push({
-                        x1: state.x, y1: state.y, x2: nx, y2: ny,
-                        width: state.penWidth, colorIndex: state.colorIndex
-                    });
-                    state.x = nx;
-                    state.y = ny;
-                    break;
+            for (const cmd of commands) {
+                if (!cmd || typeof cmd !== 'object') continue;
+                switch (cmd.op) {
+                    case 'forward': {
+                        const d = (typeof cmd.step === 'number') ? cmd.step : state.step;
+                        const rad = (state.heading * Math.PI) / 180;
+                        const nx = state.x + Math.cos(rad) * d;
+                        const ny = state.y + Math.sin(rad) * d;
+                        paths.push({
+                            x1: state.x, y1: state.y, x2: nx, y2: ny,
+                            width: state.penWidth, colorIndex: state.colorIndex
+                        });
+                        state.x = nx;
+                        state.y = ny;
+                        break;
+                    }
+                    case 'turn':
+                        state.heading = (state.heading + (cmd.angle || 0)) % 360;
+                        break;
+                    case 'color':
+                        state.colorIndex = (typeof cmd.index === 'number')
+                            ? ((cmd.index % 8) + 8) % 8
+                            : (state.colorIndex + 1) % 8;
+                        break;
+                    case 'penWidth':
+                        state.penWidth = (typeof cmd.width === 'number')
+                            ? Math.max(1, Math.min(8, cmd.width))
+                            : Math.max(1, Math.min(8, state.penWidth + (cmd.delta || 0)));
+                        break;
+                    case 'step':
+                        state.step = (typeof cmd.size === 'number')
+                            ? Math.max(1, cmd.size)
+                            : Math.max(1, state.step + (cmd.delta || 0));
+                        break;
+                    case 'push':
+                        stack.push({ ...state });
+                        break;
+                    case 'pop':
+                        if (stack.length) state = stack.pop();
+                        break;
                 }
-                case 'turn':
-                    state.heading = (state.heading + (cmd.angle || 0)) % 360;
-                    break;
-                case 'color':
-                    state.colorIndex = (typeof cmd.index === 'number')
-                        ? ((cmd.index % 8) + 8) % 8
-                        : (state.colorIndex + 1) % 8;
-                    break;
-                case 'penWidth':
-                    state.penWidth = (typeof cmd.width === 'number')
-                        ? Math.max(1, Math.min(8, cmd.width))
-                        : Math.max(1, Math.min(8, state.penWidth + (cmd.delta || 0)));
-                    break;
-                case 'step':
-                    state.step = (typeof cmd.size === 'number')
-                        ? Math.max(1, cmd.size)
-                        : Math.max(1, state.step + (cmd.delta || 0));
-                    break;
-                case 'push':
-                    stack.push({ ...state });
-                    break;
-                case 'pop':
-                    if (stack.length) state = stack.pop();
-                    break;
+                if (paths.length > MAX_PATHS) break;
             }
-            if (paths.length > MAX_PATHS) break;
-        }
-        return paths;
+            return paths;
+        });
     }
 
     visualize(canvas) {

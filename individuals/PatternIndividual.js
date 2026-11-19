@@ -35,11 +35,7 @@ class PatternIndividual extends Individual {
     // The evaluable node tree, built (and cached per trace) from the plain-data
     // phenotype. this.phenotype stays the raw plain-data tree PTO produced.
     get tree() {
-        if (this._treeKey !== this.phenotype) {
-            this._tree = buildTreeNode(this.phenotype);
-            this._treeKey = this.phenotype;
-        }
-        return this._tree;
+        return this.derive('tree', buildTreeNode);
     }
 
     validate() {
