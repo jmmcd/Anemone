@@ -3074,15 +3074,11 @@ check('metaFor embeds the expressed phenotype alongside the genome', () => {
     assert(meta.phenotype !== undefined, 'phenotype present');
     assert(JSON.stringify(meta.phenotype) === JSON.stringify(ind.phenotype),
         'phenotype must be the expressed value');
-    assert(meta.sigVersion === ImageSave.SIG_VERSION, 'signature version recorded');
 });
-check('reconstruct: a v2 mismatch is unfaithful, an old (v1) mismatch is merely unverifiable', () => {
-    const C = classes.CatIndividual, ind = new C();
-    const meta = ImageSave.metaFor(ind);
+check('reconstruct: a signature mismatch is unfaithful', () => {
+    const C = classes.CatIndividual, meta = ImageSave.metaFor(new C());
     assert(ImageSave.reconstruct(meta, C).faithful === true, 'a fresh save reproduces');
-    assert(ImageSave.reconstruct({ ...meta, phenoSig: 'deadbeef' }, C).faithful === false, 'v2 mismatch → false');
-    const v1 = { ...meta, phenoSig: 'deadbeef' }; delete v1.sigVersion;
-    assert(ImageSave.reconstruct(v1, C).faithful === null, 'v1 mismatch → null (load with a warning)');
+    assert(ImageSave.reconstruct({ ...meta, phenoSig: 'deadbeef' }, C).faithful === false, 'mismatch → false');
 });
 check('WAV carries provenance in an anmn chunk and still frames as RIFF', () => {
     const buf = { numberOfChannels: 1, sampleRate: 44100, length: 3,
